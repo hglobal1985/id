@@ -1,0 +1,27 @@
+{
+  // Worker for id.hglobal1985.com. No account_id here: this repo is public.
+  // The account is selected by CLOUDFLARE_ACCOUNT_ID in GitHub Actions Secrets at deploy time.
+  "name": "hglobal-id",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // D1 database_id values are filled in when the databases are created (stage 1, deploy PR).
+  "env": {
+    "staging": {
+      "name": "hglobal-id-staging",
+      "vars": { "ENVIRONMENT": "staging" },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "hglobal-id-staging", "database_id": "TO_BE_CREATED", "migrations_dir": "migrations" }
+      ]
+    },
+    "production": {
+      "name": "hglobal-id",
+      "vars": { "ENVIRONMENT": "production" },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "hglobal-id", "database_id": "TO_BE_CREATED", "migrations_dir": "migrations" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "hglobal-id",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "H-Global1985 central member system (id.hglobal1985.com)",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "openapi": "tsx scripts/generate-openapi.mjs",
+    "openapi:check": "tsx scripts/generate-openapi.mjs --check",
+    "secrets:scan": "node scripts/scan-secrets.mjs",
+    "policy:check": "node scripts/check-repo-policy.mjs",
+    "ci": "npm run policy:check && npm run secrets:scan && npm run typecheck && npm run lint && npm test && npm run openapi:check",
+    "dev": "wrangler dev --env staging"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^0.19.0",
+    "hono": "^4.6.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^3.100.0"
+  }
+}
