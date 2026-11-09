@@ -1,0 +1,66 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "H-Global1985 Central Member System API",
+    "version": "1.0.0",
+    "description": "Central member API for id.hglobal1985.com."
+  },
+  "components": {
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "hglobal-id"
+            ]
+          },
+          "environment": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string",
+            "description": "ISO 8601 with the Taipei offset (+08:00)."
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "environment",
+          "time"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}
