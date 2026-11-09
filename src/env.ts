@@ -16,4 +16,12 @@ export interface Env {
   OIDC_SIGNING_JWK_PREVIOUS?: string;
 }
 
-export type AppBindings = { Bindings: Env; Variables: { requestId: string } };
+export interface AuthContext {
+  memberId: string;
+  clientId: string;
+  sessionId: string;
+  scope: string;
+  authTime: number;
+}
+
+export type AppBindings = { Bindings: Env; Variables: { requestId: string; auth: AuthContext } };

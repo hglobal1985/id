@@ -29,6 +29,9 @@ class Stmt {
     return this.runSync();
   }
   runSync() {
+    if (/^\s*(SELECT|WITH)\b/i.test(this.sql)) {
+      return { success: true, results: this.db.prepare(this.sql).all(...this.params).map((r) => ({ ...r })), meta: { changes: 0 } };
+    }
     const r = this.db.prepare(this.sql).run(...this.params);
     return { success: true, results: [], meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
   }

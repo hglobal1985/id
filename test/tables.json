@@ -5,5 +5,7 @@
   "members",
   "oauth_authorization_codes",
   "oauth_clients",
-  "oauth_refresh_tokens"
+  "oauth_refresh_tokens",
+  "profile_field_values",
+  "profile_visibility"
 ]

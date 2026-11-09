@@ -8,6 +8,8 @@ import { registerOidcRoutes } from "./oidc/routes";
 import { registerOidcDocs } from "./oidc/openapi";
 import { ConfigError } from "./oidc/config";
 import { messagePage } from "./web/pages";
+import { registerProfileRoutes } from "./api/profile";
+import { HTTPException } from "hono/http-exception";
 
 const HealthSchema = z
   .object({
@@ -32,7 +34,15 @@ export { taipeiIso };
 
 export function createApp(overrides: Partial<Deps> = {}) {
   const deps: Deps = { ...defaultDeps, ...overrides };
-  const app = new OpenAPIHono<AppBindings>();
+  const app = new OpenAPIHono<AppBindings>({
+    // Request validation failures use the shared error format.
+    defaultHook: (result, c) => {
+      if (result.success) return;
+      const issue = result.error.issues[0];
+      const field = issue?.path.join(".") || "body";
+      return c.json(errorBody("invalid_field", "Invalid request", c.get("requestId"), { field_key: field, reason: issue?.code ?? "invalid" }), 422);
+    },
+  });
 
   app.use("*", async (c, next) => {
     const incoming = c.req.header("x-request-id");
@@ -61,6 +71,7 @@ export function createApp(overrides: Partial<Deps> = {}) {
   registerAuthRoutes(app, deps);
   registerOidcRoutes(app, deps);
   registerOidcDocs(app);
+  registerProfileRoutes(app, deps);
 
   app.get("/", (c) => html(c, messagePage("會員中心", "H-Global1985 會員登入服務。", { href: "/login", label: "登入" })));
 
@@ -78,6 +89,9 @@ export function createApp(overrides: Partial<Deps> = {}) {
   app.onError((err, c) => {
     // Never echo internal details to clients; log only the request id and error name.
     console.error(JSON.stringify({ request_id: c.get("requestId"), error: err.name }));
+    if (err instanceof HTTPException && err.status < 500) {
+      return c.json(errorBody("invalid_request", "Malformed request", c.get("requestId")), err.status);
+    }
     if (err instanceof ConfigError) return c.json(errorBody("server_error", "Service is not configured", c.get("requestId")), 503);
     return c.json(errorBody("server_error", "Internal error", c.get("requestId")), 500);
   });
