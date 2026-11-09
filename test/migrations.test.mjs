@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // vite strips the "node:" prefix, so load the experimental sqlite module via require.
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite");
 
-const dir = new URL("../migrations/", import.meta.url).pathname;
+const dir = fileURLToPath(new URL("../migrations/", import.meta.url));
 const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
 // Every new table must be added to test/tables.json (same rule as the Starry system).
 const expectedTables = JSON.parse(readFileSync(new URL("./tables.json", import.meta.url), "utf8"));
