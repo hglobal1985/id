@@ -1,1 +1,9 @@
-["audit_log"]
+[
+  "audit_log",
+  "login_flows",
+  "login_sessions",
+  "members",
+  "oauth_authorization_codes",
+  "oauth_clients",
+  "oauth_refresh_tokens"
+]

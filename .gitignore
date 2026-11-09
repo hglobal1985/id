@@ -6,3 +6,5 @@ node_modules/
 dist/
 coverage/
 *.log
+*.sql.local
+client.sql
