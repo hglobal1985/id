@@ -24,6 +24,8 @@ export interface MemberRow {
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
+  avatar_url: string | null;
+  avatar_source: "none" | "google" | "upload";
 }
 
 export interface GoogleIdentity {

@@ -78,9 +78,20 @@ export async function profileClaims(env: Env, memberId: string): Promise<{ name?
   const m = await getMember(env.DB, memberId);
   if (!m) return {};
   const out: { name?: string; picture?: string; updated_at?: number } = {};
-  if (m.display_name) out.name = m.display_name;
-  // Avatar uploads are not available yet (storage not enabled); expose the Google picture only.
-  if (m.google_picture_url) out.picture = m.google_picture_url;
+  const dn = await env.DB.prepare("SELECT value FROM profile_field_values WHERE member_id = ? AND field_key = 'display_name'")
+    .bind(memberId)
+    .first<{ value: string }>();
+  let name: unknown = m.display_name;
+  if (dn) {
+    try {
+      name = JSON.parse(dn.value);
+    } catch {
+      name = m.display_name;
+    }
+  }
+  if (typeof name === "string" && name) out.name = name;
+  // The avatar is always public; none is set until the member chooses one.
+  if (m.avatar_url) out.picture = m.avatar_url;
   const t = Date.parse(m.updated_at);
   if (!Number.isNaN(t)) out.updated_at = Math.floor(t / 1000);
   return out;
