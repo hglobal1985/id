@@ -1,5 +1,9 @@
 [
+  "amway_field_values",
+  "amway_options",
+  "amway_review_requests",
   "audit_log",
+  "consent_records",
   "login_flows",
   "login_sessions",
   "member_numbers",

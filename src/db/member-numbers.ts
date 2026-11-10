@@ -2,6 +2,7 @@
 import { hashSecret, randomToken } from "../lib/crypto";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
+import { approvedRankLabel } from "./amway";
 import {
   MAX_ENTRIES_AMWAY,
   MAX_ENTRIES_DEFAULT,
@@ -133,8 +134,7 @@ export async function findDuplicateCandidates(db: D1Database, memberId: string, 
         /* keep sign-up name */
       }
     }
-    // Rank comes from the Amway area (PR 5); null until then.
-    out.push({ candidate_id: token, display_name: name, avatar_url: r.avatar_url, rank: null, matched: { country: r.country, number: r.number } });
+    out.push({ candidate_id: token, display_name: name, avatar_url: r.avatar_url, rank: await approvedRankLabel(db, r.member_id), matched: { country: r.country, number: r.number } });
   }
   await db.batch(stmts);
   return out;
