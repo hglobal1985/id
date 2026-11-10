@@ -196,7 +196,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const denied = missingScope(c, ["profile.read"]);
     if (denied) return denied as never;
     const { memberId } = c.get("auth");
-    const rows = await c.env.DB.prepare("SELECT id, kind, payload, created_at, read_at FROM notifications WHERE member_id = ? ORDER BY created_at DESC, id DESC LIMIT 50")
+    const rows = await c.env.DB.prepare("SELECT id, kind, payload, created_at, read_at FROM notifications WHERE member_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 50")
       .bind(memberId)
       .all<{ id: string; kind: string; payload: string | null; created_at: string; read_at: string | null }>();
     const list = await Promise.all((rows.results ?? []).map((r) => renderNotification(c.env.DB, memberId, r)));

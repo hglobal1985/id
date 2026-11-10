@@ -51,7 +51,7 @@ export interface ConsentState {
 /** Latest consent for the Amway document, or null if never accepted or last action was a withdrawal. */
 export async function latestConsent(db: D1Database, memberId: string): Promise<ConsentState | null> {
   const r = await db
-    .prepare("SELECT version, action, occurred_at FROM consent_records WHERE member_id = ? AND document = ? ORDER BY occurred_at DESC, id DESC LIMIT 1")
+    .prepare("SELECT version, action, occurred_at FROM consent_records WHERE member_id = ? AND document = ? ORDER BY occurred_at DESC, rowid DESC LIMIT 1")
     .bind(memberId, CONSENT_DOCUMENT)
     .first<{ version: string; action: string; occurred_at: string }>();
   if (!r || r.action !== "accept") return null;

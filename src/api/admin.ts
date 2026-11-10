@@ -424,7 +424,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       args.push(v);
     }
     const sql = `SELECT id, occurred_at, actor_type, actor_id, action, target_type, target_id, result, app_id, request_id, detail FROM audit_log
-      ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY occurred_at DESC, id DESC LIMIT ?`;
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY occurred_at DESC, rowid DESC LIMIT ?`;
     const r = await c.env.DB.prepare(sql).bind(...args, q.limit ?? 50).all();
     return c.json({ entries: r.results ?? [] }, 200);
   });
