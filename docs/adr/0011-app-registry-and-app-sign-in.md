@@ -29,7 +29,3 @@
 
 ## 業主需要做的事
 沒有。新增 App 只要在後台登記。
-
-## 補充：公開設定（config）的後台編輯
-- `PUT /v1/admin/apps/{app_id}/config`（`apps.manage`，只有超級管理員）整份取代 App 的公開設定，30 秒內由 `GET /v1/apps/{app_id}/config` 生效；寫入留稽核 `app.update`，不需 10 分鐘內重新登入（不影響誰能登入）。
-- 格式：扁平的「名稱 → 值」，值只能是文字（≤500 字、無控制字元）、數字、true／false 或 null；名稱英文字母開頭、≤64 字；最多 50 項、總量 ≤8 KB。公開資料，不可放機密。每次讀取登記都會重新驗證（`parseConfig`）。
