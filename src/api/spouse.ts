@@ -9,6 +9,7 @@ import { SpouseAlreadyBound, bindSpouses, getActiveBinding, otherSide, unbindSpo
 import { mergeForSpouses } from "../profile/member-number";
 import { hasScopes } from "../oidc/scopes";
 import { missingScope } from "./auth";
+import { approvedRankLabel, shareRankOnBind } from "../db/amway";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const security = [{ bearer: [] }];
@@ -20,7 +21,7 @@ const SpouseSchema = z
       .object({
         display_name: z.string().nullable(),
         avatar_url: z.string().nullable(),
-        rank: z.string().nullable().openapi({ description: "Shared rank (from the Amway area; null until available)" }),
+        rank: z.string().nullable().openapi({ description: "Shared reviewed rank label, or null" }),
         bound_at: z.string(),
         bound_by_me: z.boolean(),
       })
@@ -74,7 +75,7 @@ async function describe(db: D1Database, memberId: string): Promise<z.infer<typeo
       /* keep */
     }
   }
-  return { spouse: { display_name: name, avatar_url: other?.avatar_url ?? null, rank: null, bound_at: b.created_at, bound_by_me: b.initiator_id === memberId } };
+  return { spouse: { display_name: name, avatar_url: other?.avatar_url ?? null, rank: await approvedRankLabel(db, otherId), bound_at: b.created_at, bound_by_me: b.initiator_id === memberId } };
 }
 
 export function registerSpouseRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
@@ -109,6 +110,8 @@ export function registerSpouseRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) 
       if (e instanceof SpouseAlreadyBound) return c.json(errorBody("spouse_already_bound", "已與其他會員綁定", c.get("requestId")), 409);
       throw e;
     }
+    // From now on the couple shares one rank.
+    await shareRankOnBind(db, memberId, otherId, now);
     return c.json(await describe(db, memberId), 200);
   });
 
