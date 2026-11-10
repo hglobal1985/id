@@ -30,6 +30,22 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - 儲存：手機用系統安全儲存；網頁 Access Token 只放記憶體、Refresh Token 放 `sessionStorage`。
 - 網頁版 CORS 只對登記的網頁版來源開放，不使用 Cookie（不要設 `credentials: 'include'`）。
 
+## 3.5 共用登入（單一登入）
+任一款 App 登入，同一支手機上的其他 H-Global1985 App 自動登入；登出或換會員，所有 App 跟著變。登出按鈕寫「登出所有 H-Global1985 App」。
+
+**手機**
+- 登入後 `POST /v1/auth/sso/start`（Bearer；可帶 `previous_sso_token`）→ `{sso_token}`，存進共用儲存。iPhone：Keychain 群組 `$(AppIdentifierPrefix)com.hglobal1985.shared`，鍵名 `hglobal.sso`。Android 為選做。
+- 其他 App：`POST /v1/auth/sso/exchange` `{app_id, sso_token, device_label?}` → 與一般登入相同的回應。
+- 啟動與回到前景：`POST /v1/auth/sso/status` `{sso_token}` → `{active, member_id}`。
+- 登出：`POST /v1/auth/sso/logout` `{sso_token}` → 204。
+- 錯誤 `invalid_sso`（401）：共用登入已失效，清掉共用儲存並回到登入畫面。
+
+**網頁版（同一個瀏覽器）**
+- 登入後：`sso/start` → `POST /v1/auth/sso/web-code` `{sso_token}` → 導向 `/auth/sso/adopt?c=<code>&app_id=&return=` → 回到 `#sso_adopted=1`。
+- 載入頁面（5 分鐘節流）：取 nonce → 導向 `/auth/sso/check?app_id=&nonce=<SHA-256 hex>&return=&state=` → `#sso_code=&sso_member=&state=` 或 `#sso_none=1&state=` → `POST /v1/auth/sso/web-exchange` `{app_id, code, nonce}`（單次、2 分鐘、綁定 App 與 nonce）。
+- 登出：導向 `/auth/sso/logout?app_id=&return=`。
+- 回傳頁必須在登記的網頁版來源底下、不帶 `#`。手機 App 與網頁版之間不連動。
+
 ## 4. App 後端驗證會員
 用 `GET /oauth/jwks` 的公鑰驗證 Access Token（RS256，`typ` 為 `at+jwt`）：`iss` 與 `aud` 都是中央會員網址、`app_id` 等於自己的 app_id、檢查 `exp`。快取 JWKS，遇到不認得的 `kid` 重新抓取。會員主鍵只用 `sub`（即 `member_id`）；不可用信箱、姓名或會員編號辨識會員（會員編號可能重複或被修改）。
 

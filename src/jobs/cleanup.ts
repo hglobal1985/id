@@ -15,6 +15,8 @@ export async function runCleanup(db: D1Database, now: Date): Promise<{ purgedMem
     db.prepare("DELETE FROM oauth_authorization_codes WHERE expires_epoch < ?").bind(t - day),
     db.prepare("DELETE FROM spouse_candidates WHERE expires_epoch < ?").bind(t),
     db.prepare("DELETE FROM app_nonces WHERE expires_epoch < ?").bind(t - day),
+    db.prepare("DELETE FROM sso_codes WHERE expires_epoch < ?").bind(t - day),
+    db.prepare("DELETE FROM device_sso WHERE expires_epoch < ? OR (revoked_epoch IS NOT NULL AND revoked_epoch < ?)").bind(t - 30 * day, t - 30 * day),
     // App sessions are kept 30 days after they end (reuse detection, audit), then removed.
     db.prepare("DELETE FROM app_sessions WHERE expires_epoch < ? OR (revoked_epoch IS NOT NULL AND revoked_epoch < ?)").bind(t - 30 * day, t - 30 * day),
   ]);

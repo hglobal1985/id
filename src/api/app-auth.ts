@@ -32,9 +32,9 @@ import { SITE_CSP, sitePage } from "../web/layout";
 type C = Context<AppBindings>;
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
-const fail = <S extends 400 | 401 | 403 | 404 | 429 | 503>(c: C, status: S, code: string, message: string) => c.json(errorBody(code, message, c.get("requestId")), status);
+export const fail = <S extends 400 | 401 | 403 | 404 | 429 | 503>(c: C, status: S, code: string, message: string) => c.json(errorBody(code, message, c.get("requestId")), status);
 
-const TokenPairSchema = z
+export const TokenPairSchema = z
   .object({
     token_type: z.literal("Bearer"),
     access_token: z.string(),
@@ -45,30 +45,30 @@ const TokenPairSchema = z
   })
   .openapi("AppTokenPair");
 
-const SignInSchema = TokenPairSchema.extend({
+export const SignInSchema = TokenPairSchema.extend({
   user: z.object({ member_id: z.string(), status: z.string().openapi({ example: "active" }), is_new: z.boolean() }),
 }).openapi("AppSignIn");
 
-async function sha256Hex(text: string): Promise<string> {
+export async function sha256Hex(text: string): Promise<string> {
   return [...(await sha256(text))].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** The App a request names, or the reason it cannot be used. Paused and killed Apps cannot sign in. */
-async function resolveApp(c: C, deps: Deps, appId: unknown): Promise<AppEntry | "unknown" | "unavailable"> {
+export async function resolveApp(c: C, deps: Deps, appId: unknown): Promise<AppEntry | "unknown" | "unavailable"> {
   const app = await getApp(c.env.DB, appId, deps.now());
   if (!app) return "unknown";
   return app.status === "active" ? app : "unavailable";
 }
 
 /** Sign-in endpoints have no member yet, so they are limited per client address. */
-async function limited(c: C): Promise<Response | null> {
+export async function limited(c: C): Promise<Response | null> {
   const ip = c.req.header("cf-connecting-ip") ?? "unknown";
   if (await allowed(c.env.RL_WRITE, `auth:${ip}`)) return null;
   c.header("retry-after", "60");
   return c.json(errorBody("rate_limited", "Too many requests", c.get("requestId"), { retry_after: 60 }), 429);
 }
 
-async function tokenPair(env: Env, deps: Deps, issuer: string, session: AppSessionRow, refreshToken: string) {
+export async function tokenPair(env: Env, deps: Deps, issuer: string, session: AppSessionRow, refreshToken: string) {
   const iat = epochSeconds(deps.now());
   const { current } = await getSigningKeys(env);
   const access = await signJwt(
@@ -168,8 +168,8 @@ const logoutAllRoute = createRoute({
 
 // ---------- sign-in relay ----------
 
-const NONCE_HASH = /^[a-f0-9]{64}$/;
-const APP_STATE = /^[A-Za-z0-9._~-]{0,256}$/;
+export const NONCE_HASH = /^[a-f0-9]{64}$/;
+export const APP_STATE = /^[A-Za-z0-9._~-]{0,256}$/;
 const RELAY_TYP = "relay+jwt";
 const RELAY_TTL = 10 * 60;
 

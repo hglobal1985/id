@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-10.2";
-export const HANDOFF_UPDATED = "2026-11-10 18:30（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-10.3";
+export const HANDOFF_UPDATED = "2026-11-10 19:10（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -65,6 +65,9 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - Token：Access Token 15 分鐘，Refresh Token 30 天。手機把兩個 Token 存在系統安全儲存（Expo：expo-secure-store），不要放 AsyncStorage。網頁版 Access Token 只放記憶體，Refresh Token 放 sessionStorage，不要放 localStorage。",
     `   - 換發：每個請求帶 Authorization: Bearer <access_token>。收到 401 unauthenticated 時 POST ${origin}/v1/auth/refresh，body {"refresh_token"}，新的 refresh_token 要立刻覆蓋舊的。舊的再用一次會撤銷整個登入（401 refresh_reused），此時回到登入畫面。同一時間只讓一個請求執行換發（加鎖），避免並發換發被誤判為重用。403 app_unavailable 表示這款 App 被暫停，顯示維護畫面。429 rate_limited 依 Retry-After 稍後重試。`,
     `   - 登出：POST ${origin}/v1/auth/logout（帶 Access Token）結束這次登入，然後清除本機 Token。登出所有裝置與所有 App：POST ${origin}/v1/auth/logout-all。`,
+    "   - 共用登入（單一登入，必做）：所有 H-Global1985 App 的登入狀態共用——在任一款 App 登入，同一支手機上的其他 H-Global1985 App 自動登入；登出或換會員，所有 App 跟著變。登出按鈕文字請寫「登出所有 H-Global1985 App」。",
+    `   - 共用登入（手機）：登入成功後 POST ${origin}/v1/auth/sso/start（帶 Access Token；body 可帶 {"previous_sso_token":"<共用儲存裡原有的>"}）→ {"sso_token"}，存進所有 H-Global1985 App 共用的儲存。iPhone（必做）：Keychain 群組固定為 $(AppIdentifierPrefix)com.hglobal1985.shared，鍵名 hglobal.sso（同一個 Apple 開發者帳號即可，業主不必在 Apple 後台另外設定；在專案的 keychain-access-groups 加上這個群組，並用支援 access group 的鑰匙圈套件）。Android 為選做，目前請略過，不要為此阻擋上架。App 啟動與每次回到前景：共用儲存裡有 sso_token 而自己還沒登入 → POST ${origin}/v1/auth/sso/exchange {"app_id":"${id}","sso_token","device_label"}（回應與 Google 登入相同）；自己已登入 → POST ${origin}/v1/auth/sso/status {"sso_token"} → {"active","member_id"}，active 為 false 或 member_id 與自己不同就清除本機 Token（不同會員時再用 exchange 換成新會員）。登出：POST ${origin}/v1/auth/sso/logout {"sso_token"}（登出這支裝置上所有 App，可重複呼叫），再清除共用儲存與本機 Token。401 invalid_sso 表示共用登入已失效：清掉共用儲存，回到登入畫面。`,
+    `   - 共用登入（網頁版，同一個瀏覽器內連動）：瀏覽器不能跨網站共用儲存，改由中央會員記住這個瀏覽器，用整頁導向詢問。（1）登入完成後：POST ${origin}/v1/auth/sso/start → POST ${origin}/v1/auth/sso/web-code {"sso_token"} → {"code"}（單次、2 分鐘）→ 整頁導向 ${origin}/auth/sso/adopt?c=<code>&app_id=${id}&return=<回傳頁>，回到 <回傳頁>#sso_adopted=1。（2）每次載入頁面（自己加 5 分鐘節流）：先 POST /v1/auth/nonce 取得 nonce 並存 sessionStorage，整頁導向 ${origin}/auth/sso/check?app_id=${id}&nonce=<SHA-256 十六進位小寫>&return=<回傳頁>&state=<隨機字串> → 回到 <回傳頁>#sso_code=…&sso_member=…&state=…（沒人登入是 #sso_none=1&state=…）。核對 state；sso_member 與目前登入的會員相同就不用動；不同或尚未登入就 POST ${origin}/v1/auth/sso/web-exchange {"app_id":"${id}","code":"<sso_code>","nonce":"<原值>"}（回應與 Google 登入相同）；收到 sso_none 而自己是登入狀態就登出。（3）登出：清除本機 Token 後整頁導向 ${origin}/auth/sso/logout?app_id=${id}&return=<回傳頁>，會登出這個瀏覽器所有 H-Global1985 網頁版。回傳頁必須在登記的網頁版來源底下、不能帶 #；讀完 # 之後的結果立刻用 history.replaceState 清掉。限制：網頁版只在同一個瀏覽器內連動，手機 App 與網頁版之間不連動；網頁版在下一次載入頁面時才會跟上登出或換人。`,
     `3. 會員身分：只用登入回應的 user.member_id（也是 Access Token 的 sub）當會員的主鍵。不可以用信箱、姓名或會員編號辨識或合併會員；會員編號可能重複，也可能被會員修改。App 自己的資料庫只存 member_id 當外鍵，不複製會員主檔。`,
     `4. App 後端驗證會員：用 GET ${origin}/oauth/jwks 的公鑰驗證 Access Token（RS256，標頭 typ 為 at+jwt）：iss 必須是 ${origin}、aud 必須是 ${origin}、app_id 必須是 "${id}"、檢查 exp。快取 JWKS，遇到不認得的 kid 就重新抓取。需要即時確認停用或登出時，改用這個 Token 呼叫中央會員的任一 API（例如 GET ${origin}/v1/me/profile），401 就當作未登入。`,
     `5. 會員資料：GET ${origin}/v1/me/profile（需要 profile.read）讀取會員允許這款 App 看到的基本資料。會員要修改基本資料時，用瀏覽器開啟 ${origin}/me，不要在 App 內重做編輯畫面，也不要另存一份會員資料。`,
@@ -102,7 +105,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "5. 資格查詢 fail closed、快取最長 1 日且不落地、獎銜代碼來自 field-definitions、reason 不顯示給會員（三、6）。",
     "6. 沒有保存任何 Amway 資料，日誌沒有 Token、信箱、姓名（三、7）。",
     "7. 對會員顯示的品牌與用語（三、8）；隱私權政策與刪除帳號入口（三、9）。",
-    "8. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "8. 共用登入（三、2）：手機用共用 Keychain 群組保存 sso_token，啟動與回到前景時 exchange／status；網頁版登入後 adopt、載入頁面時 check、登出走 /auth/sso/logout；登出按鈕寫「登出所有 H-Global1985 App」。（2026-11-10.3 新增）",
+    "9. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }
