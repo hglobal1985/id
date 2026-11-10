@@ -75,4 +75,5 @@ jobs:
         run: curl -fsS "${{ vars.STAGING_URL }}/v1/health"
       - name: Health check (production)
         if: steps.secrets.outputs.ready == 'true' && env.TARGET == 'production'
-        run: curl -fsS https://id.hglobal1985.com/v1/health
+        # A new custom domain can take a few minutes to get its certificate.
+        run: curl -fsS --retry 20 --retry-delay 15 --retry-all-errors https://id.hglobal1985.com/v1/health
