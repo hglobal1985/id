@@ -211,6 +211,20 @@ describe("discovery and keys", () => {
   });
 });
 
+describe("Google config", () => {
+  it("trims whitespace and newlines pasted into the client settings", async () => {
+    env = { ...env, GOOGLE_CLIENT_ID: " google-client\n", GOOGLE_CLIENT_SECRET: "google-secret\n" };
+    const jar = new Jar();
+    let res = await req("/login", {}, jar);
+    jar.take(res);
+    res = await req(res.headers.get("location") ?? "", {}, jar);
+    const page = await res.text();
+    const start = /href="([^"]+)"/.exec(page.slice(page.indexOf("<main>")))?.[1]?.replace(/&amp;/g, "&") ?? "";
+    res = await req(start, {}, jar);
+    expect(new URL(res.headers.get("location") ?? "").searchParams.get("client_id")).toBe("google-client");
+  });
+});
+
 describe("authorize", () => {
   it("never redirects to an unknown client or unregistered redirect_uri", async () => {
     const a = await authorizeUrl({ client_id: "nope" });

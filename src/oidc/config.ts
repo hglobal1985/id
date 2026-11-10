@@ -34,7 +34,10 @@ export async function getSigningKeys(env: Env): Promise<{ current: SigningKey; p
   return keys;
 }
 
+/** Google client settings. Values pasted into secret stores often carry a trailing newline or spaces; trim them. */
 export function requireGoogleConfig(env: Env): { clientId: string; clientSecret: string } {
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new ConfigError("Google sign-in is not configured");
-  return { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET };
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) throw new ConfigError("Google sign-in is not configured");
+  return { clientId, clientSecret };
 }
