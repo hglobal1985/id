@@ -252,6 +252,11 @@ async function renderNotification(
       title = "審核未通過";
       body = `您的「${label}」未通過審核，已維持原本的資料。`;
       break;
+    case "staff.review.requested":
+      title = "新的審核申請";
+      body = "有會員送出需要審核的資料，請到後台處理。";
+      actions = ["open_review_queue"];
+      break;
     case "amway.review.adjusted":
       title = "資料已調整";
       body = `管理人員已調整您的「${label}」。`;
