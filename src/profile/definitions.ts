@@ -33,8 +33,9 @@ export interface FieldDefinition {
 
 export type GroupKey = "basic" | "contact" | "birthday";
 
-export const GROUPS: { key: GroupKey | "avatar" | "account"; label: string; order: number }[] = [
+export const GROUPS: { key: GroupKey | "avatar" | "account" | "member_number"; label: string; order: number }[] = [
   { key: "avatar", label: "頭像", order: 10 },
+  { key: "member_number", label: "會員編號", order: 15 },
   { key: "basic", label: "基本資料", order: 20 },
   { key: "contact", label: "聯絡與地區", order: 30 },
   { key: "birthday", label: "生日", order: 40 },
@@ -137,6 +138,30 @@ export const INFO_BLOCKS = [
   { key: "zodiac", group: "birthday", order: 20, label: "星座", type: "text", collapsed: false },
   { key: "life_path_number", group: "birthday", order: 30, label: "生命靈數", type: "text", collapsed: false },
 ] as const;
+
+/**
+ * Member number (= Amway member number): an ordered list of {country, number}; the first entry is the default
+ * (public profile URL and support id). Label and maximum depend on the "我是Amway會員" switch.
+ * Always public (it is the public URL), so its visibility cannot be changed.
+ */
+export const MEMBER_NUMBER_DEFINITION = {
+  key: "member_number",
+  group: "member_number",
+  order: 10,
+  label: "會員編號",
+  label_when_amway: "Amway會員編號",
+  help: "第一組為預設編號，用於公開基本資料網址與客服查詢。修改編號後，舊網址會失效。",
+  type: "member_numbers",
+  scope: "profile.basic.write",
+  required: true,
+  read_only: false,
+  max_items: 1,
+  max_items_when_amway: 50,
+  item_max_length: 20,
+  visible_when: null,
+  visibility: { configurable: false, default: "public" as const },
+  limits: { self_changes_per_day: 3 },
+};
 
 export const AVATAR_DEFINITION = {
   group: "avatar",

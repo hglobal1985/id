@@ -289,7 +289,7 @@ describe("Google sign-in and the code flow", () => {
     expect(info).not.toHaveProperty("email");
 
     const actions = db.raw.prepare("SELECT action, result FROM audit_log ORDER BY rowid").all().map((r) => `${r.action}:${r.result}`);
-    expect(actions).toEqual(["member.create:success", "member.login:success"]);
+    expect(actions).toEqual(["member.create:success", "member_number.assign:success", "member.login:success"]);
     const auditText = JSON.stringify(db.raw.prepare("SELECT * FROM audit_log").all());
     expect(auditText).not.toContain("member@example.com");
     expect(auditText).not.toContain("測試會員");

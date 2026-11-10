@@ -153,6 +153,12 @@
           "max_items": {
             "type": "integer"
           },
+          "label_when_amway": {
+            "type": "string"
+          },
+          "max_items_when_amway": {
+            "type": "integer"
+          },
           "item_max_length": {
             "type": "integer"
           },
@@ -323,6 +329,21 @@
           "error"
         ]
       },
+      "MemberNumberEntry": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "country",
+          "number"
+        ]
+      },
       "FieldValue": {
         "anyOf": [
           {
@@ -332,6 +353,12 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberNumberEntry"
             }
           },
           {
@@ -364,6 +391,18 @@
                   ]
                 },
                 "updated_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "max_items": {
+                  "type": "integer"
+                },
+                "public_url": {
                   "type": [
                     "string",
                     "null"
@@ -462,12 +501,105 @@
               "string",
               "null"
             ]
+          },
+          "public_url": {
+            "type": "string",
+            "description": "member_number only"
+          },
+          "duplicate_candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "candidate_id": {
+                  "type": "string",
+                  "description": "Opaque, valid 1 hour; pass to POST /v1/me/spouse"
+                },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "avatar_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rank": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "matched": {
+                  "$ref": "#/components/schemas/MemberNumberEntry"
+                }
+              },
+              "required": [
+                "candidate_id",
+                "display_name",
+                "avatar_url",
+                "rank",
+                "matched"
+              ]
+            },
+            "description": "member_number only: other members with the same number (ask whether to bind as spouses)"
           }
         },
         "required": [
           "field_key",
           "value",
           "updated_at"
+        ]
+      },
+      "Spouse": {
+        "type": "object",
+        "properties": {
+          "spouse": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "avatar_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rank": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Shared rank (from the Amway area; null until available)"
+              },
+              "bound_at": {
+                "type": "string"
+              },
+              "bound_by_me": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "display_name",
+              "avatar_url",
+              "rank",
+              "bound_at",
+              "bound_by_me"
+            ]
+          }
+        },
+        "required": [
+          "spouse"
         ]
       }
     },
@@ -1015,6 +1147,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "rate_limited (member_number: 3 self-service changes per 24 hours; see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -1259,6 +1401,186 @@
           },
           "501": {
             "description": "not_available (file storage is not enabled yet)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/spouse": {
+      "get": {
+        "tags": [
+          "spouse"
+        ],
+        "summary": "My spouse binding (scope profile.spouse.write or profile.read)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Spouse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "spouse"
+        ],
+        "summary": "Bind as spouses (single-sided consent, effective at once). candidate_id comes from duplicate_candidates.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "candidate_id": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "candidate_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Spouse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (candidate unknown, expired, or no longer sharing a number)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "spouse_already_bound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "spouse"
+        ],
+        "summary": "Unbind. Rank stays; the member who started the binding gets a new random member number. Re-read the profile afterwards.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unbound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Spouse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (not bound)",
             "content": {
               "application/json": {
                 "schema": {

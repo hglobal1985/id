@@ -9,6 +9,7 @@ import { getMember } from "../db/identity";
 import { readProfile, removeAvatar, writeField, writeVisibility } from "../db/profile";
 import {
   AVATAR_DEFINITION,
+  MEMBER_NUMBER_DEFINITION,
   DEFINITIONS_VERSION,
   FIELD_KEYS,
   GROUPS,
@@ -20,6 +21,9 @@ import {
 } from "../profile/definitions";
 import { lifePathNumber, zodiacSign } from "../profile/astro";
 import { bearerAuth, missingScope } from "./auth";
+import { ensureMemberNumber } from "../db/member-numbers";
+import { putMemberNumbers } from "./member-number";
+import { resolveIssuer } from "../oidc/config";
 
 type C = Context<AppBindings>;
 
@@ -30,7 +34,8 @@ const errors = {
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const security = [{ bearer: [] }];
 
-const FieldValueSchema = z.union([z.string(), z.array(z.string()), z.null()]).openapi("FieldValue");
+const MemberNumberEntrySchema = z.object({ country: z.string(), number: z.string() }).openapi("MemberNumberEntry");
+const FieldValueSchema = z.union([z.string(), z.array(z.string()), z.array(MemberNumberEntrySchema), z.null()]).openapi("FieldValue");
 
 const OptionSchema = z.object({ value: z.string(), label: z.string() });
 const FieldDefinitionSchema = z
@@ -46,6 +51,8 @@ const FieldDefinitionSchema = z
     read_only: z.boolean(),
     max_length: z.number().int().optional(),
     max_items: z.number().int().optional(),
+    label_when_amway: z.string().optional(),
+    max_items_when_amway: z.number().int().optional(),
     item_max_length: z.number().int().optional(),
     options: z.array(OptionSchema).optional(),
     visible_when: z.null(),
@@ -67,6 +74,9 @@ const ProfileFieldSchema = z.object({
   value: FieldValueSchema,
   visibility: z.enum(["public", "private"]),
   updated_at: z.string().nullable(),
+  label: z.string().optional(),
+  max_items: z.number().int().optional(),
+  public_url: z.string().nullable().optional(),
 });
 
 const ProfileSchema = z
@@ -113,10 +123,30 @@ const putFieldRoute = createRoute({
     body: { required: true, content: json(z.object({ value: FieldValueSchema })) },
   },
   responses: {
-    200: { description: "Saved", content: json(z.object({ field_key: z.string(), value: FieldValueSchema, updated_at: z.string().nullable() }).openapi("ProfileFieldWrite")) },
+    200: { description: "Saved", content: json(z
+            .object({
+              field_key: z.string(),
+              value: FieldValueSchema,
+              updated_at: z.string().nullable(),
+              public_url: z.string().optional().openapi({ description: "member_number only" }),
+              duplicate_candidates: z
+                .array(
+                  z.object({
+                    candidate_id: z.string().openapi({ description: "Opaque, valid 1 hour; pass to POST /v1/me/spouse" }),
+                    display_name: z.string().nullable(),
+                    avatar_url: z.string().nullable(),
+                    rank: z.string().nullable(),
+                    matched: MemberNumberEntrySchema,
+                  }),
+                )
+                .optional()
+                .openapi({ description: "member_number only: other members with the same number (ask whether to bind as spouses)" }),
+            })
+            .openapi("ProfileFieldWrite")) },
     ...errors,
     404: { description: "not_found (unknown field_key)", content: json(ErrorBodySchema) },
     422: { description: "invalid_field", content: json(ErrorBodySchema) },
+    429: { description: "rate_limited (member_number: 3 self-service changes per 24 hours; see Retry-After)", content: json(ErrorBodySchema) },
   },
 });
 
@@ -180,7 +210,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       {
         version: DEFINITIONS_VERSION,
         groups: GROUPS,
-        fields: fieldDefinitions(),
+        fields: [MEMBER_NUMBER_DEFINITION, ...fieldDefinitions()] as z.infer<typeof FieldDefinitionSchema>[],
         info: INFO_BLOCKS.map((b) => ({ ...b })),
         avatar: AVATAR_DEFINITION as unknown as Record<string, unknown>,
       },
@@ -203,11 +233,22 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       if (def.key === "display_name" && value === null) value = member.display_name;
       fields[def.key] = { value, visibility: visibility.get(def.key) ?? def.visibility.default, updated_at: stored?.updated_at ?? null };
     }
+    const numbers = await ensureMemberNumber(c.env.DB, member.id, member.registration_country, deps.now(), c.get("requestId"));
+    const amway = member.amway_enabled === 1;
+    const issuer = resolveIssuer(c.env, c.req.url);
+    const memberNumber = {
+      value: numbers,
+      visibility: "public" as const,
+      updated_at: null,
+      label: amway ? MEMBER_NUMBER_DEFINITION.label_when_amway : MEMBER_NUMBER_DEFINITION.label,
+      max_items: amway ? MEMBER_NUMBER_DEFINITION.max_items_when_amway : MEMBER_NUMBER_DEFINITION.max_items,
+      public_url: numbers[0] ? `${issuer}/${encodeURIComponent(numbers[0].number)}` : null,
+    };
     const birthday = typeof fields.birthday?.value === "string" ? fields.birthday.value : null;
     return c.json(
       {
         member_id: member.id,
-        fields,
+        fields: { member_number: memberNumber, ...fields },
         avatar: { url: member.avatar_url, source: member.avatar_source, always_public: true as const },
         info: {
           member_id: member.id,
@@ -223,6 +264,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
 
   app.openapi(putFieldRoute, async (c) => {
     const { field_key } = c.req.valid("param");
+    if (field_key === "member_number") return putMemberNumbers(c, deps) as never;
     const def = getFieldDefinition(field_key);
     if (!def) return c.json(errorBody("not_found", "Unknown field", c.get("requestId"), { field_key }), 404);
     const denied = missingScope(c, [def.scope]);
@@ -243,6 +285,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     const entries = Object.entries(fields);
     if (entries.length > FIELD_KEYS.length) return invalid(c, "fields", "too_many", "欄位數量過多");
     for (const [key] of entries) {
+      if (key === "member_number") return invalid(c, key, "always_public", "會員編號永遠公開，無法隱藏");
       if (key === "avatar") return invalid(c, key, "always_public", "頭像永遠公開，無法隱藏");
       if (!getFieldDefinition(key)) return invalid(c, key, "unknown_field", "沒有這個欄位");
     }
