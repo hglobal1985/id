@@ -24,7 +24,7 @@ export function sitePage(opts: { title: string; body: string; script?: string; n
 <body>
 <header class="top"><a class="brand" href="/">H-Global1985</a>${nav}</header>
 <main class="wrap">${opts.body}</main>
-<footer class="foot"><a href="/privacy/amway">完整隱私說明</a></footer>
+<footer class="foot"><a href="/privacy">隱私權政策</a> · <a href="/privacy/amway">完整隱私說明</a></footer>
 ${opts.script ? `<script src="${escapeHtml(opts.script)}" defer></script>` : ""}
 </body>
 </html>`;
