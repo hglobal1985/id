@@ -15,6 +15,7 @@ import { registerAdminRoutes } from "./api/admin";
 import { registerDeletionRoutes } from "./api/deletion";
 import { registerSiteRoutes } from "./web/site";
 import { registerAppAuthRoutes } from "./api/app-auth";
+import { registerAppSsoRoutes } from "./api/app-sso";
 import { registerAppCors, registerAppRoutes } from "./api/apps";
 import { HTTPException } from "hono/http-exception";
 
@@ -86,6 +87,7 @@ export function createApp(overrides: Partial<Deps> = {}) {
   registerAdminRoutes(app, deps);
   registerDeletionRoutes(app, deps);
   registerAppAuthRoutes(app, deps);
+  registerAppSsoRoutes(app, deps);
   registerAppRoutes(app, deps);
 
   // Last: the public profile route matches /<member number>.

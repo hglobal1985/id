@@ -231,7 +231,7 @@ async function newRefresh(sessionId: string): Promise<{ token: string; hash: str
 
 export async function createAppSession(
   db: D1Database,
-  v: { memberId: string; appId: string; scope: string; deviceLabel: string | null; requestId: string },
+  v: { memberId: string; appId: string; scope: string; deviceLabel: string | null; requestId: string; ssoId?: string; method?: "google" | "sso" },
   now: Date,
 ): Promise<{ session: AppSessionRow; refreshToken: string }> {
   const id = uuidv7(now.getTime());
@@ -241,14 +241,14 @@ export async function createAppSession(
   await db.batch([
     db
       .prepare(
-        `INSERT INTO app_sessions (id, member_id, app_id, refresh_hash, scope, device_label, auth_time_epoch, last_used_epoch, expires_epoch, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO app_sessions (id, member_id, app_id, refresh_hash, scope, device_label, auth_time_epoch, last_used_epoch, expires_epoch, created_at, sso_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(id, v.memberId, v.appId, refresh.hash, v.scope, v.deviceLabel, t, t, t + APP_REFRESH_TTL, ts),
+      .bind(id, v.memberId, v.appId, refresh.hash, v.scope, v.deviceLabel, t, t, t + APP_REFRESH_TTL, ts, v.ssoId ?? null),
     db
       .prepare("INSERT INTO member_apps (member_id, app_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) ON CONFLICT (member_id, app_id) DO UPDATE SET last_seen_at = excluded.last_seen_at")
       .bind(v.memberId, v.appId, ts, ts),
-    auditStatement(db, { actorType: "member", actorId: v.memberId, action: "app.login", targetType: "app_session", targetId: id, appId: v.appId, result: "success", requestId: v.requestId, detail: { method: "google" } }, now),
+    auditStatement(db, { actorType: "member", actorId: v.memberId, action: "app.login", targetType: "app_session", targetId: id, appId: v.appId, result: "success", requestId: v.requestId, detail: { method: v.method ?? "google" } }, now),
   ]);
   return {
     session: { id, member_id: v.memberId, app_id: v.appId, refresh_hash: refresh.hash, previous_refresh_hash: null, scope: v.scope, auth_time_epoch: t, expires_epoch: t + APP_REFRESH_TTL, revoked_epoch: null },
@@ -325,6 +325,7 @@ export async function revokeEverything(db: D1Database, v: { memberId: string; ap
   const t = epochSeconds(now);
   await db.batch([
     db.prepare("UPDATE app_sessions SET revoked_epoch = ?, revoke_reason = 'logout_all' WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, v.memberId),
+    db.prepare("UPDATE device_sso SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, v.memberId),
     db.prepare("UPDATE login_sessions SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, v.memberId),
     db.prepare("UPDATE oauth_refresh_tokens SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, v.memberId),
     auditStatement(db, { actorType: "member", actorId: v.memberId, action: "app.logout_all", targetType: "member", targetId: v.memberId, appId: v.appId, result: "success", requestId: v.requestId }, now),

@@ -93,6 +93,7 @@ export async function completeDeletion(db: D1Database, id: string, staffId: stri
       db.prepare("UPDATE login_sessions SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, m),
       db.prepare("UPDATE oauth_refresh_tokens SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, m),
       db.prepare("UPDATE app_sessions SET revoked_epoch = ?, revoke_reason = 'deleted' WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, m),
+      db.prepare("UPDATE device_sso SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, m),
       // Anonymize. The Google link is released so the same Google account could start over as a new member.
       db
         .prepare(

@@ -9,6 +9,7 @@
   "audit_log",
   "consent_records",
   "deletion_requests",
+  "device_sso",
   "login_flows",
   "login_sessions",
   "member_apps",
@@ -24,5 +25,6 @@
   "spouse_bindings",
   "spouse_candidates",
   "spouse_members",
+  "sso_codes",
   "staff_roles"
 ]

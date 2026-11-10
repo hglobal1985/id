@@ -160,7 +160,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-10.2", digest: "0d23f1462a6048c2" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-10.3", digest: "c1a7dd3aa5d50ba0" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -168,10 +168,10 @@ describe("handoff text", () => {
 
   it("has the H-Global1985 rules and no secrets or other-system brand names", () => {
     const text = buildHandoff(definitionFromForm({ app_id: "learn", name: "寰宇行動大學" }, { defaults: true }), "https://id.hglobal1985.com");
-    for (const must of ["只補差異", "/v1/eligibility/check", "check-batch", "amway.read", "/v1/amway/field-definitions", "最多快取 1 日", "Fail closed", "Amway 資料不得被 App 保存", "starry.phd、H-Global1985、Amway", "https://id.hglobal1985.com/auth/google/start?app_id=learn", "learn://auth/google"]) {
+    for (const must of ["只補差異", "/v1/eligibility/check", "check-batch", "amway.read", "/v1/amway/field-definitions", "最多快取 1 日", "Fail closed", "Amway 資料不得被 App 保存", "starry.phd、H-Global1985、Amway", "https://id.hglobal1985.com/auth/google/start?app_id=learn", "learn://auth/google", "/v1/auth/sso/exchange", "com.hglobal1985.shared", "登出所有 H-Global1985 App"]) {
       expect(text).toContain(must);
     }
-    for (const never of ["繁星", "安麗", "Battery", "電池", "Passkey", "Apple"]) expect(text).not.toContain(never);
+    for (const never of ["繁星", "安麗", "Battery", "電池", "Passkey", "Apple 登入"]) expect(text).not.toContain(never);
   });
 });
 
@@ -429,6 +429,123 @@ describe("back office", () => {
     clearAppCache();
     expect((await get("/v1/apps/other/handoff", bearer(t.access_token))).status).toBe(403);
     expect((await get("/v1/apps/learn/handoff", { cookie: `__Host-hgid_session=${cookie}` })).status).toBe(403);
+  });
+});
+
+describe("shared sign-in", () => {
+  const other = () => {
+    db.raw.prepare("INSERT INTO registered_apps (app_id, definition, created_at, updated_at) VALUES ('shop', ?, 'x', 'x')").run(JSON.stringify({ app_id: "shop", name: "商店", status: "active", scopes: ["profile.read"], min_version: "0.0.0", web_origins: ["https://shop.hglobal1985.com"] }));
+    clearAppCache();
+  };
+  const startSso = async (t: Tokens, previous?: string) => ((await (await post("/v1/auth/sso/start", previous ? { previous_sso_token: previous } : {}, bearer(t.access_token))).json()) as { sso_token: string }).sso_token;
+  const status = async (sso: string) => (await (await post("/v1/auth/sso/status", { sso_token: sso })).json()) as { active: boolean; member_id: string | null };
+
+  it("another App on the device signs in with the shared token; signing out ends them all", async () => {
+    other();
+    const t = await signIn();
+    const sso = await startSso(t);
+    expect(await status(sso)).toEqual({ active: true, member_id: t.user.member_id });
+    const r = await post("/v1/auth/sso/exchange", { app_id: "shop", sso_token: sso, device_label: "iPhone" });
+    expect(r.status).toBe(200);
+    const shop = (await r.json()) as Tokens;
+    expect(shop).toMatchObject({ scope: "profile.read", user: { member_id: t.user.member_id, is_new: false } });
+    expect((await get("/v1/me/profile", bearer(shop.access_token))).status).toBe(200);
+    expect(await errorCode(await post("/v1/auth/sso/exchange", { app_id: "shop", sso_token: `${sso.slice(0, -3)}AAA` }))).toBe("invalid_sso");
+    expect(await errorCode(await post("/v1/auth/sso/exchange", { app_id: "nope", sso_token: sso }))).toBe("app_not_found");
+    expect((await post("/v1/auth/sso/logout", { sso_token: sso })).status).toBe(204);
+    expect((await post("/v1/auth/sso/logout", { sso_token: sso })).status).toBe(204);
+    expect(await status(sso)).toEqual({ active: false, member_id: null });
+    expect((await get("/v1/me/profile", bearer(t.access_token))).status).toBe(401);
+    expect((await get("/v1/me/profile", bearer(shop.access_token))).status).toBe(401);
+    expect(await errorCode(await post("/v1/auth/refresh", { refresh_token: shop.refresh_token }))).toBe("invalid_refresh");
+    expect(await errorCode(await post("/v1/auth/sso/exchange", { app_id: "shop", sso_token: sso }))).toBe("invalid_sso");
+  });
+
+  it("switching member on the device signs the previous member out of every App; the same member keeps them", async () => {
+    other();
+    const a = await signIn();
+    const ssoA = await startSso(a);
+    const shopA = (await (await post("/v1/auth/sso/exchange", { app_id: "shop", sso_token: ssoA })).json()) as Tokens;
+    // Same member signs in again: sessions move to the new record.
+    const a2 = await signIn();
+    const ssoA2 = await startSso(a2, ssoA);
+    expect((await status(ssoA)).active).toBe(false);
+    expect((await get("/v1/me/profile", bearer(shopA.access_token))).status).toBe(200);
+    // Another member takes over the device.
+    const b = await signIn("learn", { sub: "g-2" });
+    const ssoB = await startSso(b, ssoA2);
+    expect((await get("/v1/me/profile", bearer(shopA.access_token))).status).toBe(401);
+    expect((await get("/v1/me/profile", bearer(a2.access_token))).status).toBe(401);
+    expect(await status(ssoB)).toEqual({ active: true, member_id: b.user.member_id });
+  });
+
+  it("logout-all, a disabled member and a paused App end or block the shared sign-in", async () => {
+    other();
+    const t = await signIn();
+    const sso = await startSso(t);
+    const sa = await staff("sa", ["super_admin"]);
+    await admin(sa, "PUT", "/v1/admin/apps/shop/status", { status: "paused" });
+    expect(await errorCode(await post("/v1/auth/sso/exchange", { app_id: "shop", sso_token: sso }))).toBe("app_unavailable");
+    db.raw.prepare("UPDATE members SET status = 'disabled' WHERE id = ?").run(t.user.member_id);
+    expect((await status(sso)).active).toBe(false);
+    db.raw.prepare("UPDATE members SET status = 'active' WHERE id = ?").run(t.user.member_id);
+    expect((await status(sso)).active).toBe(true);
+    expect((await post("/v1/auth/logout-all", {}, bearer(t.access_token))).status).toBe(204);
+    expect((await status(sso)).active).toBe(false);
+    // Only App sign-in tokens can start one; it expires 30 days after the last use.
+    const { token: cookie } = await createSession(db, t.user.member_id, now);
+    expect((await post("/v1/auth/sso/start", {}, { cookie: `__Host-hgid_session=${cookie}`, origin: ISSUER })).status).toBe(403);
+    const sso2 = await startSso(await signIn());
+    later(30 * 24 * 3600 + 1);
+    expect((await status(sso2)).active).toBe(false);
+  });
+
+  it("web versions in one browser: adopt, check, exchange, logout", async () => {
+    other();
+    const fragment = (r: Response) => Object.fromEntries(new URLSearchParams(new URL(r.headers.get("location") as string).hash.slice(1)));
+    const t = await signIn();
+    const sso = await startSso(t);
+    const { code } = (await (await post("/v1/auth/sso/web-code", { sso_token: sso })).json()) as { code: string };
+    const adoptUrl = "/auth/sso/adopt?" + new URLSearchParams({ c: code, app_id: "learn", return: "https://learn.hglobal1985.com/home" }).toString();
+    const adopted = await get(adoptUrl);
+    expect(adopted.status).toBe(302);
+    expect(fragment(adopted)).toEqual({ sso_adopted: "1", state: "" });
+    const setCookie = adopted.headers.get("set-cookie") as string;
+    expect(setCookie).toMatch(/^__Host-hgid_sso=[^;]+; Max-Age=2592000; Path=\/; HttpOnly; Secure; SameSite=Lax$/);
+    const cookie = { cookie: setCookie.split(";")[0] as string };
+    // The cookie is not the App's sso_token, and an adopt code works once.
+    expect(setCookie).not.toContain(sso.split(".")[1]);
+    expect(fragment(await get(adoptUrl))).toEqual({ sso_none: "1", state: "" });
+
+    // The shop web version asks who is signed in.
+    const { nonce } = (await (await post("/v1/auth/nonce", { app_id: "shop" })).json()) as { nonce: string };
+    const checkUrl = (q: Record<string, string>) => "/auth/sso/check?" + new URLSearchParams({ app_id: "shop", nonce: sha256Hex(nonce), return: "https://shop.hglobal1985.com/", state: "st", ...q }).toString();
+    expect(fragment(await get(checkUrl({})))).toEqual({ sso_none: "1", state: "st" });
+    const checked = fragment(await get(checkUrl({}), cookie));
+    expect(checked).toMatchObject({ sso_member: t.user.member_id, state: "st" });
+    // The code is bound to the App and the nonce, and works once.
+    expect(await errorCode(await post("/v1/auth/sso/web-exchange", { app_id: "learn", code: checked.sso_code, nonce }))).toBe("invalid_sso");
+    const again = fragment(await get(checkUrl({}), cookie));
+    expect(await errorCode(await post("/v1/auth/sso/web-exchange", { app_id: "shop", code: again.sso_code, nonce: "some-other-nonce-value" }))).toBe("invalid_sso");
+    const third = fragment(await get(checkUrl({}), cookie));
+    const ok = await post("/v1/auth/sso/web-exchange", { app_id: "shop", code: third.sso_code, nonce });
+    expect(ok.status).toBe(200);
+    const shop = (await ok.json()) as Tokens;
+    expect(shop.user.member_id).toBe(t.user.member_id);
+    expect(await errorCode(await post("/v1/auth/sso/web-exchange", { app_id: "shop", code: third.sso_code, nonce }))).toBe("invalid_sso");
+
+    // Only registered web pages can be returned to; deep links and other sites are refused.
+    expect((await get(checkUrl({ return: "https://evil.example/" }), cookie)).status).toBe(400);
+    expect((await get(checkUrl({ return: "learn://auth/google" }), cookie)).status).toBe(400);
+    expect((await get(checkUrl({ nonce: "raw" }), cookie)).status).toBe(400);
+
+    // Logging out in one web version ends every App session of this browser.
+    const out = await get("/auth/sso/logout?" + new URLSearchParams({ app_id: "shop", return: "https://shop.hglobal1985.com/" }).toString(), cookie);
+    expect(fragment(out)).toEqual({ sso_none: "1", state: "" });
+    expect(out.headers.get("set-cookie")).toContain("__Host-hgid_sso=;");
+    expect((await get("/v1/me/profile", bearer(shop.access_token))).status).toBe(401);
+    expect((await get("/v1/me/profile", bearer(t.access_token))).status).toBe(401);
+    expect(fragment(await get(checkUrl({}), cookie))).toEqual({ sso_none: "1", state: "st" });
   });
 });
 
