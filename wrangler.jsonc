@@ -30,9 +30,9 @@
       "name": "hglobal-id",
       // GOOGLE_CLIENT_ID is added here once the owner creates the H-Global1985 Google OAuth client.
       "vars": { "ENVIRONMENT": "production", "ISSUER": "https://id.hglobal1985.com" },
-      // database_id is filled in when the production database is created (needs the owner's approval).
+      // Production database created 2026-11-10 (APAC) with the owner's approval.
       "d1_databases": [
-        { "binding": "DB", "database_name": "hglobal-id", "database_id": "TO_BE_CREATED", "migrations_dir": "migrations" }
+        { "binding": "DB", "database_name": "hglobal-id", "database_id": "c0c3f5bf-5641-4d08-b170-4243c76cc72e", "migrations_dir": "migrations" }
       ],
       // Workers Rate Limiting (per member): reads 120/min, writes 30/min.
       "unsafe": {
