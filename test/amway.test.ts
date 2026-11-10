@@ -42,6 +42,8 @@ beforeEach(() => {
   env = { DB: db, ENVIRONMENT: "test", ISSUER, OIDC_SIGNING_JWK: jwk };
   app = createApp();
   db.raw.prepare("INSERT INTO oauth_clients (client_id, name, token_endpoint_auth_method, redirect_uris, allowed_scopes, status, created_at, updated_at) VALUES ('elearning','e','none','[]',?, 'active','x','x')").run(ALL);
+  // Replace the migration-seeded rank ladder with a small fixture ladder.
+  db.raw.prepare("DELETE FROM amway_options WHERE field_key = 'rank'").run();
   const opt = db.raw.prepare("INSERT INTO amway_options (field_key, value, label, sort_order) VALUES (?, ?, ?, ?)");
   opt.run("education_system", "sys_b", "其他體系B", 20);
   opt.run("education_center", "c_taipei", "台北中心", 10);
