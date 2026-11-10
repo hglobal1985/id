@@ -1,8 +1,8 @@
 name: Deploy
 
 # Staging deploys automatically after CI succeeds on main.
-# Production deploys only when started by hand (Actions → Deploy → Run workflow → production) and,
-# once the owner sets required reviewers on the "production" environment, only after approval.
+# Production deploys only when started by hand (Actions → Deploy → Run workflow → production),
+# after the owner has agreed in the conversation (no GitHub reviewer step, by the owner's choice).
 on:
   workflow_run:
     workflows: [CI]
