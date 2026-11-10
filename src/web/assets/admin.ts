@@ -184,33 +184,6 @@ export const ADMIN_JS = String.raw`
         a ? el("div", { class: "help", text: "儲存需要 10 分鐘內登入過；會跳到登入頁再回來。" }) : null
       ]);
     }
-    function showVal(v) { return typeof v === "string" && (/^(true|false|null|-?\d+(\.\d+)?|".*")$/.test(v) || v !== v.trim()) ? JSON.stringify(v) : (typeof v === "string" ? v : JSON.stringify(v)); }
-    function readVal(t) {
-      if (/^(true|false|null|-?\d+(\.\d+)?)$/.test(t)) return JSON.parse(t);
-      if (/^".*"$/.test(t)) { try { return JSON.parse(t); } catch (e) { return t; } }
-      return t;
-    }
-    function configForm(a) {
-      var box = m(), t = el("textarea", { rows: "12", placeholder: "一行一項，例如：\nmaintenance_note = 週日凌晨維護\nshow_banner = true\nmax_items = 20" });
-      t.value = Object.keys(a.config || {}).map(function (k) { return k + " = " + showVal(a.config[k]); }).join("\n");
-      function save() {
-        var cfg = {}, bad = null;
-        t.value.split("\n").forEach(function (line, i) {
-          if (!line.trim()) return;
-          var at = line.indexOf("=");
-          if (at < 1) { bad = bad || ("第 " + (i + 1) + " 行要寫成「名稱 = 值」。"); return; }
-          cfg[line.slice(0, at).trim()] = readVal(line.slice(at + 1).trim());
-        });
-        if (bad) { say(box, false, bad); return; }
-        api("PUT", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/config", { config: cfg }).then(function (res) { if (res.status === 200) reload(); else say(box, false, errText(res)); });
-      }
-      pane.textContent = "";
-      pane.appendChild(card("公開設定：" + a.name, [
-        el("p", { class: "help", text: "App 啟動時會讀到這些設定（公開資料，任何人都看得到），所以不可以放密碼、金鑰或任何機密。一行一項，格式「名稱 = 值」；值可以是文字、數字、true／false 或 null；想把 true、123 當成文字，請用雙引號包起來。儲存後 30 秒內生效。" }),
-        t,
-        el("div", { class: "inline" }, [el("button", { class: "primary", text: "儲存", onclick: save }), el("button", { text: "取消", onclick: reload }), box])
-      ]));
-    }
     function handoff(a) {
       api("GET", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/handoff").then(function (r) {
         if (r.status !== 200) return;
@@ -241,7 +214,6 @@ export const ADMIN_JS = String.raw`
           el("div", { class: "help", text: ver }),
           el("div", { class: "inline" }, [
             el("button", { text: "給開發 AI 的串接指令", onclick: function () { handoff(a); } }),
-            b.can_manage ? el("button", { text: "公開設定", onclick: function () { configForm(a); } }) : null,
             b.can_manage ? el("button", { text: "編輯登記資料", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, a)); } }) : null,
             a.status !== "active" ? el("button", { text: "恢復正常", onclick: setStatus(a, "active") }) : null,
             a.status !== "paused" ? el("button", { text: "一鍵暫停", onclick: setStatus(a, "paused") }) : null,

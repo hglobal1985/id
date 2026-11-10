@@ -5,7 +5,7 @@ import type { Context } from "hono";
 import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
-import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definitionFromForm, parseApp, type AppEntry } from "../apps/registry";
+import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definitionFromForm, type AppEntry } from "../apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, isUpToDate } from "../apps/handoff";
 import { appStats, getApp, isAppWebOrigin, listApps, readStoredApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
 import { rolesOf } from "../db/staff";
@@ -112,16 +112,6 @@ const statusRoute = createRoute({
   security,
   request: { params: AppIdParam, body: { required: true, content: json(z.object({ status: z.enum(["active", "paused", "killed"]), reason: z.string().max(200).optional() })) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("app_not_found") },
-});
-
-const configEditRoute = createRoute({
-  method: "put",
-  path: "/v1/admin/apps/{app_id}/config",
-  tags: ["admin"],
-  summary: "Replace the App's public remote settings (flat key/value; public values only, never secrets; effective within 30 seconds)",
-  security,
-  request: { params: AppIdParam, body: { required: true, content: json(z.object({ config: z.record(z.unknown()) })) } },
-  responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("app_not_found"), 422: err("invalid_field") },
 });
 
 const adminHandoffRoute = createRoute({
@@ -257,22 +247,6 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     }
     await saveApp(c.env.DB, entry, "update", { memberId: staff.memberId, requestId: c.get("requestId") }, deps.now());
     return c.json({ app: appDefinition(entry) }, 200);
-  });
-
-  app.openapi(configEditRoute, async (c) => {
-    const d = deny(c, "apps.manage");
-    if (d) return d as never;
-    const staff = c.get("staff");
-    const stored = await readStoredApp(c.env.DB, c.req.valid("param").app_id);
-    if (!stored) return notFound(c);
-    let entry: AppEntry;
-    try {
-      entry = parseApp({ ...appDefinition(stored), config: c.req.valid("json").config });
-    } catch (e) {
-      return invalid(c, e) as never;
-    }
-    await saveApp(c.env.DB, entry, "update", { memberId: staff.memberId, requestId: c.get("requestId") }, deps.now());
-    return c.json({ config: entry.config }, 200);
   });
 
   app.openapi(statusRoute, async (c) => {

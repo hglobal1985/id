@@ -5,7 +5,7 @@ import { createSession, upsertMemberByGoogle } from "../src/db/identity";
 import { clearAppCache } from "../src/db/apps";
 import { importSigningKey, signJwt, verifyJwt } from "../src/lib/jwt";
 import { GOOGLE_JWKS_URL, GOOGLE_TOKEN_URL, resetGoogleKeyCache } from "../src/auth/google";
-import { AppDefinitionError, allowedReturn, definitionFromForm, parseApp, parseConfig } from "../src/apps/registry";
+import { AppDefinitionError, allowedReturn, definitionFromForm, parseApp } from "../src/apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, isUpToDate } from "../src/apps/handoff";
 import type { Env } from "../src/env";
 import { createHash } from "node:crypto";
@@ -365,39 +365,6 @@ describe("sign-in relay", () => {
     const state = new URL(r.headers.get("location") as string).searchParams.get("state") as string;
     expect((await admin(sa, "PUT", "/v1/admin/apps/learn", { name: "寰宇行動大學", web_origins: ["https://new.hglobal1985.com"], return_urls: ["learn://auth/google"] })).status).toBe(200);
     expect((await callback({ code: "good-code", state })).status).toBe(400);
-  });
-});
-
-describe("public settings (config)", () => {
-  it("validates flat public settings", () => {
-    const ok = parseConfig({ banner: "週日維護", show: true, max: 20, none: null });
-    expect(ok).toEqual({ banner: "週日維護", show: true, max: 20, none: null });
-    expect(() => parseConfig([])).toThrow(AppDefinitionError);
-    expect(() => parseConfig({ "bad key": 1 })).toThrow(AppDefinitionError);
-    expect(() => parseConfig({ __proto__x: 1, "9a": 1 })).toThrow(AppDefinitionError);
-    expect(() => parseConfig({ nested: { a: 1 } })).toThrow(AppDefinitionError);
-    expect(() => parseConfig({ list: [1] })).toThrow(AppDefinitionError);
-    expect(() => parseConfig({ long: "x".repeat(501) })).toThrow(AppDefinitionError);
-    expect(() => parseConfig({ ctl: "a\u0000b" })).toThrow(AppDefinitionError);
-    expect(() => parseConfig(Object.fromEntries(Array.from({ length: 51 }, (_, i) => [`k${i}`, 1])))).toThrow(AppDefinitionError);
-  });
-
-  it("only the super admin edits; the App reads the new values within the cache window", async () => {
-    const sa = await staff("sa", ["super_admin"]);
-    const sec = await staff("sec", ["secretary"]);
-    expect((await admin(sec, "PUT", "/v1/admin/apps/learn/config", { config: { a: 1 } })).status).toBe(403);
-    expect((await admin(sa, "PUT", "/v1/admin/apps/nope/config", { config: { a: 1 } })).status).toBe(404);
-    expect((await admin(sa, "PUT", "/v1/admin/apps/learn/config", { config: { nested: { a: 1 } } })).status).toBe(422);
-    const r = await admin(sa, "PUT", "/v1/admin/apps/learn/config", { config: { banner: "維護", show: true } });
-    expect(r.status).toBe(200);
-    const pub = (await (await get("/v1/apps/learn/config")).json()) as { config: Record<string, unknown>; status: string };
-    expect(pub.config).toEqual({ banner: "維護", show: true });
-    expect(pub.status).toBe("active");
-    // Editing settings keeps the registration and status untouched; clearing works.
-    expect((await admin(sa, "PUT", "/v1/admin/apps/learn/config", { config: {} })).status).toBe(200);
-    expect(((await (await get("/v1/apps/learn/config")).json()) as { config: object }).config).toEqual({});
-    const audit = await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'app.update' AND target_id = 'learn'").first<{ n: number }>();
-    expect(audit?.n).toBeGreaterThanOrEqual(2);
   });
 });
 
