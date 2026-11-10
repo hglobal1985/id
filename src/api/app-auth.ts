@@ -3,7 +3,8 @@
 //
 //   1. POST /v1/auth/nonce {app_id}                      → single-use nonce (10 minutes, bound to the App)
 //   2. GET  /auth/google/start?app_id&nonce=<sha256 hex>&return=<registered URL>&state
-//      → Google → POST /auth/google/callback → back to the return URL with id_token
+//      → Google → GET /login/google/callback (the redirect URI the member site already uses, so Google needs
+//        no extra setup) → back to the return URL with id_token
 //      (deep link: query string; web page: URL fragment, so it never reaches a server)
 //   3. POST /v1/auth/google {app_id, id_token, nonce}    → access token (15 min) + refresh token (30 days)
 //   4. POST /v1/auth/refresh {refresh_token}             → rotation; reuse of the previous token revokes the session
@@ -18,12 +19,12 @@ import { allowedReturn, type AppEntry } from "../apps/registry";
 import { APP_REFRESH_TTL, NONCE_TTL, consumeNonce, createAppSession, getApp, issueNonce, revokeAppSession, revokeEverything, rotateAppRefresh, type AppSessionRow } from "../db/apps";
 import { LIFETIME, upsertMemberByGoogle } from "../db/identity";
 import { writeAudit } from "../db/audit";
-import { GoogleSignInError, GOOGLE_AUTH_URL, verifyGoogleIdToken } from "../auth/google";
+import { GoogleSignInError, GOOGLE_AUTH_URL, exchangeGoogleCode, verifyGoogleIdToken } from "../auth/google";
 import { randomToken, sha256, timingSafeEqual } from "../lib/crypto";
 import { JwtError, signJwt, verifyJwt } from "../lib/jwt";
 import { epochSeconds } from "../lib/time";
 import { allowed } from "../lib/ratelimit";
-import { getSigningKeys, resolveIssuer } from "../oidc/config";
+import { getSigningKeys, requireGoogleConfig, resolveIssuer } from "../oidc/config";
 import { bearerAuth } from "./auth";
 import { escapeHtml } from "../web/pages";
 import { SITE_CSP, sitePage } from "../web/layout";
@@ -286,17 +287,18 @@ export function registerAppAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     if (!NONCE_HASH.test(nonceHash) || !APP_STATE.test(appState)) return problem(c, "登入參數不正確。");
     if (a.status !== "active") return problem(c, "這個 App 目前無法使用。", 403);
     const client = c.env.GOOGLE_CLIENT_ID?.trim();
-    if (!client || !c.env.OIDC_SIGNING_JWK) return problem(c, "Google 登入尚未設定。", 503);
+    if (!client || !c.env.GOOGLE_CLIENT_SECRET?.trim() || !c.env.OIDC_SIGNING_JWK) return problem(c, "Google 登入尚未設定。", 503);
     const issuer = resolveIssuer(c.env, c.req.url);
     const iat = epochSeconds(now);
     // The state is signed (not secret): it only has to come back unchanged.
     const state = await signJwt({ iss: issuer, aud: issuer, app: a.app_id, ret: returnUrl, st: appState, iat, exp: iat + RELAY_TTL }, (await getSigningKeys(c.env)).current, RELAY_TYP);
     const u = new URL(GOOGLE_AUTH_URL);
+    // Same redirect URI as the member site's own sign-in, so Google needs no extra setup: not for the relay and
+    // not for any App registered later.
     u.search = new URLSearchParams({
       client_id: client,
-      redirect_uri: `${issuer}/auth/google/callback`,
-      response_type: "id_token",
-      response_mode: "form_post",
+      redirect_uri: `${issuer}${RELAY_CALLBACK_PATH}`,
+      response_type: "code",
       scope: "openid email profile",
       nonce: nonceHash,
       state,
@@ -305,34 +307,57 @@ export function registerAppAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     c.header("cache-control", "no-store");
     return c.redirect(u.toString(), 302);
   });
+}
 
-  // POST /auth/google/callback — Google's cross-site form post (no cookie involved); hands the result to the App.
-  app.post("/auth/google/callback", async (c) => {
-    const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
-    const field = (k: string) => (typeof form[k] === "string" ? (form[k] as string) : "");
-    const issuer = resolveIssuer(c.env, c.req.url);
-    let state: Record<string, unknown> | null = null;
+/** The Google redirect URI shared with the member site's sign-in (already registered at Google). */
+export const RELAY_CALLBACK_PATH = "/login/google/callback";
+
+/** True when a Google `state` was issued by the sign-in relay (a signed JWT) rather than by the member site's sign-in. */
+export function isRelayState(state: string): boolean {
+  try {
+    const header = JSON.parse(atob((state.split(".")[0] ?? "").replace(/-/g, "+").replace(/_/g, "/"))) as { typ?: unknown };
+    return state.split(".").length === 3 && header.typ === RELAY_TYP;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Google's redirect back for a relay sign-in (GET /login/google/callback with a relay state): exchanges the code
+ * for the ID token and hands it to the App's registered return URL. No cookie is involved or set.
+ */
+export async function relayCallback(c: C, deps: Deps, q: { state: string; code?: string; error?: string }): Promise<Response> {
+  const issuer = resolveIssuer(c.env, c.req.url);
+  let state: Record<string, unknown> | null = null;
+  try {
+    if (q.state.length <= 4096) state = await verifyJwt(q.state, (await getSigningKeys(c.env)).publicKeys, { issuer, audience: issuer, now: epochSeconds(deps.now()), typ: RELAY_TYP, clockSkew: 0 });
+  } catch (e) {
+    if (!(e instanceof JwtError)) throw e;
+  }
+  const ret = typeof state?.ret === "string" ? state.ret : "";
+  const a = state ? await getApp(c.env.DB, state.app, deps.now()) : undefined;
+  // The return URL must still be registered: a registration change takes effect at once.
+  const kind = a && a.status === "active" ? allowedReturn(a, ret) : null;
+  if (!state || !kind) return problem(c, "登入逾時，請回到 App 再試一次。");
+  let idToken = "";
+  let error = (q.error || "unknown_error").slice(0, 64);
+  if (q.code && !q.error) {
     try {
-      const raw = field("state");
-      if (raw && raw.length <= 4096) state = await verifyJwt(raw, (await getSigningKeys(c.env)).publicKeys, { issuer, audience: issuer, now: epochSeconds(deps.now()), typ: RELAY_TYP, clockSkew: 0 });
+      const google = requireGoogleConfig(c.env);
+      idToken = await exchangeGoogleCode(deps, { ...google, redirectUri: `${issuer}${RELAY_CALLBACK_PATH}`, code: q.code });
     } catch (e) {
-      if (!(e instanceof JwtError)) throw e;
+      if (!(e instanceof GoogleSignInError)) throw e;
+      error = "sign_in_failed";
     }
-    const ret = typeof state?.ret === "string" ? state.ret : "";
-    const a = state ? await getApp(c.env.DB, state.app, deps.now()) : undefined;
-    // The return URL must still be registered: a registration change takes effect at once.
-    const kind = a && a.status === "active" ? allowedReturn(a, ret) : null;
-    if (!state || !kind) return problem(c, "登入逾時，請回到 App 再試一次。");
-    const idToken = field("id_token");
-    const appState = typeof state.st === "string" ? state.st : "";
-    const result = new URLSearchParams(idToken ? { id_token: idToken, state: appState } : { error: (field("error") || "unknown_error").slice(0, 64), state: appState });
-    const target = `${ret}${kind === "web" ? "#" : "?"}${result.toString()}`;
-    return relayPage(
-      c,
-      "Google 登入",
-      `<section class="card"><h2>${idToken ? "登入完成" : "登入未完成"}</h2><p>正在回到 App…</p><p><a id="back" href="${escapeHtml(target)}">回到 App</a></p></section>`,
-      200,
-      true,
-    );
-  });
+  }
+  const appState = typeof state.st === "string" ? state.st : "";
+  const result = new URLSearchParams(idToken ? { id_token: idToken, state: appState } : { error: error.replace(/[^A-Za-z0-9_.-]/g, "_"), state: appState });
+  const target = `${ret}${kind === "web" ? "#" : "?"}${result.toString()}`;
+  return relayPage(
+    c,
+    "Google 登入",
+    `<section class="card"><h2>${idToken ? "登入完成" : "登入未完成"}</h2><p>正在回到 App…</p><p><a id="back" href="${escapeHtml(target)}">回到 App</a></p></section>`,
+    200,
+    true,
+  );
 }

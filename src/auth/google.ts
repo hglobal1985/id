@@ -83,6 +83,23 @@ export async function verifyGoogleIdToken(deps: Deps, idToken: string, audiences
   };
 }
 
+/**
+ * Sign-in relay: exchanges the Google code for the raw ID token, which is handed to the App and verified again by
+ * POST /v1/auth/google. The client secret protects the exchange. Throws GoogleSignInError on any problem.
+ */
+export async function exchangeGoogleCode(deps: Deps, p: { clientId: string; clientSecret: string; redirectUri: string; code: string }): Promise<string> {
+  const res = await deps.fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code: p.code, redirect_uri: p.redirectUri, client_id: p.clientId, client_secret: p.clientSecret }).toString(),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new GoogleSignInError("token exchange failed");
+  const tokens = (await res.json()) as { id_token?: string };
+  if (typeof tokens.id_token !== "string" || tokens.id_token.length > 8192) throw new GoogleSignInError("no id_token");
+  return tokens.id_token;
+}
+
 /** Exchanges the Google code and returns the verified identity. Throws GoogleSignInError on any problem. */
 export async function completeGoogleSignIn(
   deps: Deps,

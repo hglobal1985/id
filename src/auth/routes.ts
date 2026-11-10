@@ -19,6 +19,7 @@ import { resolveIssuer, requireGoogleConfig } from "../oidc/config";
 import { completeGoogleSignIn, googleAuthorizeUrl, GoogleSignInError } from "./google";
 import { FLOW_COOKIE, SESSION_COOKIE, clearCookie, readCookie, writeCookie } from "./cookies";
 import { PAGE_CSP, loginPage, messagePage } from "../web/pages";
+import { isRelayState, relayCallback } from "../api/app-auth";
 
 type C = Context<AppBindings>;
 
@@ -86,6 +87,8 @@ export function registerAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const state = c.req.query("state");
     const code = c.req.query("code");
     if (!state) return failurePage(c);
+    // App sign-in relay (ADR 0011) shares this redirect URI; its state is a signed token, not a browser-bound flow.
+    if (isRelayState(state)) return relayCallback(c, deps, { state, code, error: c.req.query("error") });
     const flow = await consumeLoginFlowByState(c.env.DB, state, now);
     // Login CSRF protection: the flow must have been started in this same browser.
     if (!flow || !flow.nonce || !flow.code_verifier || !(await flowBelongsToBrowser(c, flow.browser_hash))) return failurePage(c);

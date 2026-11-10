@@ -22,9 +22,7 @@
 2. **Authorized redirect URIs**：
    - 測試：`https://hglobal-id-staging.<你的 workers 子網域>.workers.dev/login/google/callback`（第一次部署後才知道網址）
    - 正式：`https://id.hglobal1985.com/login/google/callback`
-   - App 登入中繼（ADR 0011，App 登入一定要有）：再加兩個
-     - 測試：`https://hglobal-id-staging.hglobal1985-static.workers.dev/auth/google/callback`
-     - 正式：`https://id.hglobal1985.com/auth/google/callback`
+   - App 登入中繼（ADR 0011）共用上面這個網址，**不需要再加任何網址**；日後新增 App 也不必到 Google 後台做任何設定。
 3. 測試與正式共用同一個用戶端（兩個 redirect URI 都加在同一個用戶端）。到 GitHub → **Settings → Secrets and variables → Actions**：
    - `GOOGLE_CLIENT_ID`（不是機密）：放在 **Variables** 或 **Secrets** 分頁都可以。
    - **Secrets** 分頁新增 `GOOGLE_CLIENT_SECRET`。

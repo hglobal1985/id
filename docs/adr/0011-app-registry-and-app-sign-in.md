@@ -9,7 +9,8 @@
 - `GET /v1/apps/{app_id}/config`：公開，回傳狀態、最低版本與公開設定。
 - **App 登入**（App 不持有任何密碼或 client secret）：
   1. `POST /v1/auth/nonce`：單次有效、10 分鐘、綁定 App；資料庫只存雜湊。
-  2. 登入中繼 `GET /auth/google/start` → Google（中央會員自己的 Google 用戶端，`response_type=id_token`、`form_post`）→ `POST /auth/google/callback` → 回到登記過的回傳網址（深層連結用 query，網頁用 `#` fragment）。瀏覽器中只出現 nonce 的 SHA-256；中繼的 state 用簽章金鑰簽署（10 分鐘），不需要新的機密。
+  2. 登入中繼 `GET /auth/google/start` → Google（中央會員自己的 Google 用戶端，授權碼流程）→ `GET /login/google/callback` → 中央會員以 client secret 換得 Google ID Token → 回到登記過的回傳網址（深層連結用 query，網頁用 `#` fragment）。瀏覽器中只出現 nonce 的 SHA-256；中繼的 state 用簽章金鑰簽署（10 分鐘），不需要新的機密。
+     - 中繼**共用會員網站既有的重新導向 URI**（`/login/google/callback`，以 state 的型別區分），所以啟用中繼、以及日後新增任何 App，都不必到 Google 後台做任何設定（業主 2026-11-10 要求）。
   3. `POST /v1/auth/google`：驗證 Google ID Token（簽章、iss、aud、exp、nonce），以 Google `sub` 找到或建立會員，發出 Token。
 - **App Token**：Access Token 15 分鐘（RS256、`typ: at+jwt`，與 OIDC 相同的金鑰與 JWKS，多一個 `app_id` claim）；Refresh Token 30 天，格式 `<session_id>.<secret>`，每次使用即輪替，保留上一個雜湊，被重用時整個 session 撤銷並寫入稽核。每個請求都檢查 App session、會員狀態與 App 狀態（fail closed）。權限範圍（scope）來自 App 登記，換發時重新讀取。
 - `POST /v1/auth/logout`（這次登入）、`POST /v1/auth/logout-all`（該會員所有 App、所有裝置與會員網站）。
@@ -26,5 +27,5 @@
 ## 既有 OIDC
 `/oauth/*` 保留、不變。寰宇行動大學改用 App 登入後，舊的 `oauth_clients` 登記與 Worker `learn` 的機密經業主核准再移除。
 
-## 業主需要做的事（一次）
-在 Google Cloud Console 的同一個 OAuth 用戶端，「已授權的重新導向 URI」加入登入中繼的網址（見 `docs/deploy.md`）。
+## 業主需要做的事
+沒有。新增 App 只要在後台登記。
