@@ -18,6 +18,7 @@ import { REAUTH_MAX_AGE, ROLES, ROLE_LABELS, UPLINE_FIELDS, can, permissionsOf, 
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { completeDeletion, openRequests } from "../db/deletion";
+import { loadOverview } from "../db/overview";
 
 type C = Context<AppBindings>;
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -62,6 +63,8 @@ const ctxOf = (c: C, deps: Deps) => ({ appId: null, requestId: c.get("requestId"
 // ---------- routes ----------
 
 const meRoute = createRoute({ method: "get", path: "/v1/admin/me", tags: ["admin"], summary: "My staff roles and permissions", security, responses: { 200: { description: "Me", content: json(Any) }, ...common } });
+
+const overviewRoute = createRoute({ method: "get", path: "/v1/admin/overview", tags: ["admin"], summary: "Back-office home: counts and traffic lights (any staff role)", security, responses: { 200: { description: "Overview", content: json(Any) }, ...common } });
 
 const reviewsRoute = createRoute({ method: "get", path: "/v1/admin/reviews", tags: ["admin"], summary: "Pending review requests (oldest first)", security, responses: { 200: { description: "Queue", content: json(Any) }, ...common } });
 
@@ -209,6 +212,8 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const s = c.get("staff");
     return c.json({ member_id: s.memberId, roles: s.roles.map((r) => ({ role: r, label: ROLE_LABELS[r] })), permissions: permissionsOf(s.roles) }, 200);
   });
+
+  app.openapi(overviewRoute, async (c) => c.json(await loadOverview(c.env.DB, deps.now()), 200));
 
   app.openapi(reviewsRoute, async (c) => {
     const d = deny(c, "review");

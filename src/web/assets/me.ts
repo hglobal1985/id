@@ -39,16 +39,27 @@ export const ME_JS = String.raw`
   function msg() { return el("div", { class: "msg" }); }
   function say(m, ok, text) { m.className = "msg " + (ok ? "ok" : "bad"); m.textContent = text; }
   function card(title, kids) { return el("section", { class: "card" }, [el("h2", { text: title })].concat(kids)); }
+  // Secondary sections fold away (same as the starry.phd member center).
+  function fold(title, kids) { return el("details", { class: "card fold" }, [el("summary", { text: title })].concat(kids)); }
+  function initials(name) {
+    var t = (name || "").trim(); if (!t) return "H";
+    var parts = t.split(/\s+/).filter(Boolean), ch = function (x) { return Array.from(x); };
+    if (parts.length >= 2) return (ch(parts[0])[0] + ch(parts[parts.length - 1])[0]).toUpperCase();
+    var a = ch(parts[0]); return (a.length >= 2 ? a[0] + a[1] : a[0]).toUpperCase();
+  }
+  function bubble(size, url, name) {
+    return url ? el("img", { class: "avatar " + size, src: url, alt: name || "" }) : el("span", { class: "avatar " + size, role: "img", "aria-label": name || "", text: initials(name) });
+  }
 
   var S = {};
   function load() {
     return Promise.all([
       api("GET", "/v1/profile/field-definitions"), api("GET", "/v1/me/profile"),
       api("GET", "/v1/amway/field-definitions"), api("GET", "/v1/me/amway"), api("GET", "/v1/amway/consent"),
-      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/notifications"), api("GET", "/v1/me/deletion-requests")
+      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/notifications"), api("GET", "/v1/me/deletion-requests"), api("GET", "/v1/me/sessions")
     ]).then(function (r) {
       if (r[1].status === 401) { location.href = "/login?return_to=%2Fme"; return; }
-      S = { defs: r[0].body, profile: r[1].body, adefs: r[2].body, amway: r[3].body, consent: r[4].body, spouse: r[5].body, notes: r[6].body, del: r[7].body };
+      S = { defs: r[0].body, profile: r[1].body, adefs: r[2].body, amway: r[3].body, consent: r[4].body, spouse: r[5].body, notes: r[6].body, del: r[7].body, devices: (r[8].body && r[8].body.sessions) || [] };
       render();
     });
   }
@@ -92,7 +103,7 @@ export const ME_JS = String.raw`
 
   function avatarCard() {
     var p = S.profile, m = msg();
-    var img = p.avatar.url ? el("img", { class: "avatar", src: p.avatar.url, alt: "頭像" }) : el("div", { class: "avatar" });
+    var img = bubble("", p.avatar.url, shownName());
     function act(method, path) { return function () { api(method, path).then(function (r) { if (r.status === 200) load(); else say(m, false, errText(r)); }); }; }
     return card("頭像", [img, el("p", { class: "help", text: "頭像永遠公開。" }), el("div", { class: "inline" }, [
       el("button", { text: "上傳並裁切", onclick: function () { say(m, false, "目前不提供"); } }),
@@ -119,7 +130,7 @@ export const ME_JS = String.raw`
         cands.textContent = "";
         (r.body.duplicate_candidates || []).forEach(function (c) {
           cands.appendChild(el("div", { class: "card" }, [
-            c.avatar_url ? el("img", { class: "avatar", src: c.avatar_url, alt: "" }) : null,
+            bubble("md", c.avatar_url, c.display_name),
             el("p", { text: "此編號與「" + (c.display_name || "一位會員") + "」" + (c.rank ? "（" + c.rank + "）" : "") + "相同。是否與此會員綁定為夫妻？" }),
             el("button", { class: "primary", text: "綁定為夫妻", onclick: function () {
               api("POST", "/v1/me/spouse", { candidate_id: c.candidate_id }).then(function (b) { if (b.status === 200) load(); else say(m, false, errText(b)); });
@@ -139,7 +150,7 @@ export const ME_JS = String.raw`
 
   function infoCard() {
     var i = S.profile.info;
-    return card("帳號資訊", [el("ul", { class: "plain" }, [
+    return fold("帳號資訊", [el("ul", { class: "plain" }, [
       el("li", { text: "註冊國家：" + i.registration_country }),
       el("li", { text: "星座：" + (i.zodiac || "—") }),
       el("li", { text: "生命靈數：" + (i.life_path_number === null ? "—" : i.life_path_number) }),
@@ -233,14 +244,48 @@ export const ME_JS = String.raw`
         say(m, false, errText(r));
       });
     } }); }
-    return card("資料刪除", [el("p", { class: "help", text: "為避免他人冒用，送出前需要重新登入確認。" }),
+    return fold("資料刪除", [el("p", { class: "help", text: "為避免他人冒用，送出前需要重新登入確認。" }),
       open.map(function (r) { return el("div", { class: "inline" }, [el("span", { text: (r.scope === "account" ? "刪除帳號" : "刪除 Amway 資料") + "：處理中，預計 " + r.due_at.slice(0, 10) + " 前完成" }),
         el("button", { text: "取消申請", onclick: function () { api("POST", "/v1/me/deletion-requests/" + r.id + "/cancel").then(load); } })]); }),
       el("div", { class: "inline" }, [ask("amway", "申請刪除 Amway 資料"), ask("account", "申請刪除帳號"), m])].flat());
   }
 
+  function shownName() { var f = S.profile.fields.display_name; return (f && f.value) || ""; }
+  function heroBlock() {
+    var nums = S.profile.fields.member_number.value, first = nums && nums[0] ? nums[0].number : "";
+    var name = shownName() || "我的帳號";
+    return el("div", { class: "hero" }, [bubble("lg", S.profile.avatar.url, shownName()), el("div", {}, [el("h1", { text: name }), first ? el("span", { class: "badge", text: first }) : null])]);
+  }
+
+  // Where I am signed in: this browser and each App, with a button for the others and one for everything.
+  function devicesCard() {
+    var m = msg();
+    var rows = S.devices.map(function (d) {
+      return el("tr", {}, [el("td", { text: d.app_name }), el("td", { text: d.device_label || "—" }), el("td", { text: d.last_used_at.slice(0, 16).replace("T", " ") }),
+        el("td", {}, [d.current ? el("span", { class: "badge", text: "此瀏覽器" }) : el("button", { text: "登出", onclick: function () {
+          api("POST", "/v1/me/sessions/" + encodeURIComponent(d.id) + "/revoke").then(function (r) { if (r.status === 200) load(); else say(m, false, errText(r)); });
+        } })])]);
+    });
+    return fold("登入紀錄", [
+      el("div", { class: "tablewrap" }, [el("table", {}, [el("tr", {}, [el("th", { text: "App" }), el("th", { text: "裝置" }), el("th", { text: "最後使用" }), el("th")])].concat(rows))]),
+      el("div", { class: "actions" }, [el("button", { class: "danger", text: "登出所有裝置", onclick: function () {
+        if (!confirm("會登出所有裝置與所有 H-Global1985 App（包含這個瀏覽器）。確定嗎？")) return;
+        api("POST", "/v1/me/logout-all").then(function (r) { if (r.status === 200) location.href = "/"; else say(m, false, errText(r)); });
+      } }), m])
+    ]);
+  }
+
+  function accountActions() {
+    return el("div", { class: "actions" }, [
+      el("a", { class: "button", href: "/v1/me/export", download: "h-global1985-my-data.json", text: "下載我的資料" }),
+      el("a", { class: "button", href: "/logout", text: "登出" })
+    ]);
+  }
+
   function render() {
     root.textContent = "";
+    root.appendChild(heroBlock());
+    var nc0 = notesCard(); if (nc0) root.appendChild(nc0);
     root.appendChild(avatarCard());
     root.appendChild(numberCard());
     var groups = S.defs.groups.slice().sort(function (a, b) { return a.order - b.order; });
@@ -252,8 +297,9 @@ export const ME_JS = String.raw`
     root.appendChild(infoCard());
     root.appendChild(amwayCard());
     var sp = spouseCard(); if (sp) root.appendChild(sp);
-    var nc = notesCard(); if (nc) root.appendChild(nc);
+    root.appendChild(devicesCard());
     root.appendChild(deletionCard());
+    root.appendChild(accountActions());
   }
   load();
 })();
