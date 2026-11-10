@@ -75,3 +75,33 @@ describe("JWT", () => {
     await expect(verifyJwt(none, keys, { issuer: "https://i", now })).rejects.toThrow("alg");
   });
 });
+
+import { initialsOf, tileClass } from "../src/web/initials";
+import { trafficLights } from "../src/admin/lights";
+
+describe("member center helpers", () => {
+  it("initials: family + given name for Chinese, first + last for Latin, H when empty", () => {
+    expect(initialsOf("王小明")).toBe("王小");
+    expect(initialsOf("John Smith")).toBe("JS");
+    expect(initialsOf("甲")).toBe("甲");
+    expect(initialsOf("  ")).toBe("H");
+    expect(initialsOf(null)).toBe("H");
+  });
+  it("App tile colour class is stable and one of c0–c7", () => {
+    expect(tileClass("learn")).toBe(tileClass("learn"));
+    expect(tileClass("learn")).toMatch(/^c[0-7]$/);
+  });
+  it("traffic lights: green when quiet, yellow when something waits, red when overdue or stopped", () => {
+    const quiet = { appStatuses: ["active"], invalidApps: 0, pendingReviews: 0, oldestReviewDays: null, openDeletions: 0, overdueDeletions: 0 };
+    expect(trafficLights(quiet).every((l) => l.color === "green")).toBe(true);
+    const c = (over: object) => Object.fromEntries(trafficLights({ ...quiet, ...over }).map((l) => [l.key, l.color]));
+    expect(c({ appStatuses: ["active", "paused"] }).apps).toBe("yellow");
+    expect(c({ appStatuses: ["killed"] }).apps).toBe("red");
+    expect(c({ pendingReviews: 2, oldestReviewDays: 1 }).reviews).toBe("green");
+    expect(c({ pendingReviews: 2, oldestReviewDays: 4 }).reviews).toBe("yellow");
+    expect(c({ pendingReviews: 2, oldestReviewDays: 8 }).reviews).toBe("red");
+    expect(c({ openDeletions: 1 }).deletions).toBe("yellow");
+    expect(c({ openDeletions: 1, overdueDeletions: 1 }).deletions).toBe("red");
+    expect(c({ invalidApps: 1 }).invalid_apps).toBe("red");
+  });
+});

@@ -203,3 +203,102 @@ describe("data deletion", () => {
     expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(a.id)?.status).toBe("active");
   });
 });
+
+describe("member center template (same layout as starry.phd)", () => {
+  it("shows the main menu with name and App launcher when signed in, a brand bar when not", async () => {
+    const a = await person("a", "王小明");
+    const me = await (await req(a, "GET", "/me")).text();
+    expect(me).toContain('class="starnav"');
+    expect(me).toContain("王小明");
+    expect(me).toContain("王小"); // initials bubble
+    expect(me).toContain('href="/apps"');
+    expect(me).toContain('href="/logout"');
+    const guest = await (await req(null, "GET", "/privacy")).text();
+    expect(guest).toContain("guest-brand");
+    expect(guest).not.toContain("starnav");
+  });
+
+  it("/apps lists registered Apps with their web link; paused ones have no link and stopped ones are hidden", async () => {
+    let html = await (await req(null, "GET", "/apps")).text();
+    expect(html).toContain("寰宇行動大學");
+    expect(html).toContain('class="lc-chip"');
+    db.raw.prepare("INSERT INTO app_status_overrides (app_id, status, reason, updated_at, updated_by) VALUES ('learn','paused',NULL,'x','x')").run();
+    const { clearAppCache } = await import("../src/db/apps");
+    clearAppCache();
+    html = await (await req(null, "GET", "/apps")).text();
+    expect(html).toContain("暫停中");
+    expect(html).not.toContain('class="lc-chip"');
+    db.raw.prepare("UPDATE app_status_overrides SET status = 'killed' WHERE app_id = 'learn'").run();
+    clearAppCache();
+    expect(await (await req(null, "GET", "/apps")).text()).not.toContain("寰宇行動大學");
+  });
+
+  it("the back office is a full-width page with the top bar and no inline styles anywhere", async () => {
+    const s = await person("s", "管理", ["secretary"]);
+    const html = await (await req(s, "GET", "/admin")).text();
+    expect(html).toContain('class="topbar"');
+    expect(html).toContain('<body class="admin">');
+    for (const p of ["/me", "/admin", "/apps", "/privacy"]) expect(await (await req(s, "GET", p)).text(), p).not.toMatch(/ style="/);
+  });
+});
+
+describe("signed-in devices, sign out everywhere, download my data", () => {
+  const appSession = (memberId: string, id: string, appId = "learn") =>
+    db.raw
+      .prepare("INSERT INTO app_sessions (id, member_id, app_id, refresh_hash, scope, device_label, auth_time_epoch, last_used_epoch, expires_epoch, created_at) VALUES (?, ?, ?, 'h', 'profile.read', 'iPhone', ?, ?, ?, 'x')")
+      .run(id, memberId, appId, Math.floor(now.getTime() / 1000), Math.floor(now.getTime() / 1000), Math.floor(now.getTime() / 1000) + 3600);
+
+  it("lists this browser and each App; signs out one other device but never the current one", async () => {
+    const a = await person("a", "甲");
+    appSession(a.id, "app-sess-1");
+    const list = (await (await req(a, "GET", "/v1/me/sessions")).json()) as { sessions: { id: string; kind: string; app_name: string; current: boolean; device_label: string | null }[] };
+    expect(list.sessions.map((s) => [s.kind, s.app_name, s.current, s.device_label])).toEqual(expect.arrayContaining([["web", "會員網站", true, null], ["app", "寰宇行動大學", false, "iPhone"]]));
+    const current = list.sessions.find((s) => s.current) as { id: string };
+    expect((await req(a, "POST", `/v1/me/sessions/${current.id}/revoke`)).status).toBe(409);
+    expect((await req(a, "POST", "/v1/me/sessions/app-sess-1/revoke")).status).toBe(200);
+    expect(db.raw.prepare("SELECT revoked_epoch FROM app_sessions WHERE id = 'app-sess-1'").get()?.revoked_epoch).not.toBeNull();
+    expect((await req(a, "POST", "/v1/me/sessions/app-sess-1/revoke")).status).toBe(404);
+    // Someone else's session cannot be signed out.
+    const b = await person("b", "乙");
+    appSession(b.id, "app-sess-b");
+    expect((await req(a, "POST", "/v1/me/sessions/app-sess-b/revoke")).status).toBe(404);
+  });
+
+  it("sign out everywhere ends the browser session and every App session", async () => {
+    const a = await person("a", "甲");
+    appSession(a.id, "app-sess-1");
+    expect((await req(a, "POST", "/v1/me/logout-all")).status).toBe(200);
+    expect((await req(a, "GET", "/v1/me/profile")).status).toBe(401);
+    expect(db.raw.prepare("SELECT revoked_epoch FROM app_sessions WHERE id = 'app-sess-1'").get()?.revoked_epoch).not.toBeNull();
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'app.logout_all'").get()?.n).toBe(1);
+  });
+
+  it("downloads only my own data, without any token or secret, and audits it", async () => {
+    const a = await person("a", "甲");
+    await req(a, "PUT", "/v1/me/profile/fields/nickname", { value: "阿甲" });
+    const res = await req(a, "GET", "/v1/me/export");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toContain("attachment");
+    const text = await res.text();
+    const data = JSON.parse(text) as { member: { id: string }; profile: Record<string, { value: unknown }>; member_numbers: unknown[] };
+    expect(data.member.id).toBe(a.id);
+    expect(data.profile.nickname?.value).toBe("阿甲");
+    expect(data.member_numbers.length).toBe(1);
+    for (const secret of ["token_hash", "refresh_hash", "google_sub", a.cookie]) expect(text).not.toContain(secret);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'member.export'").get()?.n).toBe(1);
+    expect((await req(null, "GET", "/v1/me/export")).status).toBe(401);
+  });
+});
+
+describe("back office overview", () => {
+  it("any staff role sees counts and traffic lights; members do not", async () => {
+    const r = await person("r", "審", ["reviewer"]);
+    const m = await person("m", "會員");
+    expect((await req(m, "GET", "/v1/admin/overview")).status).toBe(403);
+    const o = (await (await req(r, "GET", "/v1/admin/overview")).json()) as { members: { total: number }; lights: { key: string; color: string }[]; apps: { total: number } };
+    expect(o.members.total).toBe(2);
+    expect(o.apps.total).toBeGreaterThanOrEqual(1);
+    expect(o.lights.map((l) => l.key)).toEqual(["apps", "reviews", "deletions", "invalid_apps"]);
+    expect(o.lights.every((l) => l.color === "green")).toBe(true);
+  });
+});

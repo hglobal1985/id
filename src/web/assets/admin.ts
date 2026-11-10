@@ -39,15 +39,49 @@ export const ADMIN_JS = String.raw`
     if (v.option) return v.option;
     return JSON.stringify(v);
   }
-  var me = null, pane = el("div"), tabsBox = el("div", { class: "tabs" });
+  var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
-    ["review", "審核", reviews], ["members.read", "會員", members], ["options.manage", "選項", options],
+    ["", "總覽", overview], ["review", "審核", reviews], ["members.read", "會員", members], ["options.manage", "選項", options],
     ["uplines.merge", "合併頁", merge], ["deletion.execute", "刪除申請", deletions], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
-    Array.prototype.forEach.call(tabsBox.children, function (b, j) { b.className = j === i ? "on" : ""; });
+    menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
+    var box = document.getElementById("menu-toggle"); if (box) box.checked = false;
+    var more = document.querySelector("details.more"); if (more) more.open = false;
     pane.textContent = "";
-    TABS.filter(function (t) { return me.permissions.indexOf(t[0]) >= 0; })[i][2]();
+    visible[i][2]();
+  }
+  // Staff may open the overview without any special permission; every other tab needs its permission.
+  function allowed(t) { return t[0] === "" || me.permissions.indexOf(t[0]) >= 0; }
+  var PRIMARY = ["總覽", "審核", "會員", "App"];
+  function buildMenu() {
+    var menu = document.getElementById("menu"); if (!menu) return;
+    menu.textContent = "";
+    visible = TABS.filter(allowed);
+    var more = el("div", { class: "drop" });
+    visible.forEach(function (t, i) {
+      var b = el("button", { type: "button", text: t[1], onclick: function () { tab(i); } });
+      menuBtns.push(b);
+      (PRIMARY.indexOf(t[1]) >= 0 ? menu : more).appendChild(b);
+    });
+    if (more.children.length) menu.appendChild(el("details", { class: "more" }, [el("summary", { text: "更多 ▾" }), more]));
+    menu.appendChild(el("a", { href: "/me", text: "會員中心" }));
+    menu.appendChild(el("a", { href: "/logout", text: "登出" }));
+  }
+  function overview() {
+    api("GET", "/v1/admin/overview").then(function (r) {
+      if (r.status !== 200) { pane.appendChild(card("總覽", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      var b = r.body;
+      function stat(n, label, cls) { return el("div", { class: "stat" + (cls ? " " + cls : "") }, [el("b", { text: String(n) }), el("span", { text: label })]); }
+      pane.appendChild(el("h1", { text: "總覽" }));
+      pane.appendChild(el("p", { class: "help", text: "身分：" + me.roles.map(function (x) { return x.label; }).join("、") }));
+      pane.appendChild(el("div", { class: "lights" }, b.lights.map(function (l) { return el("div", { class: "light " + l.color }, [el("i"), el("div", {}, [el("b", { text: l.label }), el("span", { text: l.text })])]); })));
+      pane.appendChild(el("div", { class: "stats" }, [
+        stat(b.members.total, "會員"), stat(b.members.new_7d, "近 7 天新會員"), stat(b.members.active_7d, "近 7 天登入"),
+        stat(b.active_sessions, "App 目前登入數"), stat(b.pending_reviews, "待審核", b.pending_reviews ? "warn" : ""), stat(b.open_deletions, "待處理刪除申請", b.open_deletions ? "warn" : ""),
+        stat(b.apps.active + "／" + b.apps.total, "App 正常／全部", b.apps.killed ? "bad" : b.apps.paused ? "warn" : "")
+      ]));
+    });
   }
   function card(title, kids) { return el("section", { class: "card" }, [el("h2", { text: title })].concat(kids)); }
   function m() { return el("div", { class: "msg" }); }
@@ -261,9 +295,8 @@ export const ADMIN_JS = String.raw`
     if (r.status !== 200) { root.appendChild(el("p", { text: "您沒有後台權限。" })); return; }
     me = r.body;
     root.textContent = "";
-    root.appendChild(el("p", { class: "help", text: "身分：" + me.roles.map(function (x) { return x.label; }).join("、") }));
-    TABS.filter(function (t) { return me.permissions.indexOf(t[0]) >= 0; }).forEach(function (t, i) { tabsBox.appendChild(el("button", { text: t[1], onclick: function () { tab(i); } })); });
-    root.appendChild(tabsBox); root.appendChild(pane);
+    buildMenu();
+    root.appendChild(pane);
     api("GET", "/v1/amway/field-definitions").then(function (d) {
       ((d.body && d.body.fields) || []).forEach(function (f) { labels[f.key] = {}; (f.options || []).forEach(function (o) { labels[f.key][o.value] = o.label; }); });
       tab(0);
