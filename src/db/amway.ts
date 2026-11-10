@@ -3,6 +3,7 @@ import { uuidv7 } from "../lib/crypto";
 import { taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
 import { getActiveBinding, otherSide } from "./spouse";
+import { notifyReviewersStatement } from "./staff";
 import { CONSENT_DOCUMENT, CONSENT_VERSION } from "../amway/consent";
 import {
   AMWAY_FIELDS,
@@ -177,10 +178,12 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   } else if (needsReview(def, value, educationSystem)) {
     review = true;
     row = { value: current?.value ?? null, pending_value: value, status: "pending", value_approved: "keep" };
+    const reviewId = uuidv7(ctx.now.getTime());
     stmts.push(
       db
         .prepare("INSERT INTO amway_review_requests (id, member_id, field_key, requested_value, status, created_at, app_id) VALUES (?, ?, ?, ?, 'pending', ?, ?)")
-        .bind(uuidv7(ctx.now.getTime()), memberId, key, JSON.stringify(value), ts, ctx.appId),
+        .bind(reviewId, memberId, key, JSON.stringify(value), ts, ctx.appId),
+      notifyReviewersStatement(db, reviewId, ctx.now),
     );
   } else {
     row = { value, pending_value: null, status: "not_required", value_approved: false };

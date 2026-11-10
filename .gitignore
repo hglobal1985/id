@@ -8,3 +8,4 @@ coverage/
 *.log
 *.sql.local
 client.sql
+grant.sql

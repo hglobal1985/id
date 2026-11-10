@@ -24,4 +24,10 @@ export interface AuthContext {
   authTime: number;
 }
 
-export type AppBindings = { Bindings: Env; Variables: { requestId: string; auth: AuthContext } };
+export interface StaffContext {
+  memberId: string;
+  roles: ("super_admin" | "secretary" | "reviewer")[];
+  authTime: number;
+}
+
+export type AppBindings = { Bindings: Env; Variables: { requestId: string; auth: AuthContext; staff: StaffContext } };
