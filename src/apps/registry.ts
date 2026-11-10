@@ -74,7 +74,7 @@ export function parseApp(item: unknown): AppEntry {
   if (!Array.isArray(item.scopes) || !item.scopes.every((s) => typeof s === "string" && APP_SCOPES.includes(s))) {
     throw new AppDefinitionError("權限範圍有不支援的項目。");
   }
-  if (item.config !== undefined && !isRecord(item.config)) throw new AppDefinitionError("config 需為物件。");
+  const config = item.config === undefined ? {} : parseConfig(item.config);
   const auth = item.auth === undefined ? {} : item.auth;
   if (!isRecord(auth)) throw new AppDefinitionError("auth 需為物件。");
   return Object.freeze({
@@ -85,11 +85,37 @@ export function parseApp(item: unknown): AppEntry {
     status: item.status as AppStatus,
     scopes: Object.freeze(APP_SCOPES.filter((s) => (item.scopes as string[]).includes(s))),
     min_version: item.min_version,
-    config: Object.freeze({ ...(item.config as Record<string, unknown> | undefined) }),
+    config,
     auth: Object.freeze({ google_audiences: list(auth.google_audiences, AUDIENCE, "額外的 Google 用戶端 ID", 10) }),
     web_origins: list(item.web_origins, WEB_ORIGIN, "網頁版來源", 10),
     return_urls: list(item.return_urls, RETURN_URL, "App 回傳網址", 10),
   });
+}
+
+const CONFIG_KEY = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+const CONFIG_MAX_KEYS = 50;
+const CONFIG_MAX_BYTES = 8 * 1024;
+
+/**
+ * Validates the public remote settings an App reads from GET /v1/apps/{app_id}/config: a flat object of
+ * string, number, boolean or null values. Everything here is public, so it must never hold secrets.
+ */
+export function parseConfig(value: unknown): Readonly<Record<string, string | number | boolean | null>> {
+  if (!isRecord(value)) throw new AppDefinitionError("公開設定需為物件。");
+  const keys = Object.keys(value);
+  if (keys.length > CONFIG_MAX_KEYS) throw new AppDefinitionError(`公開設定最多 ${CONFIG_MAX_KEYS} 項。`);
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const key of keys) {
+    if (!CONFIG_KEY.test(key)) throw new AppDefinitionError(`設定名稱「${key.slice(0, 20)}」格式不正確（英文字母開頭，只能用英文、數字、底線、點、連字號，最多 64 字）。`);
+    const v = value[key] as string | number | boolean | null;
+    if (typeof v === "number" ? !Number.isFinite(v) : !(v === null || typeof v === "string" || typeof v === "boolean")) {
+      throw new AppDefinitionError(`設定「${key}」的值只能是文字、數字、true／false 或空值。`);
+    }
+    if (typeof v === "string" && (v.length > 500 || /\p{Cc}/u.test(v))) throw new AppDefinitionError(`設定「${key}」的文字最多 500 字，不可含控制字元。`);
+    out[key] = v;
+  }
+  if (new TextEncoder().encode(JSON.stringify(out)).length > CONFIG_MAX_BYTES) throw new AppDefinitionError("公開設定總量過大（上限 8 KB）。");
+  return Object.freeze(out);
 }
 
 /** The JSON stored in `registered_apps.definition`. */
