@@ -3,16 +3,17 @@ import type { AppBindings } from "./env";
 import { ErrorBodySchema, errorBody } from "./errors";
 import { defaultDeps, type Deps } from "./deps";
 import { taipeiIso } from "./lib/time";
-import { registerAuthRoutes, html } from "./auth/routes";
+import { registerAuthRoutes } from "./auth/routes";
 import { registerOidcRoutes } from "./oidc/routes";
 import { registerOidcDocs } from "./oidc/openapi";
 import { ConfigError } from "./oidc/config";
-import { messagePage } from "./web/pages";
 import { registerProfileRoutes } from "./api/profile";
 import { registerSpouseRoutes } from "./api/spouse";
 import { registerAmwayRoutes } from "./api/amway";
 import { registerEligibilityRoutes } from "./api/eligibility";
 import { registerAdminRoutes } from "./api/admin";
+import { registerDeletionRoutes } from "./api/deletion";
+import { registerSiteRoutes } from "./web/site";
 import { HTTPException } from "hono/http-exception";
 
 const HealthSchema = z
@@ -80,8 +81,11 @@ export function createApp(overrides: Partial<Deps> = {}) {
   registerAmwayRoutes(app, deps);
   registerEligibilityRoutes(app, deps);
   registerAdminRoutes(app, deps);
+  registerDeletionRoutes(app, deps);
 
-  app.get("/", (c) => html(c, messagePage("會員中心", "H-Global1985 會員登入服務。", { href: "/login", label: "登入" })));
+
+  // Last: the public profile route matches /<member number>.
+  registerSiteRoutes(app, deps);
 
   app.doc31("/v1/openapi.json", {
     openapi: "3.1.0",

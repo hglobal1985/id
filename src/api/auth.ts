@@ -1,22 +1,42 @@
-// Bearer authentication for /v1 APIs (shared error format). Every request is checked on the server:
-// token signature and expiry, sign-in session, member and app still active (fail closed).
-import type { MiddlewareHandler } from "hono";
+// Authentication for /v1 APIs (shared error format). Every request is checked on the server.
+// - Apps: Bearer access token (signature, expiry, sign-in session, member and app still active).
+// - The central site's own pages: the sign-in session cookie, only for same-origin requests, acting as
+//   the site itself (client id "central") with every member scope. Apps never get this path.
+import type { Context, MiddlewareHandler } from "hono";
 import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { errorBody } from "../errors";
 import { resolveIssuer } from "../oidc/config";
 import { checkAccessToken } from "../oidc/tokens";
-import { hasScopes } from "../oidc/scopes";
+import { SUPPORTED_SCOPES, hasScopes } from "../oidc/scopes";
+import { SESSION_COOKIE, readCookie } from "../auth/cookies";
+import { findActiveSessionByToken } from "../db/identity";
+import { isSameOriginWrite } from "../auth/csrf";
+
+export const CENTRAL_CLIENT = "central";
 
 export function bearerAuth(deps: Deps): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
-    const r = await checkAccessToken(c.env, deps, resolveIssuer(c.env, c.req.url), c.req.header("authorization"));
+    c.header("cache-control", "no-store");
+    const authorization = c.req.header("authorization");
+    if (!authorization) {
+      const cookie = readCookie(c, SESSION_COOKIE);
+      if (cookie) {
+        if (!isSameOriginWrite(c)) return c.json(errorBody("forbidden", "Cross-site request refused", c.get("requestId")), 403);
+        const s = await findActiveSessionByToken(c.env.DB, cookie, deps.now());
+        if (s) {
+          c.set("auth", { memberId: s.member_id, clientId: CENTRAL_CLIENT, sessionId: s.id, scope: SUPPORTED_SCOPES.join(" "), authTime: s.auth_time_epoch });
+          await next();
+          return;
+        }
+      }
+    }
+    const r = await checkAccessToken(c.env, deps, resolveIssuer(c.env, c.req.url), authorization);
     if (!r.ok) {
       c.header("www-authenticate", r.reason === "missing" ? 'Bearer realm="hglobal-id"' : 'Bearer realm="hglobal-id", error="invalid_token"');
       return c.json(errorBody("unauthenticated", "A valid access token is required", c.get("requestId")), 401);
     }
     c.set("auth", r.ctx);
-    c.header("cache-control", "no-store");
     await next();
   };
 }
@@ -25,4 +45,10 @@ export function bearerAuth(deps: Deps): MiddlewareHandler<AppBindings> {
 export function missingScope(c: Parameters<MiddlewareHandler<AppBindings>>[0], scopes: string[]): Response | null {
   if (hasScopes(c.get("auth").scope, scopes)) return null;
   return c.json(errorBody("forbidden", "Insufficient scope", c.get("requestId"), { required_scopes: scopes }), 403);
+}
+
+/** Only the central site's own pages (not apps) may use account-level operations such as deletion. */
+export function centralOnly(c: Context<AppBindings>): Response | null {
+  if (c.get("auth").clientId === CENTRAL_CLIENT) return null;
+  return c.json(errorBody("forbidden", "Only available on the member site", c.get("requestId")), 403);
 }

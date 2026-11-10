@@ -16,11 +16,12 @@ export type Permission =
   | "options.manage" // maintain Amway option lists (ranks, systems, centers, uplines)
   | "uplines.merge" // merge page: fold custom upline names into options, adjust the three upline fields
   | "audit.read"
-  | "staff.manage"; // grant / revoke roles (needs recent sign-in)
+  | "staff.manage" // grant / revoke roles (needs recent sign-in)
+  | "deletion.execute"; // carry out members' data deletion requests
 
 const MATRIX: Record<Role, Permission[]> = {
-  super_admin: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "staff.manage"],
-  secretary: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read"],
+  super_admin: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "staff.manage", "deletion.execute"],
+  secretary: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "deletion.execute"],
   reviewer: ["review", "adjust", "members.read"],
 };
 
