@@ -1,0 +1,77 @@
+name: Deploy
+
+# Staging deploys automatically after CI succeeds on main.
+# Production deploys only when started by hand (Actions → Deploy → Run workflow → production) and,
+# once the owner sets required reviewers on the "production" environment, only after approval.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.environment || 'staging' }}
+    env:
+      TARGET: ${{ inputs.environment || 'staging' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check deploy secrets
+        id: secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not set yet; skipping deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.secrets.outputs.ready == 'true'
+        run: npm ci
+      - name: Apply D1 migrations
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          DB=$([ "$TARGET" = production ] && echo hglobal-id || echo hglobal-id-staging)
+          npx wrangler d1 migrations apply "$DB" --env "$TARGET" --remote
+      - name: Deploy Worker
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -n "$GOOGLE_CLIENT_ID" ]; then
+            npx wrangler deploy --env "$TARGET" --var "GOOGLE_CLIENT_ID:$GOOGLE_CLIENT_ID"
+          else
+            npx wrangler deploy --env "$TARGET"
+          fi
+      - name: Health check
+        if: steps.secrets.outputs.ready == 'true' && vars.STAGING_URL != '' && env.TARGET == 'staging'
+        run: curl -fsS "${{ vars.STAGING_URL }}/v1/health"
+      - name: Health check (production)
+        if: steps.secrets.outputs.ready == 'true' && env.TARGET == 'production'
+        run: curl -fsS https://id.hglobal1985.com/v1/health

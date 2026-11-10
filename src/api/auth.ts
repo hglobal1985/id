@@ -12,10 +12,29 @@ import { SUPPORTED_SCOPES, hasScopes } from "../oidc/scopes";
 import { SESSION_COOKIE, readCookie } from "../auth/cookies";
 import { findActiveSessionByToken } from "../db/identity";
 import { isSameOriginWrite } from "../auth/csrf";
+import { allowed, isWrite } from "../lib/ratelimit";
 
 export const CENTRAL_CLIENT = "central";
 
 export function bearerAuth(deps: Deps): MiddlewareHandler<AppBindings> {
+  const inner = authenticate(deps);
+  return async (c, next) => {
+    let passed = false;
+    const res = await inner(c, async () => {
+      passed = true;
+    });
+    if (!passed) return res;
+    const write = isWrite(c.req.method, new URL(c.req.url).pathname);
+    const key = `${write ? "w" : "r"}:${c.get("auth").memberId}`;
+    if (!(await allowed(write ? c.env.RL_WRITE : c.env.RL_READ, key))) {
+      c.header("retry-after", "60");
+      return c.json(errorBody("rate_limited", "Too many requests", c.get("requestId"), { retry_after: 60 }), 429);
+    }
+    await next();
+  };
+}
+
+function authenticate(deps: Deps): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     c.header("cache-control", "no-store");
     const authorization = c.req.header("authorization");

@@ -6,6 +6,7 @@ const need = (cond, msg) => cond || problems.push(msg);
 
 need(existsSync("AGENTS.md"), "AGENTS.md is missing");
 need(existsSync(".github/workflows/ci.yml"), "CI workflow is missing");
+need(existsSync(".github/workflows/deploy.yml"), "Deploy workflow is missing");
 need(existsSync("openapi/hglobal-id.v1.json"), "openapi/hglobal-id.v1.json is missing");
 
 if (existsSync("wrangler.jsonc")) {
