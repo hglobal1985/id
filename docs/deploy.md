@@ -34,8 +34,7 @@
 - **正式環境**：業主在對話中同意後，由 Claude 啟動 Deploy 流程（選 `production`）。不需要在 GitHub 按核准。
 
 ## 正式環境上線前（需業主核准）
-1. 建立正式資料庫 `hglobal-id`，把 ID 填進 `wrangler.jsonc`。
-2. 在會員開始登入前，匯入 77 位舊會員（`scripts/import-legacy.mjs`，見 ADR 0009）。
-3. 網域 `id.hglobal1985.com` 指到 Worker。
-4. 用 `scripts/grant-role.mjs` 設定第一位超級管理員（若舊管理員未匯入）。
-5. 用 `scripts/register-client.mjs` 登記寰宇學習網等 app。
+1. 建立正式資料庫 `hglobal-id`，把 ID 填進 `wrangler.jsonc`。正式環境是全新系統，不匯入任何舊會員（ADR 0009 已廢止）。
+2. 網域 `id.hglobal1985.com` 指到 Worker。
+3. 業主用指定的超級管理員 Google 帳號第一次登入，再用 `scripts/grant-role.mjs` 設定為超級管理員。
+4. 用 `scripts/register-client.mjs` 登記寰宇學習網等 app。

@@ -30,4 +30,16 @@ describe("D1 migrations", () => {
     expect(rows.map((r) => r.name)).toEqual([...expectedTables].sort());
     db.close();
   });
+
+  it("seed the owner's rank ladder (low to high) and no member data", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ranks = db.prepare("SELECT label FROM amway_options WHERE field_key = 'rank' AND active = 1 ORDER BY sort_order").all();
+    expect(ranks.map((r) => r.label)).toEqual([
+      "3%", "9%", "12%初階", "12%", "15%", "15%銅章", "18%", "21%", "銀章", "金章",
+      "白金", "創辦人白金", "紅寶石", "創辦人紅寶石", "藍寶石", "創辦人藍寶石", "翡翠", "鑽石級以上",
+    ]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM members").get().n).toBe(0);
+    db.close();
+  });
 });
