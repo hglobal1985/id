@@ -11,7 +11,8 @@ import { getActiveBinding, otherSide } from "../db/spouse";
 import { publicItems } from "../profile/public";
 import { escapeHtml } from "./pages";
 import { SITE_CSP, sitePage } from "./layout";
-import { PRIVACY_SECTIONS, PRIVACY_TITLE, PRIVACY_VERSION } from "./privacy";
+import { PRIVACY_SECTIONS, PRIVACY_TITLE, PRIVACY_VERSION, type PrivacySection } from "./privacy";
+import { POLICY_SECTIONS, POLICY_TITLE, POLICY_UPDATED } from "./privacy-policy";
 import { SITE_CSS } from "./assets/css";
 import { ME_JS } from "./assets/me";
 import { ADMIN_JS } from "./assets/admin";
@@ -64,16 +65,34 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return page(c, sitePage({ title: "後台", nav: { signedIn: true, staff: true }, body: '<h1>後台</h1><div id="app"><p class="help">載入中…</p></div>', script: "/assets/admin.js" }));
   });
 
+  // Static legal text: escaped, then the {{amway}} token becomes a link to the Amway notice.
+  const text = (t: string) => escapeHtml(t).replaceAll("{{amway}}", '<a href="/privacy/amway">完整隱私說明</a>');
+  const sections = (list: PrivacySection[]) =>
+    list
+      .map(
+        (s) =>
+          `<h2>${escapeHtml(s.heading)}</h2>` +
+          (s.paragraphs ?? []).map((p) => `<p>${text(p)}</p>`).join("") +
+          (s.items ? `<ul class="plain">${s.items.map((i) => `<li>${text(i)}</li>`).join("")}</ul>` : ""),
+      )
+      .join("");
+
+  app.get("/privacy", async (c) => {
+    const signedIn = !!(await currentSession(c, deps));
+    const body =
+      `<article class="card"><h1>${escapeHtml(POLICY_TITLE)}</h1><p class="help">最後更新：${escapeHtml(POLICY_UPDATED)}</p>` +
+      sections(POLICY_SECTIONS) +
+      "</article>";
+    c.header("content-security-policy", SITE_CSP);
+    c.header("cache-control", "public, max-age=300");
+    return c.html(sitePage({ title: POLICY_TITLE, nav: { signedIn }, body }));
+  });
+
   app.get("/privacy/amway", async (c) => {
     const signedIn = !!(await currentSession(c, deps));
     const body =
       `<article class="card"><h1>${escapeHtml(PRIVACY_TITLE)}</h1><p class="help">版本 ${escapeHtml(PRIVACY_VERSION)}</p>` +
-      PRIVACY_SECTIONS.map(
-        (s) =>
-          `<h2>${escapeHtml(s.heading)}</h2>` +
-          (s.paragraphs ?? []).map((p) => `<p>${escapeHtml(p)}</p>`).join("") +
-          (s.items ? `<ul class="plain">${s.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""),
-      ).join("") +
+      sections(PRIVACY_SECTIONS) +
       "</article>";
     c.header("content-security-policy", SITE_CSP);
     c.header("cache-control", "public, max-age=300");

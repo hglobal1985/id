@@ -96,6 +96,21 @@ describe("pages", () => {
     expect(html).not.toContain("5 分鐘");
   });
 
+  it("the general privacy policy is public, linked from every page, and links to the Amway notice", async () => {
+    const res = await req(null, "GET", "/privacy");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
+    const html = await res.text();
+    expect(html).toContain("<h1>隱私權政策</h1>");
+    for (const h of ["1. 營運單位", "6. Cookie", "8. 您的權利", "11. 聯絡我們"]) expect(html).toContain(h);
+    expect(html).toContain("hglobal1985@gmail.com");
+    expect(html).toContain('<a href="/privacy/amway">完整隱私說明</a>');
+    expect(html).not.toContain("{{amway}}");
+    for (const banned of ["繁星", "安麗", "回聲"]) expect(html).not.toContain(banned);
+    const amway = await (await req(null, "GET", "/privacy/amway")).text();
+    expect(amway).toContain('<a href="/privacy">隱私權政策</a>');
+  });
+
   it("member-facing site pages never name the other system in Chinese", async () => {
     const a = await person("a", "甲");
     for (const p of ["/", "/me", "/assets/me.js", "/assets/admin.js"]) {
