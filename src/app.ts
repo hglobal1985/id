@@ -11,6 +11,7 @@ import { messagePage } from "./web/pages";
 import { registerProfileRoutes } from "./api/profile";
 import { registerSpouseRoutes } from "./api/spouse";
 import { registerAmwayRoutes } from "./api/amway";
+import { registerEligibilityRoutes } from "./api/eligibility";
 import { HTTPException } from "hono/http-exception";
 
 const HealthSchema = z
@@ -76,6 +77,7 @@ export function createApp(overrides: Partial<Deps> = {}) {
   registerProfileRoutes(app, deps);
   registerSpouseRoutes(app, deps);
   registerAmwayRoutes(app, deps);
+  registerEligibilityRoutes(app, deps);
 
   app.get("/", (c) => html(c, messagePage("會員中心", "H-Global1985 會員登入服務。", { href: "/login", label: "登入" })));
 
