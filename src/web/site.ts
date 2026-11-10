@@ -1,0 +1,132 @@
+// Member site pages: home, 基本資料 (/me), back office (/admin), 完整隱私說明, public profiles (/<member number>).
+import type { Context } from "hono";
+import type { OpenAPIHono } from "@hono/zod-openapi";
+import type { AppBindings } from "../env";
+import type { Deps } from "../deps";
+import { SESSION_COOKIE, readCookie } from "../auth/cookies";
+import { findActiveSessionByToken, getMember } from "../db/identity";
+import { rolesOf } from "../db/staff";
+import { readProfile } from "../db/profile";
+import { getActiveBinding, otherSide } from "../db/spouse";
+import { publicItems } from "../profile/public";
+import { escapeHtml } from "./pages";
+import { SITE_CSP, sitePage } from "./layout";
+import { PRIVACY_SECTIONS, PRIVACY_TITLE, PRIVACY_VERSION } from "./privacy";
+import { SITE_CSS } from "./assets/css";
+import { ME_JS } from "./assets/me";
+import { ADMIN_JS } from "./assets/admin";
+
+type C = Context<AppBindings>;
+
+function page(c: C, body: string, status: 200 | 403 | 404 = 200) {
+  c.header("content-security-policy", SITE_CSP);
+  c.header("cache-control", "no-store");
+  return c.html(body, status);
+}
+
+async function currentSession(c: C, deps: Deps) {
+  const t = readCookie(c, SESSION_COOKIE);
+  return t ? findActiveSessionByToken(c.env.DB, t, deps.now()) : null;
+}
+
+function asset(c: C, body: string, type: string) {
+  c.header("content-type", type);
+  // Always revalidate so a deploy takes effect at once (the files are small).
+  c.header("cache-control", "no-cache");
+  return c.body(body, 200);
+}
+
+export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
+  app.get("/assets/site.css", (c) => asset(c, SITE_CSS, "text/css; charset=utf-8"));
+  app.get("/assets/me.js", (c) => asset(c, ME_JS, "text/javascript; charset=utf-8"));
+  app.get("/assets/admin.js", (c) => asset(c, ADMIN_JS, "text/javascript; charset=utf-8"));
+
+  app.get("/", async (c) => {
+    if (await currentSession(c, deps)) return c.redirect("/me", 302);
+    return page(c, sitePage({ title: "會員中心", nav: { signedIn: false }, body: '<section class="card"><h2>H-Global1985 會員中心</h2><p>登入後可以管理您的基本資料。</p><p><a href="/login">使用 Google 帳號登入</a></p></section>' }));
+  });
+
+  app.get("/logout", (c) => c.redirect("/oauth/logout", 302));
+
+  app.get("/me", async (c) => {
+    const s = await currentSession(c, deps);
+    if (!s) return c.redirect("/login?return_to=%2Fme", 302);
+    const staff = (await rolesOf(c.env.DB, s.member_id)).length > 0;
+    return page(c, sitePage({ title: "基本資料", nav: { signedIn: true, staff }, body: '<h1>基本資料</h1><div id="app"><p class="help">載入中…</p></div>', script: "/assets/me.js" }));
+  });
+
+  app.get("/admin", async (c) => {
+    const s = await currentSession(c, deps);
+    if (!s) return c.redirect("/login?return_to=%2Fadmin", 302);
+    if (!(await rolesOf(c.env.DB, s.member_id)).length) {
+      return page(c, sitePage({ title: "後台", nav: { signedIn: true }, body: '<section class="card"><h2>沒有權限</h2><p>此頁面只開放給管理人員。</p></section>' }), 403);
+    }
+    return page(c, sitePage({ title: "後台", nav: { signedIn: true, staff: true }, body: '<h1>後台</h1><div id="app"><p class="help">載入中…</p></div>', script: "/assets/admin.js" }));
+  });
+
+  app.get("/privacy/amway", async (c) => {
+    const signedIn = !!(await currentSession(c, deps));
+    const body =
+      `<article class="card"><h1>${escapeHtml(PRIVACY_TITLE)}</h1><p class="help">版本 ${escapeHtml(PRIVACY_VERSION)}</p>` +
+      PRIVACY_SECTIONS.map(
+        (s) =>
+          `<h2>${escapeHtml(s.heading)}</h2>` +
+          (s.paragraphs ?? []).map((p) => `<p>${escapeHtml(p)}</p>`).join("") +
+          (s.items ? `<ul class="plain">${s.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""),
+      ).join("") +
+      "</article>";
+    c.header("content-security-policy", SITE_CSP);
+    c.header("cache-control", "public, max-age=300");
+    return c.html(sitePage({ title: "完整隱私說明", nav: { signedIn }, body }));
+  });
+
+  // Public profile: /<default member number>. Bound spouses share one URL; visitors switch between them.
+  app.get("/:number{[A-Z0-9][A-Z0-9-]{0,19}}", async (c) => {
+    const number = c.req.param("number");
+    const db = c.env.DB;
+    const r = await db
+      .prepare(
+        `SELECT n.member_id FROM member_numbers n JOIN members m ON m.id = n.member_id
+         WHERE n.position = 0 AND n.number = ? AND m.status = 'active' ORDER BY m.created_at LIMIT 5`,
+      )
+      .bind(number)
+      .all<{ member_id: string }>();
+    let ids = (r.results ?? []).map((x) => x.member_id);
+    if (ids.length === 1) {
+      const b = await getActiveBinding(db, ids[0] as string);
+      if (b) ids = [b.initiator_id, otherSide(b, b.initiator_id)];
+    }
+    const signedIn = !!(await currentSession(c, deps));
+    if (!ids.length) return page(c, sitePage({ title: "找不到會員", nav: { signedIn }, body: '<section class="card"><h2>找不到此會員</h2><p>網址可能已經變更。</p></section>' }), 404);
+    const pick = Math.min(Math.max(Number(c.req.query("m") ?? 0) || 0, 0), ids.length - 1);
+    const profiles = await Promise.all(
+      ids.map(async (id) => {
+        const m = await getMember(db, id);
+        const { values, visibility } = await readProfile(db, id);
+        return { m, items: publicItems(values, visibility, m?.display_name ?? null) };
+      }),
+    );
+    const nameOf = (p: (typeof profiles)[number]) => {
+      const dn = p.items.find((i) => i.key === "display_name");
+      return typeof dn?.value === "string" ? dn.value : "會員";
+    };
+    const tabs =
+      profiles.length > 1
+        ? `<div class="tabs">${profiles.map((p, i) => `<a href="/${encodeURIComponent(number)}?m=${i}"${i === pick ? ' class="on"' : ""}>${escapeHtml(nameOf(p))}</a>`).join("")}</div>`
+        : "";
+    const p = profiles[pick] as (typeof profiles)[number];
+    const avatar = p.m?.avatar_url ? `<img class="avatar" src="${escapeHtml(p.m.avatar_url)}" alt="">` : '<div class="avatar"></div>';
+    const rows = p.items
+      .filter((i) => i.key !== "display_name")
+      .map((i) => {
+        let v: string;
+        if (Array.isArray(i.value)) v = i.value.map(escapeHtml).join("、");
+        else if (i.type === "url") v = `<a href="${escapeHtml(i.value)}" rel="nofollow noopener noreferrer" target="_blank">${escapeHtml(i.value)}</a>`;
+        else v = escapeHtml(i.value).replace(/\n/g, "<br>");
+        return `<div class="row"><label>${escapeHtml(i.label)}</label><div>${v}</div></div>`;
+      })
+      .join("");
+    const body = `${tabs}<section class="card">${avatar}<h1>${escapeHtml(nameOf(p))}</h1><p class="help">會員編號 ${escapeHtml(number)}</p>${rows}</section>`;
+    return page(c, sitePage({ title: nameOf(p), nav: { signedIn }, body }));
+  });
+}

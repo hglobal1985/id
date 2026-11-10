@@ -4,6 +4,7 @@
   "amway_review_requests",
   "audit_log",
   "consent_records",
+  "deletion_requests",
   "login_flows",
   "login_sessions",
   "member_numbers",

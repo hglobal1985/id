@@ -15,8 +15,9 @@ import { getActiveBinding, otherSide } from "../db/spouse";
 import { auditStatement } from "../db/audit";
 import { AMWAY_FIELDS, OTHER, REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
 import { REAUTH_MAX_AGE, ROLES, ROLE_LABELS, UPLINE_FIELDS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
-import { resolveIssuer } from "../oidc/config";
+import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
+import { completeDeletion, openRequests } from "../db/deletion";
 
 type C = Context<AppBindings>;
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -28,12 +29,7 @@ const Any = z.record(z.unknown());
 function staffAuth(deps: Deps): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     c.header("cache-control", "no-store");
-    if (!["GET", "HEAD"].includes(c.req.method)) {
-      const origin = c.req.header("origin");
-      const expected = new URL(resolveIssuer(c.env, c.req.url)).origin;
-      const sameSite = c.req.header("sec-fetch-site") === "same-origin";
-      if (origin ? origin !== expected : !sameSite) return c.json(errorBody("forbidden", "Cross-site request refused", c.get("requestId")), 403);
-    }
+    if (!isSameOriginWrite(c)) return c.json(errorBody("forbidden", "Cross-site request refused", c.get("requestId")), 403);
     const token = readCookie(c, SESSION_COOKIE);
     const session = token ? await findActiveSessionByToken(c.env.DB, token, deps.now()) : null;
     if (!session) return c.json(errorBody("unauthenticated", "Sign in required", c.get("requestId")), 401);
@@ -184,6 +180,25 @@ const auditRoute = createRoute({
     }),
   },
   responses: { 200: { description: "Entries", content: json(Any) }, ...common },
+});
+
+const deletionsRoute = createRoute({
+  method: "get",
+  path: "/v1/admin/deletion-requests",
+  tags: ["admin"],
+  summary: "Open data deletion requests (due within 15 days of the request)",
+  security,
+  responses: { 200: { description: "Requests", content: json(Any) }, ...common },
+});
+
+const completeDeletionRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/deletion-requests/{id}/complete",
+  tags: ["admin"],
+  summary: "Carry out a deletion request (account: anonymize and close; amway: remove Amway data). Needs a sign-in within 10 minutes.",
+  security,
+  request: { params: z.object({ id: z.string().max(64) }) },
+  responses: { 200: { description: "Done", content: json(Any) }, ...common, 404: err("not_found") },
 });
 
 export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
@@ -372,6 +387,25 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return c.json({ member_id, roles }, 200);
   });
 
+  app.openapi(deletionsRoute, async (c) => {
+    const d = deny(c, "deletion.execute");
+    if (d) return d as never;
+    const rows = await openRequests(c.env.DB);
+    return c.json({ requests: await Promise.all(rows.map(async (r) => ({ ...r, display_name: await displayName(c.env.DB, r.member_id) }))) }, 200);
+  });
+
+  app.openapi(completeDeletionRoute, async (c) => {
+    const d = deny(c, "deletion.execute");
+    if (d) return d as never;
+    const staff = c.get("staff");
+    if (epochSeconds(deps.now()) - staff.authTime > REAUTH_MAX_AGE) {
+      return c.json(errorBody("reauth_required", "請重新登入後再試", c.get("requestId"), { login_url: "/login?return_to=%2Fadmin" }), 401);
+    }
+    const ok = await completeDeletion(c.env.DB, c.req.valid("param").id, staff.memberId, deps.now(), c.get("requestId"));
+    if (!ok) return c.json(errorBody("not_found", "No open request", c.get("requestId")), 404);
+    return c.json({ completed: true }, 200);
+  });
+
   app.openapi(auditRoute, async (c) => {
     const d = deny(c, "audit.read");
     if (d) return d as never;
@@ -390,7 +424,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       args.push(v);
     }
     const sql = `SELECT id, occurred_at, actor_type, actor_id, action, target_type, target_id, result, app_id, request_id, detail FROM audit_log
-      ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY occurred_at DESC, id DESC LIMIT ?`;
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY occurred_at DESC, rowid DESC LIMIT ?`;
     const r = await c.env.DB.prepare(sql).bind(...args, q.limit ?? 50).all();
     return c.json({ entries: r.results ?? [] }, 200);
   });
