@@ -854,6 +854,204 @@
           "due_at",
           "completed_at"
         ]
+      },
+      "AppTokenPair": {
+        "type": "object",
+        "properties": {
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "example": 900
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "Replace the stored one every time; reusing an old one revokes the session."
+          },
+          "refresh_expires_in": {
+            "type": "integer",
+            "example": 2592000
+          },
+          "scope": {
+            "type": "string",
+            "example": "profile.read amway.read"
+          }
+        },
+        "required": [
+          "token_type",
+          "access_token",
+          "expires_in",
+          "refresh_token",
+          "refresh_expires_in",
+          "scope"
+        ]
+      },
+      "AppSignIn": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AppTokenPair"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "object",
+                "properties": {
+                  "member_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "example": "active"
+                  },
+                  "is_new": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "member_id",
+                  "status",
+                  "is_new"
+                ]
+              }
+            },
+            "required": [
+              "user"
+            ]
+          }
+        ]
+      },
+      "AppConfig": {
+        "type": "object",
+        "properties": {
+          "app_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "killed"
+            ]
+          },
+          "min_version": {
+            "type": "string",
+            "example": "1.0.0"
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Public settings only; never secrets."
+          }
+        },
+        "required": [
+          "app_id",
+          "status",
+          "min_version",
+          "config"
+        ]
+      },
+      "AppHandoff": {
+        "type": "object",
+        "properties": {
+          "app_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "updated": {
+            "type": "string"
+          },
+          "integrated": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "up_to_date": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id",
+          "version",
+          "updated",
+          "integrated",
+          "up_to_date",
+          "text"
+        ]
+      },
+      "AppRegistrationForm": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "ios_bundle_id": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "android_package": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "scheme": {
+            "type": "string",
+            "maxLength": 31
+          },
+          "web_origins": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "maxItems": 10
+          },
+          "return_urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 10
+          },
+          "extra_google_audiences": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 10
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "maxItems": 20
+          },
+          "min_version": {
+            "type": "string",
+            "maxLength": 20
+          }
+        },
+        "required": [
+          "name"
+        ]
       }
     },
     "parameters": {}
@@ -3763,6 +3961,848 @@
           },
           "404": {
             "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/nonce": {
+      "post": {
+        "tags": [
+          "app sign-in"
+        ],
+        "summary": "Get a single-use sign-in nonce (10 minutes, bound to the App)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "app_id": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "example": "learn"
+                  }
+                },
+                "required": [
+                  "app_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Nonce. Send its SHA-256 (hex) to the sign-in relay and the raw value to POST /v1/auth/google.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nonce": {
+                      "type": "string"
+                    },
+                    "expires_in": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "nonce",
+                    "expires_in"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "app_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/google": {
+      "post": {
+        "tags": [
+          "app sign-in"
+        ],
+        "summary": "Sign in (or sign up) with the Google ID token returned by the sign-in relay",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "app_id": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "example": "learn"
+                  },
+                  "id_token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8192
+                  },
+                  "nonce": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 128,
+                    "description": "The raw nonce from POST /v1/auth/nonce"
+                  },
+                  "device_label": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "app_id",
+                  "id_token",
+                  "nonce"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSignIn"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "invalid_token or invalid_nonce",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "app_unavailable or account_disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "server_error (sign-in is not configured)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "app sign-in"
+        ],
+        "summary": "Rotate tokens; reusing an old refresh token revokes the session",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refresh_token": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "refresh_token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New token pair; replace the stored refresh token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppTokenPair"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "invalid_refresh or refresh_reused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "app_unavailable or account_disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "app sign-in"
+        ],
+        "summary": "End the current App session",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Signed out"
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (not an App sign-in token)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout-all": {
+      "post": {
+        "tags": [
+          "app sign-in"
+        ],
+        "summary": "End every session of the member: every App, every device and the member site",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "All sessions ended"
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (not an App sign-in token)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/config": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Status, minimum version and public settings an App reads at launch",
+        "description": "Show maintenance when status is paused, stop when killed, and require an update below min_version. Changes take effect within 30 seconds.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "App configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/handoff": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Newest integration instructions for this App (super admin only, this App's own sign-in only)",
+        "description": "Called by the App's own admin page. Send `integrated` (the instruction version the App was last built to); it is recorded. When up_to_date is false, patch ONLY the differences. Never contains keys.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}\\.\\d{1,3}$",
+              "example": "2026-11-10.2"
+            },
+            "required": false,
+            "name": "integrated",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppHandoff"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/apps": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Registered Apps with statistics and integration-instruction versions",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Register a new App (blank platform fields are derived from the app_id). Apps cannot be deleted; use status killed.",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AppRegistrationForm"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "app_id": {
+                        "type": "string",
+                        "maxLength": 32
+                      }
+                    },
+                    "required": [
+                      "app_id"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "app_exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/apps/{app_id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Edit an App registration (needs a sign-in within 10 minutes: it can change who may sign in)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRegistrationForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/apps/{app_id}/status": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Set an App to active, paused or killed (takes effect within 30 seconds)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "paused",
+                      "killed"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/apps/{app_id}/handoff": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Integration instructions to paste to the AI that builds this App (public values only)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
             "content": {
               "application/json": {
                 "schema": {

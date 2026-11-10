@@ -22,6 +22,9 @@
 2. **Authorized redirect URIs**：
    - 測試：`https://hglobal-id-staging.<你的 workers 子網域>.workers.dev/login/google/callback`（第一次部署後才知道網址）
    - 正式：`https://id.hglobal1985.com/login/google/callback`
+   - App 登入中繼（ADR 0011，App 登入一定要有）：再加兩個
+     - 測試：`https://hglobal-id-staging.hglobal1985-static.workers.dev/auth/google/callback`
+     - 正式：`https://id.hglobal1985.com/auth/google/callback`
 3. 測試與正式共用同一個用戶端（兩個 redirect URI 都加在同一個用戶端）。到 GitHub → **Settings → Secrets and variables → Actions**：
    - `GOOGLE_CLIENT_ID`（不是機密）：放在 **Variables** 或 **Secrets** 分頁都可以。
    - **Secrets** 分頁新增 `GOOGLE_CLIENT_SECRET`。
@@ -37,4 +40,4 @@
 1. 建立正式資料庫 `hglobal-id`，把 ID 填進 `wrangler.jsonc`。正式環境是全新系統，不匯入任何舊會員（ADR 0009 已廢止）。
 2. 網域 `id.hglobal1985.com` 指到 Worker。
 3. 業主用指定的超級管理員 Google 帳號第一次登入，再用 `scripts/grant-role.mjs` 設定為超級管理員。
-4. 用 `scripts/register-client.mjs` 登記寰宇學習網等 app。
+4. App 在後台登記（後台 → App → 新增 App），不用腳本；寰宇行動大學（`learn`）已由 migration 0011 登記。

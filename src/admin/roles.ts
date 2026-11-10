@@ -17,11 +17,13 @@ export type Permission =
   | "uplines.merge" // merge page: fold custom upline names into options, adjust the three upline fields
   | "audit.read"
   | "staff.manage" // grant / revoke roles (needs recent sign-in)
-  | "deletion.execute"; // carry out members' data deletion requests
+  | "deletion.execute" // carry out members' data deletion requests
+  | "apps.operate" // App list, statistics, integration instructions, pause / kill switch
+  | "apps.manage"; // register a new App, edit a registration (super admin only)
 
 const MATRIX: Record<Role, Permission[]> = {
-  super_admin: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "staff.manage", "deletion.execute"],
-  secretary: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "deletion.execute"],
+  super_admin: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "staff.manage", "deletion.execute", "apps.operate", "apps.manage"],
+  secretary: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "deletion.execute", "apps.operate"],
   reviewer: ["review", "adjust", "members.read"],
 };
 
