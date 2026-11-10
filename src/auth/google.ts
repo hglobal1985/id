@@ -52,6 +52,37 @@ export function resetGoogleKeyCache(): void {
   jwksCache = null;
 }
 
+/**
+ * Verifies a Google ID token an App obtained through the sign-in relay (or a native SDK): signature, issuer,
+ * expiry and audience. The nonce is checked by the caller. Throws GoogleSignInError on any problem.
+ */
+export async function verifyGoogleIdToken(deps: Deps, idToken: string, audiences: readonly string[]): Promise<GoogleIdentity & { nonce: string | null }> {
+  if (idToken.length > 8192 || !audiences.length) throw new GoogleSignInError("id_token invalid");
+  const now = epochSeconds(deps.now());
+  const verify = async (keys: PublicJwk[]) => verifyJwt(idToken, keys, { issuer: GOOGLE_ISSUERS, now });
+  let claims;
+  try {
+    claims = await verify(await googleKeys(deps));
+  } catch (e) {
+    if ((e as Error).message !== "kid") throw new GoogleSignInError("id_token invalid");
+    try {
+      claims = await verify(await googleKeys(deps, true));
+    } catch {
+      throw new GoogleSignInError("id_token invalid");
+    }
+  }
+  if (typeof claims.aud !== "string" || !audiences.includes(claims.aud)) throw new GoogleSignInError("audience");
+  if (typeof claims.sub !== "string" || !claims.sub || claims.sub.length > 255) throw new GoogleSignInError("no sub");
+  return {
+    sub: claims.sub,
+    email: typeof claims.email === "string" ? claims.email : undefined,
+    emailVerified: claims.email_verified === true,
+    name: typeof claims.name === "string" ? claims.name : undefined,
+    picture: typeof claims.picture === "string" && claims.picture.startsWith("https://") ? claims.picture : undefined,
+    nonce: typeof claims.nonce === "string" ? claims.nonce : null,
+  };
+}
+
 /** Exchanges the Google code and returns the verified identity. Throws GoogleSignInError on any problem. */
 export async function completeGoogleSignIn(
   deps: Deps,

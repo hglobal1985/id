@@ -22,6 +22,8 @@ export interface Env {
 export interface AuthContext {
   memberId: string;
   clientId: string;
+  /** Set for tokens from App sign-in; absent for OIDC clients and the central site. */
+  appId?: string;
   sessionId: string;
   scope: string;
   authTime: number;

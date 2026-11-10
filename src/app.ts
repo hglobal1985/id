@@ -14,6 +14,8 @@ import { registerEligibilityRoutes } from "./api/eligibility";
 import { registerAdminRoutes } from "./api/admin";
 import { registerDeletionRoutes } from "./api/deletion";
 import { registerSiteRoutes } from "./web/site";
+import { registerAppAuthRoutes } from "./api/app-auth";
+import { registerAppCors, registerAppRoutes } from "./api/apps";
 import { HTTPException } from "hono/http-exception";
 
 const HealthSchema = z
@@ -73,6 +75,7 @@ export function createApp(overrides: Partial<Deps> = {}) {
     ),
   );
 
+  registerAppCors(app, deps);
   registerAuthRoutes(app, deps);
   registerOidcRoutes(app, deps);
   registerOidcDocs(app);
@@ -82,7 +85,8 @@ export function createApp(overrides: Partial<Deps> = {}) {
   registerEligibilityRoutes(app, deps);
   registerAdminRoutes(app, deps);
   registerDeletionRoutes(app, deps);
-
+  registerAppAuthRoutes(app, deps);
+  registerAppRoutes(app, deps);
 
   // Last: the public profile route matches /<member number>.
   registerSiteRoutes(app, deps);

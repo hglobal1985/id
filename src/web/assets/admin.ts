@@ -1,4 +1,4 @@
-// /assets/admin.js — staff back office (審核、會員、選項、合併頁、刪除申請、管理人員、稽核).
+// /assets/admin.js — staff back office (審核、會員、選項、合併頁、刪除申請、App、管理人員、稽核).
 // Tabs appear only for the permissions the server reports; the server enforces every action anyway.
 // textContent only; no template literals (lives in String.raw).
 export const ADMIN_JS = String.raw`
@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), tabsBox = el("div", { class: "tabs" });
   var TABS = [
     ["review", "審核", reviews], ["members.read", "會員", members], ["options.manage", "選項", options],
-    ["uplines.merge", "合併頁", merge], ["deletion.execute", "刪除申請", deletions], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
+    ["uplines.merge", "合併頁", merge], ["deletion.execute", "刪除申請", deletions], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     Array.prototype.forEach.call(tabsBox.children, function (b, j) { b.className = j === i ? "on" : ""; });
@@ -145,6 +145,86 @@ export const ADMIN_JS = String.raw`
             api("POST", "/v1/admin/deletion-requests/" + x.id + "/complete").then(function (res) { if (res.status === 200) { pane.textContent = ""; deletions(); } else say(box, false, errText(res)); });
           } }), box])]);
       }) : [el("p", { class: "help", text: "目前沒有待處理的申請。" })]));
+    });
+  }
+
+  function apps() {
+    var STATUS = { active: "正常", paused: "暫停（維護中）", killed: "停用" };
+    function lines(t) { return t.value.split(/[\s,]+/).filter(function (x) { return x; }); }
+    function field(label, input, help) { return el("div", { class: "row" }, [el("label", { text: label }), input, help ? el("div", { class: "help", text: help }) : null]); }
+    function reauth(res) { if (res.body && res.body.error && res.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return true; } return false; }
+    function reload() { pane.textContent = ""; apps(); }
+    function form(b, a) {
+      var box = m();
+      var id = el("input", { type: "text", placeholder: "例如 learn", value: a ? a.app_id : null, disabled: !!a });
+      var name = el("input", { type: "text", value: a ? a.name : null });
+      var ios = el("input", { type: "text", value: a ? a.ios_bundle_id : null, placeholder: "留空自動產生 com.hglobal1985.<app_id>" });
+      var android = el("input", { type: "text", value: a ? a.android_package : null, placeholder: "留空自動產生 com.hglobal1985.<app_id>" });
+      var web = el("textarea", { placeholder: "留空自動產生 https://<app_id>.hglobal1985.com" }); web.value = a ? a.web_origins.join("\n") : "";
+      var ret = el("textarea", { placeholder: "留空自動產生 <app_id>://auth/google" }); ret.value = a ? a.return_urls.join("\n") : "";
+      var aud = el("textarea", { placeholder: "一般留空（只有改用原生 Google 登入才需要）" }); aud.value = a ? a.auth.google_audiences.join("\n") : "";
+      var min = el("input", { type: "text", value: a ? a.min_version : "0.0.0" });
+      var checks = b.scopes.map(function (sc) { var c = el("input", { type: "checkbox", value: sc }); c.checked = a ? a.scopes.indexOf(sc) >= 0 : (sc === "profile.read" || sc === "amway.read"); return [c, el("label", { text: sc })]; });
+      function save() {
+        var body = { name: name.value, ios_bundle_id: ios.value, android_package: android.value, web_origins: lines(web), return_urls: lines(ret), extra_google_audiences: lines(aud), min_version: min.value,
+          scopes: checks.filter(function (c) { return c[0].checked; }).map(function (c) { return c[0].value; }) };
+        if (!a) body.app_id = id.value.trim();
+        api(a ? "PUT" : "POST", "/v1/admin/apps" + (a ? "/" + encodeURIComponent(a.app_id) : ""), body).then(function (res) {
+          if (res.status === 200 || res.status === 201) { reload(); return; }
+          if (!reauth(res)) say(box, false, errText(res));
+        });
+      }
+      return card(a ? "編輯登記資料：" + a.app_id : "新增 App", [
+        field("app_id", id, "小寫英文、數字、連字號；iOS、Android、網頁共用這一個，建立後不能修改。"),
+        field("名稱", name), field("iOS Bundle ID", ios), field("Android 套件名稱", android),
+        field("網頁版來源（一行一個）", web, "只填 https://網域，不含路徑。"), field("App 回傳網址（一行一個）", ret),
+        field("額外的 Google 用戶端 ID", aud), field("最低版本", min, "低於這個版本的 App 會被要求更新。"),
+        el("div", { class: "row" }, [el("label", { text: "權限範圍" }), el("div", { class: "inline" }, [].concat.apply([], checks))]),
+        el("div", { class: "inline" }, [el("button", { class: "primary", text: a ? "儲存" : "建立", onclick: save }), el("button", { text: "取消", onclick: reload }), box]),
+        a ? el("div", { class: "help", text: "儲存需要 10 分鐘內登入過；會跳到登入頁再回來。" }) : null
+      ]);
+    }
+    function handoff(a) {
+      api("GET", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/handoff").then(function (r) {
+        if (r.status !== 200) return;
+        var box = m(), t = el("textarea", { readonly: true, rows: "18" }); t.value = r.body.text;
+        pane.textContent = "";
+        pane.appendChild(card("給開發 AI 的串接指令：" + a.name, [
+          el("p", { class: "help", text: "版本 " + r.body.version + "｜更新時間 " + r.body.updated + "。整段貼給負責開發這款 App 的 AI；內容只有公開資料，沒有金鑰。更新時請 AI 只補差異，不要整份重做。" }),
+          t,
+          el("div", { class: "inline" }, [el("button", { class: "primary", text: "複製串接指令", onclick: function () {
+            t.select();
+            if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(function () { say(box, true, "已複製"); }, function () { say(box, false, "請手動全選複製"); });
+            else say(box, false, "請手動全選複製");
+          } }), el("button", { text: "返回", onclick: reload }), box])
+        ]));
+      });
+    }
+    api("GET", "/v1/admin/apps").then(function (r) {
+      var b = r.body, box = m();
+      function setStatus(a, st) { return function () {
+        if (st === "killed" && !confirm("確定要停用「" + a.name + "」嗎？所有人都會無法登入這款 App。")) return;
+        api("PUT", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/status", { status: st }).then(function (res) { if (res.status === 200) reload(); else say(box, false, errText(res)); });
+      }; }
+      var rows = b.apps.map(function (a) {
+        var ver = a.integrated_version ? ("App 回報採用版本 " + a.integrated_version + (a.up_to_date ? "（已是最新）" : "（有新版 " + b.handoff_version + "，請把最新串接指令交給開發 AI）")) : "App 尚未回報採用的串接指令版本";
+        return el("div", { class: "row" }, [
+          el("div", { class: "inline" }, [el("strong", { text: a.name }), el("span", { class: "mono help", text: a.app_id }), el("span", { class: "badge " + (a.status === "active" ? "approved" : a.status === "paused" ? "pending" : "rejected"), text: STATUS[a.status] })]),
+          el("div", { class: "help", text: "會員 " + a.members + " 位｜目前登入 " + a.active_sessions + " 個｜最近登入 " + (a.last_sign_in_at ? a.last_sign_in_at.slice(0, 16).replace("T", " ") : "—") + "｜最低版本 " + a.min_version }),
+          el("div", { class: "help", text: ver }),
+          el("div", { class: "inline" }, [
+            el("button", { text: "給開發 AI 的串接指令", onclick: function () { handoff(a); } }),
+            b.can_manage ? el("button", { text: "編輯登記資料", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, a)); } }) : null,
+            a.status !== "active" ? el("button", { text: "恢復正常", onclick: setStatus(a, "active") }) : null,
+            a.status !== "paused" ? el("button", { text: "一鍵暫停", onclick: setStatus(a, "paused") }) : null,
+            a.status !== "killed" ? el("button", { class: "danger", text: "停用", onclick: setStatus(a, "killed") }) : null
+          ])
+        ]);
+      });
+      pane.appendChild(card("App 管理", [el("p", { class: "help", text: "串接指令最新版本 " + b.handoff_version + "（" + b.handoff_updated + "）。狀態變更 30 秒內生效。App 不能刪除，不再使用時按「停用」。" })]
+        .concat(b.invalid.length ? [el("p", { class: "msg bad", text: "登記資料損壞、目前無法使用的 App：" + b.invalid.join("、") })] : [])
+        .concat(rows.length ? rows : [el("p", { class: "help", text: "尚未登記任何 App。" })])
+        .concat([el("div", { class: "inline" }, [b.can_manage ? el("button", { class: "primary", text: "新增 App", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, null)); } }) : null, box])])));
     });
   }
 

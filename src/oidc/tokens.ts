@@ -7,6 +7,7 @@ import { JwtError, signJwt, verifyJwt, type JwtPayload } from "../lib/jwt";
 import { epochSeconds } from "../lib/time";
 import { getSigningKeys } from "./config";
 import { parseScope } from "./scopes";
+import { getApp, isAppSessionActive } from "../db/apps";
 
 export interface Grant {
   clientId: string;
@@ -100,6 +101,8 @@ export async function profileClaims(env: Env, memberId: string): Promise<{ name?
 export interface AccessContext {
   memberId: string;
   clientId: string;
+  /** Set for tokens from App sign-in (POST /v1/auth/google); absent for OIDC clients and the central site. */
+  appId?: string;
   sessionId: string;
   scope: string;
   authTime: number;
@@ -126,6 +129,14 @@ export async function checkAccessToken(env: Env, deps: Deps, issuer: string, aut
   const { sub, client_id, sid, scope, auth_time } = claims as Record<string, unknown>;
   if (typeof sub !== "string" || typeof client_id !== "string" || typeof sid !== "string" || typeof scope !== "string") {
     return { ok: false, reason: "invalid" };
+  }
+  const appId = (claims as Record<string, unknown>).app_id;
+  if (appId !== undefined) {
+    // App sign-in token (ADR 0011): its own App session, and the App must still be registered and active.
+    if (typeof appId !== "string" || appId !== client_id) return { ok: false, reason: "invalid" };
+    if (!(await isAppSessionActive(env.DB, sid, sub, appId, now))) return { ok: false, reason: "invalid" };
+    if ((await getApp(env.DB, appId, now))?.status !== "active") return { ok: false, reason: "invalid" };
+    return { ok: true, ctx: { memberId: sub, clientId: appId, appId, sessionId: sid, scope, authTime: typeof auth_time === "number" ? auth_time : 0 } };
   }
   if (!(await isSessionActive(env.DB, sid, sub, now))) return { ok: false, reason: "invalid" };
   if (!(await getActiveClient(env.DB, client_id))) return { ok: false, reason: "invalid" };
