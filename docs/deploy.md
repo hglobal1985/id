@@ -23,7 +23,7 @@
    - 測試：`https://hglobal-id-staging.<你的 workers 子網域>.workers.dev/login/google/callback`（第一次部署後才知道網址）
    - 正式：`https://id.hglobal1985.com/login/google/callback`
 3. 測試與正式共用同一個用戶端（兩個 redirect URI 都加在同一個用戶端）。到 GitHub → **Settings → Secrets and variables → Actions**：
-   - **Variables** 分頁新增 `GOOGLE_CLIENT_ID`（不是機密）。
+   - `GOOGLE_CLIENT_ID`（不是機密）：放在 **Variables** 或 **Secrets** 分頁都可以。
    - **Secrets** 分頁新增 `GOOGLE_CLIENT_SECRET`。
 
 ### 4. 把機密放進 Worker（不用在自己電腦輸入）

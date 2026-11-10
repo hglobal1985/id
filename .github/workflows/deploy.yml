@@ -62,7 +62,8 @@ jobs:
       - name: Deploy Worker
         if: steps.secrets.outputs.ready == 'true'
         env:
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          # Not a secret; accepted from either a repository variable or a repository secret.
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
         run: |
           if [ -n "$GOOGLE_CLIENT_ID" ]; then
             npx wrangler deploy --env "$TARGET" --var "GOOGLE_CLIENT_ID:$GOOGLE_CLIENT_ID"
