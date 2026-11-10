@@ -137,6 +137,7 @@ export const INFO_BLOCKS = [
   { key: "account_status", group: "account", order: 30, label: "帳號狀態", type: "text", collapsed: false },
   { key: "zodiac", group: "birthday", order: 20, label: "星座", type: "text", collapsed: false },
   { key: "life_path_number", group: "birthday", order: 30, label: "生命靈數", type: "text", collapsed: false },
+  { key: "talent_number", group: "birthday", order: 40, label: "天賦數字", type: "text", collapsed: false },
 ] as const;
 
 /**

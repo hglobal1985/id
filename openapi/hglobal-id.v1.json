@@ -474,6 +474,13 @@
                   "integer",
                   "null"
                 ]
+              },
+              "talent_number": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Read-only (imported from the old site)"
               }
             },
             "required": [
@@ -481,7 +488,8 @@
               "registration_country",
               "account_status",
               "zodiac",
-              "life_path_number"
+              "life_path_number",
+              "talent_number"
             ]
           }
         },

@@ -142,7 +142,8 @@ export const ME_JS = String.raw`
     return card("帳號資訊", [el("ul", { class: "plain" }, [
       el("li", { text: "註冊國家：" + i.registration_country }),
       el("li", { text: "星座：" + (i.zodiac || "—") }),
-      el("li", { text: "生命靈數：" + (i.life_path_number === null ? "—" : i.life_path_number) })])]);
+      el("li", { text: "生命靈數：" + (i.life_path_number === null ? "—" : i.life_path_number) }),
+      el("li", { text: "天賦數字：" + (i.talent_number || "—") })])]);
   }
 
   function amwayCard() {

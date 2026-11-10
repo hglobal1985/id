@@ -90,6 +90,7 @@ const ProfileSchema = z
       account_status: z.string(),
       zodiac: z.string().nullable(),
       life_path_number: z.number().int().nullable(),
+      talent_number: z.string().nullable().openapi({ description: "Read-only (imported from the old site)" }),
     }),
   })
   .openapi("Profile");
@@ -256,6 +257,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
           account_status: member.status,
           zodiac: birthday ? zodiacSign(birthday) : null,
           life_path_number: birthday ? lifePathNumber(birthday) : null,
+          talent_number: typeof values.get("talent_number")?.value === "string" ? (values.get("talent_number")?.value as string) : null,
         },
       },
       200,

@@ -9,3 +9,5 @@ coverage/
 *.sql.local
 client.sql
 grant.sql
+legacy-*.json
+legacy-import*.sql
