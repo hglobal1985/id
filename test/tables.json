@@ -2,10 +2,15 @@
   "audit_log",
   "login_flows",
   "login_sessions",
+  "member_numbers",
   "members",
+  "notifications",
   "oauth_authorization_codes",
   "oauth_clients",
   "oauth_refresh_tokens",
   "profile_field_values",
-  "profile_visibility"
+  "profile_visibility",
+  "spouse_bindings",
+  "spouse_candidates",
+  "spouse_members"
 ]

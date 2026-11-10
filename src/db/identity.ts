@@ -2,6 +2,7 @@
 import { hashSecret, randomToken, uuidv7 } from "../lib/crypto";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
+import { ensureMemberNumber } from "./member-numbers";
 
 export const LIFETIME = {
   session: 30 * 24 * 3600,
@@ -26,6 +27,7 @@ export interface MemberRow {
   last_login_at: string | null;
   avatar_url: string | null;
   avatar_source: "none" | "google" | "upload";
+  amway_enabled: number;
 }
 
 export interface GoogleIdentity {
@@ -81,6 +83,8 @@ export async function upsertMemberByGoogle(
     { actorType: "member", actorId: id, action: "member.create", targetType: "member", targetId: id, result: "success", requestId },
     now,
   ).run();
+  // Every member has a member number from the start (random, from the sign-up country).
+  await ensureMemberNumber(db, id, cc, now, requestId);
   const member = await db.prepare("SELECT * FROM members WHERE id = ?").bind(id).first<MemberRow>();
   if (!member) throw new Error("member upsert failed");
   return { member, created: true };

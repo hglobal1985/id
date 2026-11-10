@@ -76,7 +76,7 @@ describe("field definitions API", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("private, max-age=3600");
     const d = (await res.json()) as { fields: { key: string; scope: string; options?: { value: string; label: string }[] }[]; info: { key: string; collapsed: boolean }[] };
-    expect(d.fields.map((f) => f.key)).toEqual(FIELD_KEYS);
+    expect(d.fields.map((f) => f.key)).toEqual(["member_number", ...FIELD_KEYS]);
     expect(d.fields.find((f) => f.key === "contact_email")?.scope).toBe("profile.contact.write");
     expect(d.fields.find((f) => f.key === "birthday")?.scope).toBe("profile.birthday.write");
     const country = d.fields.find((f) => f.key === "country");
