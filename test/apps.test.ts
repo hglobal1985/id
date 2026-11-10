@@ -4,7 +4,7 @@ import { createTestD1, type TestD1 } from "./helpers/d1.mjs";
 import { createSession, upsertMemberByGoogle } from "../src/db/identity";
 import { clearAppCache } from "../src/db/apps";
 import { importSigningKey, signJwt, verifyJwt } from "../src/lib/jwt";
-import { GOOGLE_JWKS_URL, resetGoogleKeyCache } from "../src/auth/google";
+import { GOOGLE_JWKS_URL, GOOGLE_TOKEN_URL, resetGoogleKeyCache } from "../src/auth/google";
 import { AppDefinitionError, allowedReturn, definitionFromForm, parseApp } from "../src/apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, isUpToDate } from "../src/apps/handoff";
 import type { Env } from "../src/env";
@@ -26,7 +26,14 @@ let db: TestD1;
 let env: Env;
 let app: ReturnType<typeof createApp>;
 let now: Date;
-const fetchStub: typeof fetch = async (input) => {
+let exchanges: Record<string, string>[] = [];
+const fetchStub: typeof fetch = async (input, init) => {
+  if (String(input) === GOOGLE_TOKEN_URL) {
+    const body = Object.fromEntries(new URLSearchParams(String(init?.body)));
+    exchanges.push(body);
+    if (body.code !== "good-code" || body.client_secret !== "x") return new Response("bad", { status: 400 });
+    return Response.json({ id_token: "ID.TOKEN.VALUE" });
+  }
   if (String(input) === GOOGLE_JWKS_URL) return Response.json({ keys: [googleKey.publicJwk] }, { headers: { "cache-control": "max-age=3600" } });
   throw new Error(`unexpected fetch ${String(input)}`);
 };
@@ -38,6 +45,7 @@ beforeEach(() => {
   app = createApp({ now: () => now, fetch: fetchStub });
   clearAppCache();
   resetGoogleKeyCache();
+  exchanges = [];
 });
 
 const sha256Hex = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -307,32 +315,37 @@ describe("status switch", () => {
 
 describe("sign-in relay", () => {
   const start = (q: Record<string, string>) => get("/auth/google/start?" + new URLSearchParams(q).toString());
-  const callback = (form: Record<string, string>) =>
-    app.request("/auth/google/callback", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://accounts.google.com" }, body: new URLSearchParams(form).toString() }, env);
+  const callback = (q: Record<string, string>) => get("/login/google/callback?" + new URLSearchParams(q).toString());
 
-  it("sends the browser to Google with the nonce hash and hands the ID token back to the registered return URL", async () => {
+  it("uses the redirect URI the member site already has, and hands the ID token back to the registered return URL", async () => {
     const hash = "b".repeat(64);
     const r = await start({ app_id: "learn", nonce: hash, return: "learn://auth/google", state: "abc" });
     expect(r.status).toBe(302);
     const u = new URL(r.headers.get("location") as string);
     expect(u.origin + u.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
-    expect(Object.fromEntries(u.searchParams)).toMatchObject({ client_id: GOOGLE_CLIENT, redirect_uri: `${ISSUER}/auth/google/callback`, response_type: "id_token", response_mode: "form_post", nonce: hash });
+    // No extra Google setup: the relay shares the member site's registered redirect URI.
+    expect(Object.fromEntries(u.searchParams)).toMatchObject({ client_id: GOOGLE_CLIENT, redirect_uri: `${ISSUER}/login/google/callback`, response_type: "code", nonce: hash });
     const state = u.searchParams.get("state") as string;
-    const done = await callback({ id_token: "ID.TOKEN.VALUE", state });
+    const done = await callback({ code: "good-code", state });
     expect(done.status).toBe(200);
     expect(done.headers.get("cache-control")).toBe("no-store");
+    expect(done.headers.get("set-cookie")).toBeNull();
     expect(await done.text()).toContain('href="learn://auth/google?id_token=ID.TOKEN.VALUE&amp;state=abc"');
+    expect(exchanges[0]).toMatchObject({ grant_type: "authorization_code", client_id: GOOGLE_CLIENT, redirect_uri: `${ISSUER}/login/google/callback` });
     const denied = await callback({ error: "access_denied", state });
     expect(await denied.text()).toContain('href="learn://auth/google?error=access_denied&amp;state=abc"');
+    expect(await (await callback({ code: "bad-code", state })).text()).toContain('href="learn://auth/google?error=sign_in_failed&amp;state=abc"');
     // Web pages get the result in the fragment, which never reaches a server.
     const web = await start({ app_id: "learn", nonce: hash, return: "https://learn.hglobal1985.com/auth/done", state: "s" });
     const webState = new URL(web.headers.get("location") as string).searchParams.get("state") as string;
-    expect(await (await callback({ id_token: "T", state: webState })).text()).toContain('href="https://learn.hglobal1985.com/auth/done#id_token=T&amp;state=s"');
-    // The state expires after 10 minutes and cannot be forged or altered.
+    expect(await (await callback({ code: "good-code", state: webState })).text()).toContain('href="https://learn.hglobal1985.com/auth/done#id_token=ID.TOKEN.VALUE&amp;state=s"');
+    // The state expires after 10 minutes and cannot be forged or altered; the old callback path is gone.
     later(601);
-    expect((await callback({ id_token: "T", state })).status).toBe(400);
-    expect((await callback({ id_token: "T", state: `${state.slice(0, -4)}AAAA` })).status).toBe(400);
-    expect((await callback({ id_token: "T" })).status).toBe(400);
+    expect((await callback({ code: "good-code", state })).status).toBe(400);
+    expect((await callback({ code: "good-code", state: `${state.slice(0, -4)}AAAA` })).status).toBe(400);
+    expect((await app.request("/auth/google/callback", { method: "POST" }, env)).status).toBe(404);
+    // A state that is not a relay token still goes to the member site's own sign-in check.
+    expect(await (await callback({ code: "good-code", state: "not-a-relay-state" })).text()).toContain("登入失敗");
   });
 
   it("refuses unregistered return URLs and bad parameters", async () => {
@@ -351,7 +364,7 @@ describe("sign-in relay", () => {
     const r = await start({ app_id: "learn", nonce: "b".repeat(64), return: "https://learn.hglobal1985.com/auth/done" });
     const state = new URL(r.headers.get("location") as string).searchParams.get("state") as string;
     expect((await admin(sa, "PUT", "/v1/admin/apps/learn", { name: "寰宇行動大學", web_origins: ["https://new.hglobal1985.com"], return_urls: ["learn://auth/google"] })).status).toBe(200);
-    expect((await callback({ id_token: "T", state })).status).toBe(400);
+    expect((await callback({ code: "good-code", state })).status).toBe(400);
   });
 });
 
