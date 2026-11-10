@@ -91,6 +91,9 @@ describe("pages", () => {
     expect(html).toContain("Amway 會員資料之蒐集與跨系統利用告知");
     for (const h of ["1. 蒐集者", "5. 重複編號比對與夫妻綁定", "8. 資料正確性與責任"]) expect(html).toContain(h);
     for (const internal of ["與第一版的差異", "已決定事項", "請專家確認", "我的提醒", "（新增）"]) expect(html).not.toContain(internal);
+    // Section 4 cache time (owner decision 2026-11-10, matches ADR 0006).
+    expect(html).toContain("查詢時效性快取最長 1 日");
+    expect(html).not.toContain("5 分鐘");
   });
 
   it("member-facing site pages never name the other system in Chinese", async () => {
