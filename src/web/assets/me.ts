@@ -241,14 +241,25 @@ export const ME_JS = String.raw`
     img.src = url;
   }
   function socialBlock() {
-    var box = el("div"), links = S.social, panel = null;
+    var box = el("div"), links = S.social, panel = null, draft = null;
     var total = links.length + 1, dense = total > 10;
     var row = el("div", { class: "socials" + (dense ? " dense" : "") });
+    var plusTile = null;
+    // Live preview: while the add form is open, the new link shows in its real place (before the + button) as it is typed.
+    function setDraft(d) {
+      if (!d) { if (draft) { draft.remove(); draft = null; } row.className = "socials" + (links.length + 1 > 10 ? " dense" : ""); return; }
+      row.className = "socials" + (links.length + 2 > 10 ? " dense" : "");
+      var tile = el("div", { class: "soc draft" }, [
+        d.icon ? el("span", { class: "soc-link" }, [el("img", { class: "soc-ico", src: d.icon, alt: "" })]) : el("span", { class: "soc-link" }, [el("span", { class: "soc-ico soc-blank" })]),
+        el("span", { class: "soc-tag soc-draft-name", text: d.name })]);
+      if (draft) draft.replaceWith(tile); else row.insertBefore(tile, plusTile);
+      draft = tile; HG.fitLabels(tile);
+    }
     links.forEach(function (l) {
       var name = l.label || l.platform_name || "連結";
       // In edit mode the name under the icon opens this link for editing (copying is on the public page).
       var copy = el("button", { type: "button", class: "soc-copy", title: "點一下編輯這個連結", text: name, onclick: function () {
-        if (panel) { panel.remove(); panel = null; }
+        if (panel) { panel.remove(); panel = null; setDraft(null); }
         panel = editPanel(l, function () { panel = null; }); box.appendChild(panel); panel.scrollIntoView({ block: "nearest" });
       } });
       row.appendChild(el("div", { class: "soc" }, [
@@ -258,7 +269,8 @@ export const ME_JS = String.raw`
           api("DELETE", "/v1/me/social-links/" + encodeURIComponent(l.id)).then(function (r) { if (r.status === 200) refreshSocial(); else HG.toast(errText(r)); });
         } })]));
     });
-    row.appendChild(el("div", { class: "soc" }, [el("button", { type: "button", class: "soc-plus", "aria-label": "新增連結", onclick: function () { if (panel) { panel.remove(); panel = null; } else { panel = addPanel(function () { panel = null; }); box.appendChild(panel); } } }, [HG.icon("plus")]), el("span", { class: "soc-tag", text: "新增連結" })]));
+    plusTile = el("div", { class: "soc" }, [el("button", { type: "button", class: "soc-plus", "aria-label": "新增連結", onclick: function () { if (panel) { panel.remove(); panel = null; setDraft(null); } else { panel = addPanel(function () { panel = null; setDraft(null); }, setDraft); box.appendChild(panel); } } }, [HG.icon("plus")]), el("span", { class: "soc-tag", text: "新增連結" })]);
+    row.appendChild(plusTile);
     box.appendChild(row);
     HG.fitLabels(row);
     return box;
@@ -280,18 +292,25 @@ export const ME_JS = String.raw`
     ]);
     return panel;
   }
-  function addPanel(onClose) {
-    var m = msg(), key = S.platforms.length ? S.platforms[0].key : "", iconBlob = null;
-    var dd = HG.dropdown({ options: S.platforms.map(function (p) { return { value: p.key, label: p.name }; }), value: key, block: true, searchable: true, onchange: function (v) { key = v; paintCustom(); } });
+  function addPanel(onClose, onDraft) {
+    var m = msg(), key = S.platforms.length ? S.platforms[0].key : "", iconBlob = null, ownIcon = null;
+    var dd = HG.dropdown({ options: S.platforms.map(function (p) { return { value: p.key, label: p.name }; }), value: key, block: true, searchable: true, onchange: function (v) { key = v; paintCustom(); sync(); } });
     var url = el("input", { type: "url", placeholder: "貼上你的個人頁網址（https://…）", "aria-label": "網址" });
     var label = el("input", { type: "text", maxlength: 30, placeholder: "顯示名稱（選填，例如：健管、XS系列；不填就顯示平台名稱）", "aria-label": "名稱" });
     var file = el("input", { type: "file", accept: "image/*", hidden: true, "aria-label": "選擇圖示" });
     var preview = el("img", { class: "soc-preview", alt: "", hidden: true });
     var custom = el("div");
+    function platform() { return S.platforms.filter(function (p) { return p.key === key; })[0] || null; }
+    function sync() {
+      var p = platform();
+      var name = label.value.trim() || (p ? p.name : "") || "連結";
+      onDraft({ icon: (isCustom() && ownIcon) || (p ? p.icon_url : ""), name: name });
+    }
+    label.addEventListener("input", sync);
     function isCustom() { return S.platforms.filter(function (p) { return p.key === key; }).map(function (p) { return p.custom; })[0] === true; }
     function paintCustom() {
       custom.textContent = "";
-      if (!isCustom()) { iconBlob = null; return; }
+      if (!isCustom()) { iconBlob = null; ownIcon = null; return; }
       custom.appendChild(el("div", { class: "gap" }));
       custom.appendChild(el("div", { class: "inline" }, [el("button", { type: "button", class: "small", text: "上傳圖示（選填）", onclick: function () { file.click(); } }), preview, file]));
     }
@@ -299,10 +318,11 @@ export const ME_JS = String.raw`
       var f = file.files && file.files[0]; if (!f) return;
       smallImage(f, 64, 16 * 1024, function (b) { if (!b) { say(m, false, "這個檔案無法讀取"); return; } iconBlob = b;
         // A data: address (the page's CSP allows images from data:, not from blob:).
-        var reader = new FileReader(); reader.onload = function () { preview.src = reader.result; preview.hidden = false; }; reader.readAsDataURL(b);
+        var reader = new FileReader(); reader.onload = function () { preview.src = reader.result; preview.hidden = false; ownIcon = reader.result; sync(); }; reader.readAsDataURL(b);
       });
     });
     paintCustom();
+    sync();
     var panel = el("div", { class: "soc-panel" }, [
       el("label", { text: "選擇平台" }), dd.el, el("div", { class: "gap" }), url, el("div", { class: "gap" }), label, custom, el("div", { class: "actions" }, [
         el("button", { type: "button", class: "primary", text: "新增", onclick: function () {
