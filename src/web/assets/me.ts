@@ -535,13 +535,17 @@ export const ME_JS = String.raw`
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     s.setAttribute("class", cls); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true"); s.innerHTML = html; return s;
   }
+  // 「xxx的生命靈數（x年x月x日）」 is the block's title (the plain 生日與生命靈數 until a birthday is saved).
+  function lifeTitle() {
+    var f = S.profile.fields.birthday, m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((f && f.value) || "");
+    return m ? (shownName() || "我") + "的生命靈數（" + m[1] + "年" + Number(m[2]) + "月" + Number(m[3]) + "日）" : "生日與生命靈數";
+  }
   // The 生命靈數 chart inside the birthday block (one block for both).
   function chartBody() {
     var c = S.profile.life_chart; if (!c) return null;
     function item(cls, label, value, badge) { return el("div", { class: "ln-item " + cls }, [el("span", { text: label }), el("span", { class: "ln-badge " + badge, text: String(value) })]); }
     function legend(cls, text) { return el("div", {}, [el("span", { class: "ln-dot " + cls }), el("span", { text: text })]); }
-    return el("div", { class: "row" }, [
-      el("div", { class: "row-head" }, [el("label", { text: "生命靈數" }), el("div", { class: "row-tools" }, [lockedPill()])]),
+    return el("div", {}, [
       el("div", { class: "ln-card" }, [
         el("div", { class: "ln-head" }, [item("z", "星座：" + c.zodiac_name, c.zodiac_number, "ln-b-zodiac"), item("b", "生日數：", c.birthday_number, "ln-b-birthday"), item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent"), item("l", "加總命數：", c.life_number, "ln-b-life")]),
         chartSvg(c),
@@ -609,7 +613,7 @@ export const ME_JS = String.raw`
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
       return card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField)));
     }
-    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { var ch = chartBody(); return card("生日與生命靈數", [profileField(S.def.birthday), ch]); } };
+    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { var ch = chartBody(); return card(lifeTitle(), [profileField(S.def.birthday), ch]); } };
     (S.defs.blocks || []).slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (blk) {
       var make = makers[blk.key], node = make ? make() : null; if (node) { root.appendChild(node); NODES[blk.key] = node; }
     });
