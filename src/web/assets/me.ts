@@ -499,20 +499,21 @@ export const ME_JS = String.raw`
 
   // ---- life number chart (same drawing data as the starry.phd member center) ----
   // One SVG with fixed geometry (same as src/web/chart.ts): each number has its own 100x80 cell, so any number of circles
-  // or a triangle never moves anything. Outward from the middle: the red triangle behind the number, then the circles.
-  var RING_COLOR = { black: "#0f172a", birthday: "#f5b400", zodiac: "#8b2fe0", talent: "#7ccf1b" };
+  // or a shape never moves anything. Outward from the middle: the shape (天賦數 = small solid triangle, 加總命數 = small solid square) behind the white number, then the circles.
+  var RING_COLOR = { black: "#0f172a", birthday: "#f5b400", zodiac: "#8b2fe0" }, TALENT_COLOR = "#3d7a06", LIFE_COLOR = "#e5303a";
   function centre(n) { return n === 0 ? { x: 350, y: 200 } : { x: 50 + 100 * Math.floor((n - 1) / 3), y: 40 + 80 * ((n - 1) % 3) }; }
   function chartCell(n, r) {
     var kinds = [], i;
     for (i = 0; i < r.black; i++) kinds.push("black");
     if (r.birthday) kinds.push("birthday");
     if (r.zodiac) kinds.push("zodiac");
-    for (i = 0; i < r.talent; i++) kinds.push("talent");
-    var c = centre(n), r0 = r.life ? 26 : 15, step = kinds.length > 1 ? Math.min(4.5, (37 - r0) / (kinds.length - 1)) : 0, out = "";
+    var tri = r.talent > 0, sq = !!r.life, shape = tri || sq;
+    var c = centre(n), r0 = shape ? 21 : 15, step = kinds.length > 1 ? Math.min(4.5, (37 - r0) / (kinds.length - 1)) : 0, out = "";
     for (i = kinds.length - 1; i >= 0; i--) out += '<circle cx="' + c.x + '" cy="' + c.y + '" r="' + (r0 + i * step).toFixed(2) + '" fill="#f6f8f4" stroke="' + RING_COLOR[kinds[i]] + '" stroke-width="2.5"/>';
-    if (r.life) out += '<polygon points="' + c.x + "," + (c.y - 18) + " " + (c.x - 19) + "," + (c.y + 14) + " " + (c.x + 19) + "," + (c.y + 14) + '" fill="#e5303a" stroke="#e5303a" stroke-width="3" stroke-linejoin="round"/>';
-    var fill = r.life ? "#ffffff" : kinds.length ? "#0f172a" : "#c3cbbf";
-    return out + '<text x="' + c.x + '" y="' + (c.y + (r.life ? 5 : 1)) + '" dy=".35em" text-anchor="middle" font-size="' + (r.life ? 22 : 24) + '" fill="' + fill + '">' + n + "</text>";
+    if (tri) out += '<polygon points="' + c.x + "," + (c.y - 14) + " " + (c.x - 15) + "," + (c.y + 11) + " " + (c.x + 15) + "," + (c.y + 11) + '" fill="' + TALENT_COLOR + '" stroke="' + TALENT_COLOR + '" stroke-width="2" stroke-linejoin="round"/>';
+    if (sq) out += '<rect x="' + (c.x - 12) + '" y="' + (c.y - 12) + '" width="24" height="24" rx="2" fill="' + LIFE_COLOR + '" stroke="' + LIFE_COLOR + '" stroke-width="2" stroke-linejoin="round"/>';
+    var fill = shape ? "#ffffff" : kinds.length ? "#0f172a" : "#c3cbbf";
+    return out + '<text x="' + c.x + '" y="' + (c.y + (tri && !sq ? 3 : 1)) + '" dy=".35em" text-anchor="middle" font-size="' + (shape ? 18 : 24) + '" fill="' + fill + '">' + n + "</text>";
   }
   function chartSvg(c) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"), html = "";
@@ -555,8 +556,8 @@ export const ME_JS = String.raw`
         el("div", { class: "ln-head" }, [item("z", "星座：" + c.zodiac_name, c.zodiac_number, "ln-b-zodiac"), item("b", "生日數：", c.birthday_number, "ln-b-birthday"), item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent"), item("l", "加總命數：", c.life_number, "ln-b-life")]),
         chartSvg(c),
         el("div", { class: "ln-legend" }, [
-          legend("rg-black", "先天數生日數字"), legend("rg-birthday", "生日數"), legend("rg-zodiac", "星座數"), legend("rg-talent", "天賦數"),
-          el("div", {}, [svgIcon("ln-dot-tri", '<polygon points="12,3 22,21 2,21" fill="#e5303a" stroke="#e5303a" stroke-width="2" stroke-linejoin="round"/>'), el("span", { text: "加總命數" })]),
+          legend("rg-black", "先天數生日數字"), legend("rg-birthday", "生日數"), legend("rg-zodiac", "星座數"), el("div", {}, [svgIcon("ln-dot-tri", '<polygon points="12,4 21,19 3,19" fill="#3d7a06" stroke="#3d7a06" stroke-width="2" stroke-linejoin="round"/>'), el("span", { text: "天賦數" })]),
+          el("div", {}, [svgIcon("ln-dot-tri", '<rect x="5" y="5" width="14" height="14" rx="2" fill="#e5303a" stroke="#e5303a" stroke-width="2" stroke-linejoin="round"/>'), el("span", { text: "加總命數" })]),
           ].concat(LINE_LEGEND.map(function (l) { return el("div", {}, [svgIcon("ln-dot-tri", l.icon), el("span", { text: l.text })]); })))
       ])
     ]);

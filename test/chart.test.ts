@@ -13,13 +13,23 @@ describe("life number chart: 主線 and 副線", () => {
   it("a number that only carries the 加總命數 triangle still joins the lines (1985-07-03: 6 is the life number)", () => {
     const c = lifeChartOf("1985-07-03")!;
     expect(c.life_number).toBe(6);
-    expect(c.rings[6]).toMatchObject({ black: 0, birthday: false, zodiac: false, talent: 0, life: true }); // a triangle and no circle
+    expect(c.rings[6]).toMatchObject({ black: 0, birthday: false, zodiac: false, talent: 0, life: true }); // a square and no circle
     // marked: 1 3 4 5 7 8 9 (circles) and 6 (triangle)
     expect(c.lines).toEqual([[4, 5, 6], [7, 8, 9], [1, 4, 7], [3, 6, 9, 0], [1, 5, 9], [3, 5, 7]]); // 0 (the zeros of the date) is marked: 3-6-9 reaches on to 0
     expect(c.sub_lines).toEqual([[4, 8], [8, 6]]);
     // and they are drawn: 3-6-9 and 8-6
     const svg = chartHtml(c);
     expect((svg.match(/<line /g) ?? []).length).toBe(8);
+  });
+
+  it("天賦數 = small solid triangle, 加總命數 = small solid square, both smaller than the old big triangle, number in white", () => {
+    const html = chartHtml(lifeChartOf("1985-07-03")!); // talent 33 → 3; life 6
+    expect(html).toContain('fill="#3d7a06"'); // the triangle on 3
+    expect(html).toContain('<rect x="138" y="188" width="24" height="24"'); // the square on 6 (x 150, y 200)
+    // the old shape was 38 wide and 32 tall; the new triangle is 30 x 25 and the square 24 x 24
+    const tri = /<polygon points="(\d+),(\d+) (\d+),(\d+) (\d+),(\d+)"/.exec(html)!;
+    expect(Number(tri[5]) - Number(tri[3])).toBeLessThan(38);
+    expect(Number(tri[4]) - Number(tri[2])).toBeLessThan(32);
   });
 
   it("0 sits right of 9 and has one line only: 3-6-9-0 (the reference chart for 1992-02-03)", () => {
@@ -45,8 +55,14 @@ describe("life number chart: 主線 and 副線", () => {
     expect((html.match(/<line /g) ?? []).length).toBe(4); // 2 main + 2 sub lines (no legend)
     expect((html.match(/stroke-dasharray="7 6"/g) ?? []).length).toBe(2);
     expect(html).toContain('stroke="#2563eb" stroke-width="2.5"'); // same width as the 2.5 circles
-    expect(html).toMatch(/<polygon points="50,\d+ [^"]*" fill="#e5303a"/);
-    expect(html).toMatch(/<text x="50" y="125" dy="\.35em" text-anchor="middle" font-size="22" fill="#ffffff">2<\/text>/);
+    // 加總命數 (2) = a small solid red square, and 2 is also in the talent number 29: a small solid green triangle below it
+    expect(html).toContain('<rect x="38" y="108" width="24" height="24" rx="2" fill="#e5303a"');
+    expect(html).toContain('<polygon points="50,106 35,131 65,131" fill="#3d7a06"');
+    expect(html.indexOf("<polygon points=\"50,106")).toBeLessThan(html.indexOf('<rect x="38" y="108"')); // the square is on top of the triangle
+    expect(html).toMatch(/<text x="50" y="121" dy="\.35em" text-anchor="middle" font-size="18" fill="#ffffff">2<\/text>/);
+    // 9 is in the talent number 29: a triangle (and its black circles), no bright-green circle any more
+    expect(html).toMatch(/<polygon points="250,\d+ [^"]*" fill="#3d7a06"/);
+    expect(html).not.toContain("#7ccf1b");
     for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) expect(html).toMatch(new RegExp(`<text x="${50 + 100 * Math.floor((n - 1) / 3)}" y="\\d+"[^>]*>${n}</text>`));
   });
 
