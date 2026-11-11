@@ -35,6 +35,8 @@ hr.part{border:0;border-top:2px solid var(--line);margin:28px 0 20px}
 .bell .dot{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--orange);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
 /* cards and text */
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:0 0 14px;box-shadow:var(--shadow)}
+.card>h2.life-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:1.1rem}
+.card>h2.lt-0{font-size:1.1rem}.card>h2.lt-1{font-size:.95rem}.card>h2.lt-2{font-size:.82rem}.card>h2.lt-3{font-size:.7rem}.card>h2.lt-4{font-size:.6rem}
 .card>h2:first-child{padding-bottom:8px;border-bottom:2px solid var(--green-soft)}
 .banner{border-left:4px solid var(--orange);padding:10px 14px;background:var(--orange-soft);border-radius:8px;margin:0 0 12px}
 .banner.danger{border-color:var(--danger);background:var(--danger-soft)}

@@ -35,9 +35,25 @@ describe("life number chart: 主線 and 副線", () => {
 });
 
 describe("block title", () => {
-  it("xxx的生命靈數（x年x月x日）, with the date only when it may be shown", () => {
-    expect(lifeTitle("小美", "1985-07-03")).toBe("小美的生命靈數（1985年7月3日）");
-    expect(lifeTitle("小美", "2001-12-31")).toBe("小美的生命靈數（2001年12月31日）");
-    expect(lifeTitle("小美", null)).toBe("小美的生命靈數");
+  it("xxx生命靈數 x年x月x日, with the date only when it may be shown", () => {
+    expect(lifeTitle("小美", "1985-07-03")).toBe("小美生命靈數 1985年7月3日");
+    expect(lifeTitle("小美", "2001-12-31")).toBe("小美生命靈數 2001年12月31日");
+    expect(lifeTitle("小美", null)).toBe("小美生命靈數");
+  });
+});
+
+describe("one-line title", () => {
+  it("the longer the title, the smaller the font step (never a second line)", async () => {
+    const { titleSize } = await import("../src/web/nav-text");
+    expect(titleSize("杜杜龍生命靈數 1985年7月3日")).toBe(0);
+    expect(titleSize("王大明明明明明明生命靈數 1985年7月3日")).toBeGreaterThan(0);
+    expect(titleSize("王大明明明明明明明明明明明生命靈數 1990年4月5日")).toBe(4); // 24 units: the smallest conservative step
+    expect(titleSize("王".repeat(40) + "生命靈數")).toBe(4);
+    let last = 0;
+    for (const n of [3, 8, 10, 13, 16, 30]) {
+      const s = titleSize("王".repeat(n) + "生命靈數 1985年7月3日");
+      expect(s).toBeGreaterThanOrEqual(last);
+      last = s;
+    }
   });
 });

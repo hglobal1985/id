@@ -52,3 +52,10 @@ export function nameSize(name: string): 0 | 1 | 2 | 3 {
   const units = textUnits(name.trim());
   return units <= 6 ? 0 : units <= 8 ? 1 : units <= 10 ? 2 : 3;
 }
+
+/** Font step for a block title that must stay on one line (0 = normal 1.1 rem … 4 = smallest): the longer, the smaller. */
+export function titleSize(title: string): 0 | 1 | 2 | 3 | 4 {
+  const units = textUnits(title.trim());
+  // Conservative steps (a 320 px wide phone); the page script refines it to the real width.
+  return units <= 14.5 ? 0 : units <= 17 ? 1 : units <= 19.5 ? 2 : units <= 23 ? 3 : 4;
+}
