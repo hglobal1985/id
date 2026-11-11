@@ -104,4 +104,13 @@ describe("D1 migrations", () => {
     expect(db.prepare("SELECT hglobal FROM vocab_terms WHERE pool = 'education_system' AND term = '寰宇'").get()).toEqual({ hglobal: 1 });
     db.close();
   });
+
+  it("0016 marks an already typed 寰宇 as meaning H-Global1985", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 15)) db.exec(readFileSync(join(dir, f), "utf8"));
+    db.exec("INSERT INTO vocab_terms (pool, norm, term, uses, hglobal, created_at, updated_at) VALUES ('education_system', '寰宇', '寰宇', 3, 0, 'x', 'x')");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) >= 15)) db.exec(readFileSync(join(dir, f), "utf8"));
+    expect(db.prepare("SELECT hglobal, uses FROM vocab_terms WHERE pool = 'education_system' AND norm = '寰宇'").get()).toEqual({ hglobal: 1, uses: 3 });
+    db.close();
+  });
 });
