@@ -501,7 +501,7 @@ export const ME_JS = String.raw`
   // One SVG with fixed geometry (same as src/web/chart.ts): each number has its own 100x80 cell, so any number of circles
   // or a triangle never moves anything. Outward from the middle: the red triangle behind the number, then the circles.
   var RING_COLOR = { black: "#0f172a", birthday: "#f5b400", zodiac: "#8b2fe0", talent: "#7ccf1b" };
-  function centre(n) { return { x: 50 + 100 * Math.floor((n - 1) / 3), y: 40 + 80 * ((n - 1) % 3) }; }
+  function centre(n) { return n === 0 ? { x: 350, y: 200 } : { x: 50 + 100 * Math.floor((n - 1) / 3), y: 40 + 80 * ((n - 1) % 3) }; }
   function chartCell(n, r) {
     var kinds = [], i;
     for (i = 0; i < r.black; i++) kinds.push("black");
@@ -516,11 +516,11 @@ export const ME_JS = String.raw`
   }
   function chartSvg(c) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"), html = "";
-    s.setAttribute("class", "ln-svg"); s.setAttribute("viewBox", "0 0 300 240"); s.setAttribute("role", "img"); s.setAttribute("aria-label", "彩色九宮格");
+    s.setAttribute("class", "ln-svg"); s.setAttribute("viewBox", "0 0 400 240"); s.setAttribute("role", "img"); s.setAttribute("aria-label", "彩色九宮格");
     function seg(l, extra) { var a = centre(l[0]), b = centre(l[l.length - 1]); return '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"' + extra + "/>"; }
     (c.sub_lines || []).forEach(function (l) { html += seg(l, ' stroke-dasharray="7 6"'); });
     (c.lines || []).forEach(function (l) { html += seg(l, ""); });
-    for (var n = 1; n <= 9; n++) html += chartCell(n, c.rings[n]);
+    for (var n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]) html += chartCell(n, c.rings[n]);
     s.innerHTML = html; return s;
   }
   var BLUE = 'stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" fill="none"';

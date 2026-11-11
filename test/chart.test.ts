@@ -15,16 +15,33 @@ describe("life number chart: 主線 and 副線", () => {
     expect(c.life_number).toBe(6);
     expect(c.rings[6]).toMatchObject({ black: 0, birthday: false, zodiac: false, talent: 0, life: true }); // a triangle and no circle
     // marked: 1 3 4 5 7 8 9 (circles) and 6 (triangle)
-    expect(c.lines).toEqual([[4, 5, 6], [7, 8, 9], [1, 4, 7], [3, 6, 9], [1, 5, 9], [3, 5, 7]]);
+    expect(c.lines).toEqual([[4, 5, 6], [7, 8, 9], [1, 4, 7], [3, 6, 9, 0], [1, 5, 9], [3, 5, 7]]); // 0 (the zeros of the date) is marked: 3-6-9 reaches on to 0
     expect(c.sub_lines).toEqual([[4, 8], [8, 6]]);
     // and they are drawn: 3-6-9 and 8-6
     const svg = chartHtml(c);
     expect((svg.match(/<line /g) ?? []).length).toBe(8);
   });
 
+  it("0 sits right of 9 and has one line only: 3-6-9-0 (the reference chart for 1992-02-03)", () => {
+    const c = lifeChartOf("1992-02-03")!;
+    expect(c.rings[0]).toMatchObject({ black: 2 }); // two zeros in the date
+    expect(c.rings[9]).toMatchObject({ black: 2 });
+    expect(c.life_number).toBe(8);
+    expect(c.lines).toEqual([[1, 2, 3], [3, 6, 9, 0]]);
+    expect(c.lines.filter((l) => l.includes(0))).toHaveLength(1);
+    // 0 not marked (no zero in the date): 3-6-9 stays three numbers
+    const plain = lifeChartOf("1999-11-15")!;
+    expect(plain.rings[0]).toMatchObject({ black: 0, talent: 0 });
+    expect(plain.lines.every((l) => !l.includes(0))).toBe(true);
+    // drawn at the right end of the bottom row (x 350, y 200), in the 4th column
+    const html = chartHtml(c);
+    expect(html).toMatch(/<text x="350" y="20[0-9]"[^>]*>0<\/text>/);
+    expect(html).toMatch(/<line x1="50" y1="200" x2="350" y2="200"/); // 3 ... 0
+  });
+
   it("is one fixed-geometry SVG: 主線 solid and 副線 dashed as wide as the circles, a solid triangle behind a white number", () => {
     const html = chartHtml(lifeChartOf("1990-04-15")!);
-    expect(html).toContain('<svg class="ln-svg" viewBox="0 0 300 240"');
+    expect(html).toContain('<svg class="ln-svg" viewBox="0 0 400 240"');
     expect((html.match(/<line /g) ?? []).length).toBe(4); // 2 main + 2 sub lines (no legend)
     expect((html.match(/stroke-dasharray="7 6"/g) ?? []).length).toBe(2);
     expect(html).toContain('stroke="#2563eb" stroke-width="2.5"'); // same width as the 2.5 circles
