@@ -199,7 +199,7 @@ describe("social icons on the public page and in the data export", () => {
     let html = await (await req(null, "GET", `/${id}`)).text();
     expect(html).toContain('<div class="socials">');
     expect(html).toContain('href="https://line.me/ti/p/abc" target="_blank" rel="noopener noreferrer nofollow"');
-    expect(html).toContain('data-url="https://line.me/ti/p/abc">複製</button>');
+    expect(html).toContain(`data-url="https://line.me/ti/p/abc" title="點一下複製連結">LINE</button>`);
     expect(html).toContain("/icons/social/platform/line?v=1");
     expect(html).toContain("&lt;b&gt;x&lt;/b&gt;"); // labels are escaped
     expect(html).not.toContain("<b>x</b>");

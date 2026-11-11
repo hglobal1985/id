@@ -66,7 +66,13 @@ export interface LifeChart {
   talent_numbers: number[];
   life_number: number;
   rings: Record<number, Rings>;
+  /** 特殊連線: the straight lines (row, column or diagonal of the 3x3 grid) whose three numbers all carry a circle. */
+  lines: [number, number, number][];
 }
+
+const GRID_LINES: readonly [number, number, number][] = [
+  [1, 2, 3], [4, 5, 6], [7, 8, 9], [1, 4, 7], [2, 5, 8], [3, 6, 9], [1, 5, 9], [3, 5, 7],
+];
 
 const ZODIAC_ORDER = ["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"];
 
@@ -88,5 +94,7 @@ export function lifeChartOf(birthday: string): LifeChart | null {
   for (let d = 1; d <= 9; d++) rings[d] = { black: 0, birthday: d === birthdayNumber, zodiac: d === zodiacNumber, talent: 0, life: d === sum };
   for (const d of digits) if (d >= 1) (rings[d] as Rings).black += 1;
   for (const t of talent) for (const ch of String(t)) if (Number(ch) >= 1) (rings[Number(ch)] as Rings).talent += 1;
-  return { zodiac_name: sign, zodiac_number: zodiacNumber, birthday_number: birthdayNumber, talent_numbers: talent, life_number: sum, rings };
+  const circled = (n: number) => { const r = rings[n] as Rings; return r.black > 0 || r.birthday || r.zodiac || r.talent > 0; };
+  const lines = GRID_LINES.filter((l) => l.every(circled)).map((l) => [...l] as [number, number, number]);
+  return { zodiac_name: sign, zodiac_number: zodiacNumber, birthday_number: birthdayNumber, talent_numbers: talent, life_number: sum, rings, lines };
 }

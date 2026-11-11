@@ -336,7 +336,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       ? `<div class="socials${iconsPerRow(p.links.length) === 7 ? " dense" : ""}">${p.links
           .map((l) => {
             const name = l.label || l.platform_name || "連結";
-            return `<div class="soc"><a class="soc-link" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer nofollow" title="${escapeHtml(name)}"><img class="soc-ico" src="${iconSrc(l)}" alt="${escapeHtml(name)}"></a><button type="button" class="soc-copy" data-url="${escapeHtml(l.url)}">複製</button></div>`;
+            return `<div class="soc"><a class="soc-link" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer nofollow" title="${escapeHtml(name)}"><img class="soc-ico" src="${iconSrc(l)}" alt="${escapeHtml(name)}"></a><button type="button" class="soc-copy" data-url="${escapeHtml(l.url)}" title="點一下複製連結">${escapeHtml(name)}</button></div>`;
           })
           .join("")}</div>`
       : "";
@@ -344,9 +344,9 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const edit = `<a class="button small primary" href="/my/${encodeURIComponent(number)}/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>`;
     const body =
       (owner ? `${tabs}<div class="pagebar"><a class="button small" href="/${encodeURIComponent(number)}">預覽公開頁</a><div class="tools">${share}${edit}</div></div>` : tabs) +
-      `<section class="card"><div class="hero">${avatar}<div class="hero-main"><div class="nameline"><h1 class="nm nm-${nameSize(nameOf(p))}">${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` + socials +
+      `<section class="card"><div class="hero">${avatar}<div class="hero-main"><div class="nameline"><h1 class="nm nm-${nameSize(nameOf(p))}">${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="help">${escapeHtml(number)}</span></div></div></div>` + socials +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
-      `${rows || '<p class="help">還沒有公開的資料。</p>'}</section>` +
+      `${rows || (amwayRows || p.chart || socials ? "" : '<p class="help">還沒有公開的資料。</p>')}</section>` +
       [
         { block: "amway", html: amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "" },
         { block: "birthday", html: p.chart ? `<section class="card"><h2>生命靈數</h2>${chartHtml(p.chart)}</section>` : "" },

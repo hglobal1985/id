@@ -147,21 +147,23 @@ details.fold>summary{color:var(--fg)}
 table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left;padding:8px 6px;border-top:1px solid var(--line);vertical-align:top;word-break:break-word}
 .tablewrap{overflow-x:auto}
 /* life number chart (same drawing data as the starry.phd member center) */
-.ln-card{background:#f6f8f4;color:#0f172a;border:1px solid var(--line);border-radius:18px;padding:12px 14px}
+.ln-card{max-width:380px;margin-inline:auto;background:#f6f8f4;color:#0f172a;border:1px solid var(--line);border-radius:18px;padding:12px 14px}
 .ln-head{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;padding-bottom:10px;border-bottom:2px solid #e3e8df}
 .ln-item{display:flex;align-items:center;gap:4px;font-weight:400;font-size:.8rem;line-height:1.3;white-space:nowrap}
-.ln-item.z{color:#8b2fe0}.ln-item.b{color:#b98600}.ln-item.t{color:#4f9a0b}.ln-item.l{color:#e5303a}
+.ln-item.z{color:#8b2fe0}.ln-item.b{color:#8a6500}.ln-item.t{color:#3d7a06}.ln-item.l{color:#e5303a}
 .ln-badge{display:inline;font-weight:inherit}
-.ln-grid{width:100%;border-collapse:collapse;margin:4px 0 0;table-layout:fixed}
-.ln-grid td{padding:5px 0;border:0}
-.ln-cell{text-align:center;vertical-align:middle}
+.ln-grid{position:relative;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;margin:4px 0 0}
+.ln-cell{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;padding:5px 0}
+.ln-lines{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.ln-lines line{stroke:#2563eb;stroke-width:2.5;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .ln-empty .ln-n{color:#c3cbbf}
-.ln-ring{display:inline-flex;align-items:center;justify-content:center;padding:2px;border:2.5px solid;border-radius:50%;background:#fff}
+.ln-ring{display:inline-flex;align-items:center;justify-content:center;aspect-ratio:1;padding:2px;border:2.5px solid;border-radius:50%;background:#fff}
 .ln-dot{flex:none;width:16px;height:16px;border-radius:50%;border:2.5px solid;box-sizing:border-box}
 .rg-black{border-color:#0f172a}.rg-birthday{border-color:#f5b400}.rg-zodiac{border-color:#8b2fe0}.rg-talent{border-color:#7ccf1b}
 .ln-n{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;font-size:1.3rem;font-weight:800;color:#0f172a;line-height:1}
 .ln-red{color:#e5303a}
-.ln-tri{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:26px 24px 8px}
+.ln-ring-t{padding:9px}
+.ln-tri{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:11px 9px 3px}
 .ln-tri svg{position:absolute;inset:0;width:100%;height:100%}
 .ln-tri>*{position:relative}
 .ln-legend{border-top:2px solid #e3e8df;margin-top:4px;padding-top:8px;display:grid;grid-template-columns:1fr;gap:4px;font-size:.8rem;color:#1e293b;line-height:1.3}
@@ -204,7 +206,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .soc-link{display:block;line-height:0}
 .soc-ico,.soc-plus{width:44px;height:44px;border-radius:10px;display:block;object-fit:cover}
 .socials.dense .soc-ico,.socials.dense .soc-plus{width:34px;height:34px}
-.soc-copy,.soc-tag{font:inherit;font-size:.68rem;line-height:1;padding:3px 7px;min-height:0;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);white-space:nowrap}
+.soc-copy,.soc-tag{font:inherit;font-size:.7rem;line-height:1.25;padding:3px 7px;min-height:0;max-width:100%;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--muted);white-space:normal;overflow-wrap:anywhere;text-align:center}
 .soc-copy:hover{border-color:var(--green);color:var(--green)}
 .soc-tag{border-color:transparent;background:transparent}
 .soc-plus{display:flex;align-items:center;justify-content:center;border:2px dashed var(--green);background:#fff;color:var(--green);min-height:0;padding:0}
