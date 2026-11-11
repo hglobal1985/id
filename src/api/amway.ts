@@ -4,17 +4,18 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { getMember } from "../db/identity";
-import { consentIsCurrent, latestConsent, listOptions, readAmwayFields, setAmwayEnabled, writeAmwayField } from "../db/amway";
+import { listOptions, readAmwayFields, setAmwayEnabled, writeAmwayField } from "../db/amway";
+import { canonicalTerms, recordTerms } from "../db/vocab";
+import { readProfile } from "../db/profile";
+import { isPool } from "../vocab/terms";
 import { AMWAY_FIELDS, getAmwayField, validateAmwayValue, type AmwayValue } from "../amway/fields";
-import { CONSENT_DOCUMENT, CONSENT_SHORT, CONSENT_VERSION } from "../amway/consent";
-import { resolveIssuer } from "../oidc/config";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const security = [{ bearer: [] }];
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
-const common = { 401: err("unauthenticated"), 403: err("forbidden (scope) or consent_required") };
+const common = { 401: err("unauthenticated"), 403: err("forbidden (scope) or amway_disabled") };
 
 const AmwayValueSchema = z
   .union([z.string(), z.object({ option: z.string(), custom_text: z.string().nullable() }), z.null()])
@@ -30,14 +31,6 @@ const definitionsRoute = createRoute({
   security,
   responses: { 200: { description: "Definitions", content: json(z.record(z.unknown()).openapi("AmwayFieldDefinitions")) }, ...common },
 });
-const consentRoute = createRoute({
-  method: "get",
-  path: "/v1/amway/consent",
-  tags: ["amway"],
-  summary: "Consent text (short version) and version. Render as given; never hard-code (cache up to 1 hour).",
-  security,
-  responses: { 200: { description: "Consent", content: json(z.record(z.unknown()).openapi("AmwayConsent")) }, ...common },
-});
 const meRoute = createRoute({
   method: "get",
   path: "/v1/me/amway",
@@ -51,9 +44,7 @@ const meRoute = createRoute({
         z
           .object({
             enabled: z.boolean(),
-            consent: z.object({ version: z.string(), accepted_at: z.string(), current: z.boolean() }).nullable(),
-            current_consent_version: z.string(),
-            fields: z.record(FieldStateSchema),
+            fields: z.record(FieldStateSchema.extend({ visibility: z.enum(["public", "private"]) })),
           })
           .openapi("MyAmway"),
       ),
@@ -65,9 +56,9 @@ const enabledRoute = createRoute({
   method: "put",
   path: "/v1/me/amway/enabled",
   tags: ["amway"],
-  summary: "Turn 「我是Amway會員」 on (needs the current consent_version) or off (data kept, eligibility paused)",
+  summary: "Turn 「我是Amway會員」 on or off at once, no confirmation step (off keeps the data and pauses eligibility)",
   security,
-  request: { body: { required: true, content: json(z.object({ enabled: z.boolean(), consent_version: z.string().max(20).optional() })) } },
+  request: { body: { required: true, content: json(z.object({ enabled: z.boolean() })) } },
   responses: { 200: { description: "Saved", content: json(z.object({ enabled: z.boolean() })) }, ...common, 422: err("invalid_field") },
 });
 const fieldRoute = createRoute({
@@ -101,6 +92,15 @@ const readRoute = createRoute({
   responses: { 200: { description: "Marked", content: json(z.object({ read: z.literal(true) })) }, ...common, 404: err("not_found") },
 });
 
+const readAllRoute = createRoute({
+  method: "post",
+  path: "/v1/me/notifications/read-all",
+  tags: ["notifications"],
+  summary: "Mark all my notifications as read",
+  security,
+  responses: { 200: { description: "Marked", content: json(z.object({ read: z.literal(true) })) }, ...common },
+});
+
 export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.use("/v1/amway/*", bearerAuth(deps));
 
@@ -120,6 +120,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           type: f.type,
           ...(f.max_length ? { max_length: f.max_length } : {}),
           ...(f.type !== "text" ? { options: options.get(f.key) ?? [] } : {}),
+          ...(f.suggest ? { suggest: f.suggest } : {}),
           visible_when: f.visible_when,
           read_only: false,
           scope: "amway.write",
@@ -130,45 +131,27 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     );
   });
 
-  app.openapi(consentRoute, (c) => {
-    const denied = missingScope(c, ["amway.read"]);
-    if (denied) return denied as never;
-    c.header("cache-control", "private, max-age=3600");
-    const { full_privacy_path, ...text } = CONSENT_SHORT;
-    return c.json({ document: CONSENT_DOCUMENT, version: CONSENT_VERSION, ...text, full_privacy_url: `${resolveIssuer(c.env, c.req.url)}${full_privacy_path}` }, 200);
-  });
-
   app.openapi(meRoute, async (c) => {
     const denied = missingScope(c, ["amway.read"]);
     if (denied) return denied as never;
     const { memberId } = c.get("auth");
     const member = await getMember(c.env.DB, memberId);
-    const consent = await latestConsent(c.env.DB, memberId);
     const rows = await readAmwayFields(c.env.DB, memberId);
-    const fields: Record<string, { value: AmwayValue; pending_value: AmwayValue; status: string; updated_at: string | null }> = {};
+    const { visibility } = await readProfile(c.env.DB, memberId);
+    const fields: Record<string, { value: AmwayValue; pending_value: AmwayValue; status: string; updated_at: string | null; visibility: "public" | "private" }> = {};
     for (const f of AMWAY_FIELDS) {
       const r = rows.get(f.key);
-      fields[f.key] = r ? { value: r.value, pending_value: r.pending_value, status: r.status, updated_at: r.updated_at } : { value: null, pending_value: null, status: "not_required", updated_at: null };
+      const vis = visibility.get(f.key) ?? "private";
+      fields[f.key] = r ? { value: r.value, pending_value: r.pending_value, status: r.status, updated_at: r.updated_at, visibility: vis } : { value: null, pending_value: null, status: "not_required", updated_at: null, visibility: vis };
     }
-    return c.json(
-      {
-        enabled: member?.amway_enabled === 1,
-        consent: consent ? { ...consent, current: consentIsCurrent(consent) } : null,
-        current_consent_version: CONSENT_VERSION,
-        fields,
-      },
-      200,
-    );
+    return c.json({ enabled: member?.amway_enabled === 1, fields }, 200);
   });
 
   app.openapi(enabledRoute, async (c) => {
     const denied = missingScope(c, ["amway.write"]);
     if (denied) return denied as never;
-    const { enabled, consent_version } = c.req.valid("json");
+    const { enabled } = c.req.valid("json");
     const { memberId, clientId } = c.get("auth");
-    if (enabled && consent_version !== CONSENT_VERSION) {
-      return c.json(errorBody("consent_required", "請閱讀並同意最新的同意說明", c.get("requestId"), { current_version: CONSENT_VERSION }), 403);
-    }
     await setAmwayEnabled(c.env.DB, memberId, enabled, { appId: clientId, requestId: c.get("requestId"), now: deps.now() });
     return c.json({ enabled }, 200);
   });
@@ -181,12 +164,18 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (denied) return denied as never;
     const { memberId, clientId } = c.get("auth");
     const member = await getMember(c.env.DB, memberId);
-    if (member?.amway_enabled !== 1 || !consentIsCurrent(await latestConsent(c.env.DB, memberId))) {
-      return c.json(errorBody("consent_required", "請先勾選「我是Amway會員」並同意說明", c.get("requestId"), { current_version: CONSENT_VERSION }), 403);
+    if (member?.amway_enabled !== 1) {
+      return c.json(errorBody("amway_disabled", "請先勾選「我是Amway會員」", c.get("requestId")), 403);
     }
     const options = (await listOptions(c.env.DB)).get(field_key) ?? [];
     const v = validateAmwayValue(def, c.req.valid("json").value, options);
     if (!v.ok) return c.json(errorBody("invalid_field", v.message, c.get("requestId"), { field_key, reason: v.reason }), 422);
+    // Free-text fields: an existing spelling in the vocabulary wins, and the typed word is remembered.
+    const pool = def.suggest && isPool(def.suggest) ? def.suggest : null;
+    if (pool && typeof v.value === "string") {
+      v.value = (await canonicalTerms(c.env.DB, pool, [v.value]))[0] ?? v.value;
+      await recordTerms(c.env.DB, pool, [v.value], deps.now());
+    }
     const r = await writeAmwayField(c.env.DB, memberId, field_key, v.value, { appId: clientId, requestId: c.get("requestId"), now: deps.now() });
     if (!r.ok) return c.json(errorBody("invalid_field", r.message, c.get("requestId"), { field_key, reason: r.reason }), 422);
     return c.json({ field_key, value: r.row.value, pending_value: r.row.pending_value, status: r.row.status, updated_at: r.row.updated_at }, 200);
@@ -202,6 +191,13 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const list = await Promise.all((rows.results ?? []).map((r) => renderNotification(c.env.DB, memberId, r)));
     const unread = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").bind(memberId).first<{ n: number }>();
     return c.json({ notifications: list, unread: unread?.n ?? 0 }, 200);
+  });
+
+  app.openapi(readAllRoute, async (c) => {
+    const denied = missingScope(c, ["profile.read"]);
+    if (denied) return denied as never;
+    await c.env.DB.prepare("UPDATE notifications SET read_at = ? WHERE member_id = ? AND read_at IS NULL").bind(taipeiIso(deps.now()), c.get("auth").memberId).run();
+    return c.json({ read: true as const }, 200);
   });
 
   app.openapi(readRoute, async (c) => {

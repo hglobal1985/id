@@ -72,7 +72,7 @@ const member = (p: P, method: string, path: string, body?: unknown) =>
 
 async function amwayMember(sub: string, name: string): Promise<P> {
   const p = await person(sub, name);
-  await member(p, "PUT", "/v1/me/amway/enabled", { enabled: true, consent_version: "2" });
+  await member(p, "PUT", "/v1/me/amway/enabled", { enabled: true });
   return p;
 }
 
@@ -100,7 +100,8 @@ describe("access control", () => {
 
   it("role matrix", () => {
     expect(can(["reviewer"], "options.manage")).toBe(false);
-    expect(can(["secretary"], "uplines.merge")).toBe(true);
+    expect(can(["secretary"], "vocab.manage")).toBe(false);
+    expect(can(["super_admin"], "vocab.manage")).toBe(true);
     expect(can(["secretary"], "staff.manage")).toBe(false);
     expect(can(["reviewer", "secretary"], "audit.read")).toBe(true);
     expect(permissionsOf(["nope"])).toEqual([]);
@@ -111,12 +112,12 @@ describe("reviews", () => {
   it("reviewers are notified, see the queue and decide; the member is notified", async () => {
     const rv = await person("rv", "審核員", ["reviewer"]);
     const m = await amwayMember("m", "小美");
-    await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: { option: "hglobal", custom_text: null } });
+    await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
     expect(db.raw.prepare("SELECT kind FROM notifications WHERE member_id = ?").all(rv.id).map((r) => r.kind)).toEqual(["staff.review.requested"]);
 
     const q = (await (await admin(rv, "GET", "/v1/admin/reviews")).json()) as { reviews: { id: string; display_name: string; field_label: string; requested_value: unknown }[] };
     expect(q.reviews).toHaveLength(1);
-    expect(q.reviews[0]).toMatchObject({ display_name: "小美", field_label: "教育體系", requested_value: { option: "hglobal", custom_text: null } });
+    expect(q.reviews[0]).toMatchObject({ display_name: "小美", field_label: "直銷商培訓系統", requested_value: "H-Global1985" });
     expect((await admin(rv, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(200);
     expect((await admin(rv, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(404);
     const state = (await (await member(m, "GET", "/v1/me/amway")).json()) as { fields: { education_system: { status: string } } };
@@ -153,33 +154,65 @@ describe("reviews", () => {
   });
 });
 
-describe("options and merge page", () => {
-  it("secretaries maintain options; 其他 is reserved and hglobal cannot be turned off", async () => {
+describe("options and vocabularies", () => {
+  it("secretaries maintain the rank and center options", async () => {
     const sec = await person("sec", "秘書", ["secretary"]);
     expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "rank", value: "12a", label: "12%初階", sort_order: 10, active: true })).status).toBe(200);
-    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "rank", value: "other", label: "x", sort_order: 1, active: true })).status).toBe(422);
-    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "education_system", value: "hglobal", label: "H-Global1985", sort_order: 10, active: false })).status).toBe(422);
+    // Free-text fields have no option list.
+    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "education_system", value: "x", label: "x", sort_order: 1, active: true })).status).toBe(422);
+    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "upline_platinum", value: "x", label: "x", sort_order: 1, active: true })).status).toBe(422);
     expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "referrer", value: "a", label: "a", sort_order: 1, active: true })).status).toBe(422);
     const m = await amwayMember("m", "小美");
     const defs = (await (await member(m, "GET", "/v1/amway/field-definitions")).json()) as { fields: { key: string; options?: { value: string }[] }[] };
     expect(defs.fields.find((f) => f.key === "rank")?.options?.map((o) => o.value)).toEqual(["12a", "12", "15"]);
   });
 
-  it("merges custom upline names typed by members into an option", async () => {
+  it("only the super admin curates vocabularies: edit, merge and delete follow into members' saved values", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
     const sec = await person("sec", "秘書", ["secretary"]);
     const a = await amwayMember("a", "甲");
     const b = await amwayMember("b", "乙");
-    for (const p of [a, b]) await member(p, "PUT", "/v1/me/amway/fields/upline_platinum", { value: { option: "other", custom_text: "陳大華" } });
-    const custom = (await (await admin(sec, "GET", "/v1/admin/amway/uplines/custom")).json()) as { custom: { field_key: string; custom_text: string; members: number }[] };
-    expect(custom.custom).toEqual([{ field_key: "upline_platinum", custom_text: "陳大華", members: 2 }]);
-    expect((await admin(sec, "POST", "/v1/admin/amway/uplines/merge", { field_key: "upline_platinum", custom_text: "陳大華", into: "p_chen" })).status).toBe(422);
-    await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "upline_platinum", value: "p_chen", label: "陳大華", sort_order: 10, active: true });
-    const res = await admin(sec, "POST", "/v1/admin/amway/uplines/merge", { field_key: "upline_platinum", custom_text: "陳大華", into: "p_chen" });
-    expect(((await res.json()) as { members_updated: number }).members_updated).toBe(2);
-    const s = (await (await member(a, "GET", "/v1/me/amway")).json()) as { fields: { upline_platinum: { value: unknown } } };
-    expect(s.fields.upline_platinum.value).toEqual({ option: "p_chen", custom_text: null });
-    const rv = await person("rv", "審核員", ["reviewer"]);
-    expect((await admin(rv, "GET", "/v1/admin/amway/uplines/custom")).status).toBe(403);
+    const c = await amwayMember("c", "丙");
+    await member(a, "PUT", "/v1/me/amway/fields/upline_platinum", { value: "陳大華" });
+    await member(b, "PUT", "/v1/me/amway/fields/upline_platinum", { value: "陳大華" });
+    await member(c, "PUT", "/v1/me/amway/fields/upline_platinum", { value: "陳大花" });
+    await member(a, "PUT", "/v1/me/profile/fields/occupation", { value: ["工程師", "老師"] });
+    await member(b, "PUT", "/v1/me/profile/fields/occupation", { value: ["工程師"] });
+
+    expect((await admin(sec, "GET", "/v1/admin/vocab")).status).toBe(403);
+    const pools = (await (await admin(sa, "GET", "/v1/admin/vocab")).json()) as { pools: { pool: string; terms: number }[] };
+    expect(pools.pools.find((p) => p.pool === "upline_platinum")?.terms).toBe(2);
+    const terms = (await (await admin(sa, "GET", "/v1/admin/vocab/upline_platinum")).json()) as { terms: { term: string; uses: number }[] };
+    expect(terms.terms).toEqual([{ term: "陳大華", uses: 2, hglobal: false }, { term: "陳大花", uses: 1, hglobal: false }]);
+
+    // Merge the typo into the right name: every member's saved value follows.
+    let res = await admin(sa, "POST", "/v1/admin/vocab/upline_platinum/merge", { froms: ["陳大花"], into: "陳大華" });
+    expect(((await res.json()) as { members_updated: number }).members_updated).toBe(1);
+    const s = (await (await member(c, "GET", "/v1/me/amway")).json()) as { fields: { upline_platinum: { value: unknown } } };
+    expect(s.fields.upline_platinum.value).toBe("陳大華");
+    expect(((await (await admin(sa, "GET", "/v1/admin/vocab/upline_platinum")).json()) as { terms: { term: string; uses: number }[] }).terms).toEqual([{ term: "陳大華", uses: 3, hglobal: false }]);
+
+    // Editing a tag term rewrites the item inside members' lists.
+    res = await admin(sa, "POST", "/v1/admin/vocab/occupation/rename", { from: "工程師", to: "軟體工程師" });
+    expect(res.status).toBe(200);
+    const pa = (await (await member(a, "GET", "/v1/me/profile")).json()) as { fields: { occupation: { value: string[] } } };
+    expect(pa.fields.occupation.value).toEqual(["軟體工程師", "老師"]);
+
+    // Deleting only removes the suggestion.
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/delete", { term: "老師" })).status).toBe(200);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/delete", { term: "老師" })).status).toBe(404);
+    expect(((await (await member(a, "GET", "/v1/me/profile")).json()) as { fields: { occupation: { value: string[] } } }).fields.occupation.value).toContain("老師");
+    expect((await admin(sa, "GET", "/v1/admin/vocab/nope")).status).toBe(404);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/add", { term: "  " })).status).toBe(422);
+  });
+
+  it("which education-system terms mean H-Global1985 is set by the super admin", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const a = await amwayMember("a", "甲");
+    expect(((await (await member(a, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇學院" })).json()) as { status: string }).status).toBe("not_required");
+    expect((await admin(sa, "POST", "/v1/admin/vocab/education_system/hglobal", { term: "寰宇學院", hglobal: true })).status).toBe(200);
+    const b = await amwayMember("b", "乙");
+    expect(((await (await member(b, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇學院" })).json()) as { status: string }).status).toBe("pending");
   });
 });
 
@@ -189,7 +222,7 @@ describe("staff management and audit", () => {
     const m = await person("m", "新秘書");
     let res = await admin(sa, "PUT", `/v1/admin/staff/${m.id}`, { roles: ["secretary"] });
     expect(res.status).toBe(200);
-    expect(((await (await admin(m, "GET", "/v1/admin/me")).json()) as { permissions: string[] }).permissions).toContain("uplines.merge");
+    expect(((await (await admin(m, "GET", "/v1/admin/me")).json()) as { permissions: string[] }).permissions).toContain("options.manage");
     res = await admin(sa, "PUT", `/v1/admin/staff/${sa.id}`, { roles: [] });
     expect(res.status).toBe(422);
     expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("last_super_admin");

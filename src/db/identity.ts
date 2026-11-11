@@ -30,6 +30,11 @@ export interface MemberRow {
   amway_enabled: number;
 }
 
+/** The picture URL when it is an https address (Google serves profile pictures from googleusercontent.com). */
+export function httpsOrNull(url: string | undefined | null): string | null {
+  return url && /^https:\/\/[^\s]{1,500}$/.test(url) ? url : null;
+}
+
 export interface GoogleIdentity {
   sub: string;
   email?: string;
@@ -54,10 +59,11 @@ export async function upsertMemberByGoogle(
   if (existing) {
     await db
       .prepare(
-        `UPDATE members SET google_email = ?, google_email_verified = ?, google_picture_url = ?, last_login_at = ?, updated_at = ?
+        `UPDATE members SET google_email = ?, google_email_verified = ?, google_picture_url = ?,
+           avatar_url = CASE WHEN avatar_source = 'google' THEN ? ELSE avatar_url END, last_login_at = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .bind(g.email ?? null, g.emailVerified ? 1 : 0, g.picture ?? null, ts, ts, existing.id)
+      .bind(g.email ?? null, g.emailVerified ? 1 : 0, g.picture ?? null, httpsOrNull(g.picture), ts, ts, existing.id)
       .run();
     return { member: { ...existing, last_login_at: ts }, created: false };
   }
@@ -66,11 +72,11 @@ export async function upsertMemberByGoogle(
   const res = await db
     .prepare(
       `INSERT INTO members (id, google_sub, google_email, google_email_verified, google_picture_url, display_name,
-         registration_country, status, created_at, updated_at, last_login_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+         registration_country, status, created_at, updated_at, last_login_at, avatar_url, avatar_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
        ON CONFLICT (google_sub) DO NOTHING`,
     )
-    .bind(id, g.sub, g.email ?? null, g.emailVerified ? 1 : 0, g.picture ?? null, g.name?.slice(0, 100) ?? null, cc, ts, ts, ts)
+    .bind(id, g.sub, g.email ?? null, g.emailVerified ? 1 : 0, g.picture ?? null, g.name?.slice(0, 100) ?? null, cc, ts, ts, ts, httpsOrNull(g.picture), httpsOrNull(g.picture) ? "google" : "none")
     .run();
   if (!res.meta.changes) {
     // Lost a race with a concurrent first sign-in for the same Google account.

@@ -14,7 +14,7 @@ export type Permission =
   | "adjust" // adjust the six reviewed fields for a member (treated as approved)
   | "members.read" // look up members
   | "options.manage" // maintain Amway option lists (ranks, systems, centers, uplines)
-  | "uplines.merge" // merge page: fold custom upline names into options, adjust the three upline fields
+  | "vocab.manage" // suggestion vocabularies: edit, merge, delete related words (super admin only)
   | "audit.read"
   | "staff.manage" // grant / revoke roles (needs recent sign-in)
   | "deletion.execute" // carry out members' data deletion requests
@@ -22,8 +22,8 @@ export type Permission =
   | "apps.manage"; // register a new App, edit a registration (super admin only)
 
 const MATRIX: Record<Role, Permission[]> = {
-  super_admin: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "staff.manage", "deletion.execute", "apps.operate", "apps.manage"],
-  secretary: ["review", "adjust", "members.read", "options.manage", "uplines.merge", "audit.read", "deletion.execute", "apps.operate"],
+  super_admin: ["review", "adjust", "members.read", "options.manage", "vocab.manage", "audit.read", "staff.manage", "deletion.execute", "apps.operate", "apps.manage"],
+  secretary: ["review", "adjust", "members.read", "options.manage", "audit.read", "deletion.execute", "apps.operate"],
   reviewer: ["review", "adjust", "members.read"],
 };
 
@@ -41,4 +41,3 @@ export function permissionsOf(roles: Iterable<string>): Permission[] {
 /** Sensitive operations need a Google sign-in within this many seconds. */
 export const REAUTH_MAX_AGE = 10 * 60;
 
-export const UPLINE_FIELDS = ["upline_crown_ambassador", "upline_diamond", "upline_platinum"] as const;

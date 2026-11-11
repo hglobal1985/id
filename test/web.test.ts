@@ -192,13 +192,12 @@ describe("data deletion", () => {
   it("Amway deletion removes the Amway data and turns the area off", async () => {
     const a = await person("a", "甲");
     const sa = await person("sa", "超管", ["super_admin"]);
-    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true, consent_version: "2" });
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
     await req(a, "PUT", "/v1/me/amway/fields/referrer", { value: "王" });
     const r = (await (await req(a, "POST", "/v1/me/deletion-requests", { scope: "amway" })).json()) as { id: string };
     expect((await req(sa, "POST", `/v1/admin/deletion-requests/${r.id}/complete`)).status).toBe(200);
-    const s = (await (await req(a, "GET", "/v1/me/amway")).json()) as { enabled: boolean; consent: unknown; fields: { referrer: { value: unknown } } };
+    const s = (await (await req(a, "GET", "/v1/me/amway")).json()) as { enabled: boolean; fields: { referrer: { value: unknown } } };
     expect(s.enabled).toBe(false);
-    expect(s.consent).toBeNull();
     expect(s.fields.referrer.value).toBeNull();
     expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(a.id)?.status).toBe("active");
   });

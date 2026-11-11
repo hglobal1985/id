@@ -77,7 +77,6 @@ const FormSchema = z
     web_origins: z.array(z.string().max(300)).max(10).optional(),
     return_urls: z.array(z.string().max(200)).max(10).optional(),
     extra_google_audiences: z.array(z.string().max(200)).max(10).optional(),
-    scopes: z.array(z.string().max(64)).max(20).optional(),
     min_version: z.string().max(20).optional(),
   })
   .openapi("AppRegistrationForm");

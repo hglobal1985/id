@@ -36,3 +36,57 @@ export function lifePathNumber(date: string): number | null {
   while (n > 9 && n !== 11 && n !== 22 && n !== 33) n = [...String(n)].reduce((a, d) => a + Number(d), 0);
   return n;
 }
+
+// ---- Life number chart (same rules and drawing data as the starry.phd member center) ----
+
+const digitSum = (n: number) => String(n).split("").reduce((sum, d) => sum + Number(d), 0);
+const toDigit = (n: number): number => {
+  let v = n;
+  while (v >= 10) v = digitSum(v);
+  return v;
+};
+
+export interface Rings {
+  /** Black circles: how often the digit appears in the birth date (YYYYMMDD). */
+  black: number;
+  /** Yellow: the birthday number (day of month added down to one digit). */
+  birthday: boolean;
+  /** Purple: the zodiac number. */
+  zodiac: boolean;
+  /** Bright green circles: how often the digit appears in the talent numbers. */
+  talent: number;
+  /** Red triangle: the total life number (the final single digit). */
+  life: boolean;
+}
+
+export interface LifeChart {
+  zodiac_name: string;
+  zodiac_number: number;
+  birthday_number: number;
+  talent_numbers: number[];
+  life_number: number;
+  rings: Record<number, Rings>;
+}
+
+const ZODIAC_ORDER = ["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"];
+
+/** Taiwan-style life path numerology: add every digit of YYYYMMDD and keep reducing to one digit. */
+export function lifeChartOf(birthday: string): LifeChart | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return null;
+  const sign = zodiacSign(birthday);
+  if (!sign) return null;
+  const digits = birthday.replace(/-/g, "").split("").map(Number);
+  let sum = digits.reduce((a, b) => a + b, 0);
+  const talent: number[] = [];
+  while (sum >= 10) {
+    talent.push(sum);
+    sum = digitSum(sum);
+  }
+  const zodiacNumber = toDigit(ZODIAC_ORDER.indexOf(sign) + 1);
+  const birthdayNumber = toDigit(Number(birthday.slice(8, 10)));
+  const rings: Record<number, Rings> = {};
+  for (let d = 1; d <= 9; d++) rings[d] = { black: 0, birthday: d === birthdayNumber, zodiac: d === zodiacNumber, talent: 0, life: d === sum };
+  for (const d of digits) if (d >= 1) (rings[d] as Rings).black += 1;
+  for (const t of talent) for (const ch of String(t)) if (Number(ch) >= 1) (rings[Number(ch)] as Rings).talent += 1;
+  return { zodiac_name: sign, zodiac_number: zodiacNumber, birthday_number: birthdayNumber, talent_numbers: talent, life_number: sum, rings };
+}

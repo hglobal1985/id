@@ -1,17 +1,18 @@
-import { consentIsCurrent, latestConsent, readAmwayFields } from "./amway";
-import { HGLOBAL, optionOf } from "../amway/fields";
+import { readAmwayFields } from "./amway";
+import { hglobalNorms } from "./vocab";
+import { HGLOBAL, systemKey } from "../amway/fields";
 import type { Ladder, MemberEligibility } from "../eligibility/rules";
 
 export async function loadMemberEligibility(db: D1Database, memberId: string): Promise<MemberEligibility | null> {
   const m = await db.prepare("SELECT amway_enabled, status FROM members WHERE id = ?").bind(memberId).first<{ amway_enabled: number; status: string }>();
   if (!m || m.status !== "active") return null;
-  const consent = await latestConsent(db, memberId);
+  const hg = await hglobalNorms(db);
   const rows = await readAmwayFields(db, memberId);
   const sys = rows.get("education_system");
   const rank = rows.get("rank");
   return {
-    amwayActive: m.amway_enabled === 1 && consentIsCurrent(consent),
-    hglobalVerified: !!sys && sys.value_approved && optionOf(sys.value) === HGLOBAL,
+    amwayActive: m.amway_enabled === 1,
+    hglobalVerified: !!sys && sys.value_approved && systemKey(sys.value, hg) === HGLOBAL,
     approvedRank: rank && rank.value_approved && typeof rank.value === "string" ? rank.value : null,
   };
 }
