@@ -42,31 +42,40 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["members.read", "會員", members],
-    ["vocab.manage", "詞庫", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["social.manage", "社群平台", socialAdmin], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
+    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["social.manage", "社群平台", socialAdmin], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
     var box = document.getElementById("menu-toggle"); if (box) box.checked = false;
-    var more = document.querySelector("details.more"); if (more) more.open = false;
     pane.textContent = "";
     visible[i][2]();
   }
   // Staff may open the overview without any special permission; every other tab needs its permission.
   function allowed(t) { return t[0] === "" || me.permissions.indexOf(t[0]) >= 0; }
-  var PRIMARY = ["總覽", "會員", "App"];
   function buildMenu() {
     var menu = document.getElementById("menu"); if (!menu) return;
     menu.textContent = "";
     visible = TABS.filter(allowed);
-    var more = el("div", { class: "drop" });
+    // Every option is shown directly (nothing hidden under 更多); 會員中心 and 登出 are not in this menu.
     visible.forEach(function (t, i) {
       var b = el("button", { type: "button", text: t[1], onclick: function () { tab(i); } });
       menuBtns.push(b);
-      (PRIMARY.indexOf(t[1]) >= 0 ? menu : more).appendChild(b);
+      menu.appendChild(b);
     });
-    if (more.children.length) menu.appendChild(el("details", { class: "more" }, [el("summary", { text: "更多 ▾" }), more]));
-    menu.appendChild(el("a", { href: "/my", text: "會員中心" }));
-    menu.appendChild(el("a", { href: "/logout", text: "登出" }));
+  }
+  // 權限: a dot chart of who may do what (the same table the server enforces).
+  function permissionsTab() {
+    api("GET", "/v1/admin/permissions").then(function (r) {
+      if (r.status !== 200) { pane.appendChild(card("權限", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      var b = r.body, head = el("tr", {}, [el("th", { text: "功能" })].concat(b.roles.map(function (x) { return el("th", { class: b.mine.indexOf(x.role) >= 0 ? "me" : "", text: x.label }); })).concat([el("th", { text: "鑽石級以上獎銜" })]));
+      var rows = b.features.map(function (f) {
+        return el("tr", {}, [el("td", { text: f.label })].concat(b.roles.map(function (x) { return el("td", { class: f.roles.indexOf(x.role) >= 0 ? "y" : "", text: f.roles.indexOf(x.role) >= 0 ? "●" : "·" }); })).concat([el("td", { class: f.diamond ? "y" : "", text: f.diamond ? "●" : "·" })]));
+      });
+      pane.appendChild(card("權限", [
+        el("p", { class: "help", text: "● 表示可以使用，· 表示不行。「鑽石級以上獎銜」是身分條件：本人已審核通過的獎銜達到鑽石級以上，不論職務都可查詢全部會員（只能查詢）。標示色底的欄位是您自己的職務。" }),
+        el("div", { class: "tablewrap" }, [el("table", { class: "dots" }, [head].concat(rows))])
+      ]));
+    });
   }
   function overview() {
     api("GET", "/v1/admin/overview").then(function (r) {
@@ -87,47 +96,107 @@ export const ADMIN_JS = String.raw`
   function m() { return el("div", { class: "msg" }); }
   function say(box, ok, t) { box.className = "msg " + (ok ? "ok" : "bad"); box.textContent = t; }
 
+  var STATUS = { active: "正常", disabled: "已停權" };
   function members() {
-    var q = el("input", { type: "text", placeholder: "會員編號、姓名或會員識別碼" }), out = el("div");
-    pane.appendChild(card("查詢會員", [el("div", { class: "inline" }, [q, el("button", { class: "primary", text: "查詢", onclick: function () {
-      api("GET", "/v1/admin/members?q=" + encodeURIComponent(q.value)).then(function (r) {
+    var f = { q: "", system: "", center: "", rank: "", status: "", amway: "", country: "", offset: 0 };
+    var out = el("div"), info = el("p", { class: "help" }), filt = el("div", { class: "filters" });
+    var qi = el("input", { type: "text", placeholder: "會員編號、姓名或會員識別碼", maxlength: 100 });
+    function pick(label, key, opts) {
+      var sel = el("select", { "aria-label": label }, [el("option", { value: "", text: label + "：全部" })].concat(opts.map(function (o) { return el("option", { value: o.value, text: o.label }); })));
+      sel.addEventListener("change", function () { f[key] = sel.value; });
+      return sel;
+    }
+    function run() {
+      f.q = qi.value.trim();
+      var qs = Object.keys(f).filter(function (k) { return f[k] !== "" && f[k] !== 0; }).map(function (k) { return k + "=" + encodeURIComponent(f[k]); });
+      api("GET", "/v1/admin/members" + (qs.length ? "?" + qs.join("&") : "")).then(function (r) {
         out.textContent = "";
-        (r.body.members || []).forEach(function (x) { out.appendChild(el("div", { class: "row" }, [el("button", { text: (x.display_name || "會員") + (x.member_number ? "（" + x.member_number.number + "）" : ""), onclick: function () { detail(x.member_id); } })])); });
+        if (r.status !== 200) { out.appendChild(el("p", { class: "msg bad", text: errText(r) })); return; }
+        var b = r.body;
+        info.textContent = b.scope.length ? "您可以查詢：" + b.scope.join("、") + (b.can_manage ? "（可管理）" : "（只能查詢，不能修改）") : "您目前沒有可查詢的會員：請先在自己的基本資料填好「地區教育中心」。";
+        if (!b.members.length) out.appendChild(el("p", { class: "help", text: "沒有符合的會員。" }));
+        b.members.forEach(function (x) {
+          var num = x.member_number ? (x.member_number.number.indexOf(x.member_number.country) === 0 ? x.member_number.number : x.member_number.country + x.member_number.number) : "";
+          out.appendChild(el("div", { class: "row member-row" }, [
+            el("button", { type: "button", class: "linklike", text: (x.display_name || "會員") + (num ? "（" + num + "）" : ""), onclick: function () { pane.textContent = ""; detail(x.member_id); } }),
+            el("div", { class: "help", text: [x.system ? "系統：" + x.system : "", x.center ? "中心：" + x.center : "", x.rank ? "獎銜：" + x.rank : "", x.status === "disabled" ? "已停權" : ""].filter(Boolean).join(" ") || "（尚未填寫系統、中心、獎銜）" })
+          ]));
+        });
+        var from = b.total ? f.offset + 1 : 0, to = f.offset + b.members.length;
+        out.appendChild(el("div", { class: "inline" }, [
+          el("span", { class: "help", text: "第 " + from + "–" + to + " 位，共 " + b.total + " 位" }),
+          el("button", { type: "button", class: "small", text: "上一頁", disabled: f.offset <= 0, onclick: function () { f.offset = Math.max(0, f.offset - 30); run(); } }),
+          el("button", { type: "button", class: "small", text: "下一頁", disabled: to >= b.total, onclick: function () { f.offset += 30; run(); } })
+        ]));
       });
-    } })]), out]));
+    }
+    api("GET", "/v1/admin/member-filters").then(function (r) {
+      var c = r.status === 200 ? r.body : { systems: [], centers: [], ranks: [], countries: [] };
+      var tw = function (a) { return a.map(function (v) { return { value: v, label: v }; }); };
+      filt.appendChild(qi);
+      filt.appendChild(pick("系統", "system", tw(c.systems)));
+      filt.appendChild(pick("中心", "center", tw(c.centers)));
+      filt.appendChild(pick("獎銜", "rank", c.ranks));
+      filt.appendChild(pick("狀態", "status", [{ value: "active", label: "正常" }, { value: "disabled", label: "已停權" }]));
+      filt.appendChild(pick("Amway", "amway", [{ value: "yes", label: "已勾選" }, { value: "no", label: "未勾選" }]));
+      filt.appendChild(pick("國家", "country", tw(c.countries)));
+      filt.appendChild(el("div", { class: "inline" }, [el("button", { class: "primary", text: "查詢", onclick: function () { f.offset = 0; run(); } }), el("button", { text: "清除", onclick: function () { pane.textContent = ""; members(); } })]));
+    });
+    pane.appendChild(card("查詢會員", [info, filt, out]));
+    run();
   }
   function detail(id) {
     Promise.all([api("GET", "/v1/admin/members/" + id), api("GET", "/v1/amway/field-definitions")]).then(function (r) {
+      if (r[0].status !== 200) { pane.appendChild(card("會員", [el("p", { class: "msg bad", text: errText(r[0]) }), el("button", { text: "← 回到列表", onclick: function () { pane.textContent = ""; members(); } })])); return; }
       var d = r[0].body, defs = r[1].body ? r[1].body.fields : [];
-      var adjustable = ["education_system", "education_center", "rank", "upline_diamond", "upline_platinum", "upline_crown_ambassador"];
+      var adjustable = ["education_system", "education_center", "rank"];
+      function view(f) { var st = d.amway[f.key]; return f.label + "：" + show(st ? st.value : null, f.key) + (st && st.pending_value ? "（待審：" + show(st.pending_value, f.key) + "）" : ""); }
       var rows = defs.filter(function (f) { return adjustable.indexOf(f.key) >= 0; }).map(function (f) {
-        var st = d.amway[f.key], box = m();
-        var cur = st ? st.value : null, ctl;
+        if (!d.can_manage) return el("div", { class: "row" }, [el("div", { text: view(f) })]);
+        var st = d.amway[f.key], box = m(), cur = st ? st.value : null, ctl;
         if (f.type === "select") {
           ctl = el("select", {}, [el("option", { value: "", text: "（無）" })].concat((f.options || []).map(function (o) { return el("option", { value: o.value, text: o.label }); })));
           ctl.value = cur || "";
         } else { ctl = el("input", { type: "text", maxlength: f.max_length || 50 }); ctl.value = cur || ""; }
-        return el("div", { class: "row" }, [el("label", { text: f.label + "：" + show(cur, f.key) + (st && st.pending_value ? "（待審：" + show(st.pending_value, f.key) + "）" : "") }),
-          el("div", { class: "inline" }, [ctl, el("button", { text: "代調整", onclick: function () {
-            api("PUT", "/v1/admin/members/" + id + "/amway/" + f.key, { value: ctl.value.trim() === "" ? null : ctl.value.trim() }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已調整並通知會員" : errText(res)); });
+        return el("div", { class: "row" }, [el("label", { text: view(f) }),
+          el("div", { class: "inline" }, [ctl, el("button", { text: "修改", onclick: function () {
+            api("PUT", "/v1/admin/members/" + id + "/amway/" + f.key, { value: ctl.value.trim() === "" ? null : ctl.value.trim() }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已修改並通知會員" : errText(res)); });
           } }), box])]);
       });
-      pane.appendChild(card(d.display_name || "會員", [
+      var box2 = m(), kids = [
         el("p", { class: "mono", text: d.member_id }),
-        el("p", { text: "編號：" + d.member_numbers.map(function (n) { return n.number.indexOf(n.country) === 0 ? n.number : n.country + n.number; }).join("、") }),
+        el("p", { text: "編號：" + d.member_numbers.map(function (n) { return n.number.indexOf(n.country) === 0 ? n.number : n.country + n.number; }).join("、") + " 狀態：" + (STATUS[d.status] || d.status) }),
         el("p", { text: "Amway：" + (d.amway_enabled ? "已勾選" : "未勾選") + (d.spouse ? "；夫妻：" + (d.spouse.display_name || "會員") : "") })
-      ].concat(rows)));
+      ].concat(rows);
+      if (!d.can_manage) kids.push(el("p", { class: "help", text: "您的身分只能查詢，不能修改。" }));
+      if (d.can_manage) {
+        kids.push(el("div", { class: "actions" }, [
+          el("button", { class: d.status === "active" ? "danger" : "primary", text: d.status === "active" ? "停權" : "解除停權", onclick: function () {
+            if (!confirm(d.status === "active" ? "確定要停權這位會員嗎？會立刻在所有裝置登出，且無法再登入。" : "確定要解除停權嗎？")) return;
+            api("POST", "/v1/admin/members/" + id + "/status", { status: d.status === "active" ? "disabled" : "active" }).then(function (res) { if (res.status === 200) { pane.textContent = ""; detail(id); } else say(box2, false, errText(res)); });
+          } }),
+          el("button", { class: "danger", text: "刪除會員", onclick: function () {
+            if (!confirm("確定要刪除這位會員嗎？帳號會立即匿名化並關閉，無法復原。")) return;
+            api("POST", "/v1/admin/members/" + id + "/delete").then(function (res) {
+              if (res.status === 200) { pane.textContent = ""; members(); return; }
+              if (res.body && res.body.error && res.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return; }
+              say(box2, false, errText(res));
+            });
+          } }), box2]));
+      }
+      kids.push(el("div", { class: "actions" }, [el("button", { text: "← 回到列表", onclick: function () { pane.textContent = ""; members(); } })]));
+      pane.appendChild(card(d.display_name || "會員", kids));
     });
   }
 
   // 詞庫：each suggestion vocabulary is curated on its own (edit, merge, delete); members' saved values follow.
   function vocab(poolKey) {
     api("GET", "/v1/admin/vocab").then(function (r) {
-      if (r.status !== 200) { pane.appendChild(card("詞庫", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      if (r.status !== 200) { pane.appendChild(card("關聯詞", [el("p", { class: "msg bad", text: errText(r) })])); return; }
       var pools = r.body.pools, cur = poolKey || pools[0].pool, bar = el("div", { class: "tabs" });
       pools.forEach(function (p) { bar.appendChild(el("button", { class: p.pool === cur ? "on" : "", text: p.label + "（" + p.terms + "）", onclick: function () { pane.textContent = ""; vocab(p.pool); } })); });
-      pane.appendChild(el("h1", { text: "關聯詞庫" }));
-      pane.appendChild(el("p", { class: "help", text: "會員在自由輸入欄位打過的詞，會自動收進對應的詞庫，之後輸入時當作關聯詞顯示。這裡可以分開管理每個詞庫：編輯詞（已填寫的會員資料會一起改）、勾選多個合併成一個、刪除（只從建議中移除，不影響會員已填的內容）。" }));
+      pane.appendChild(el("h1", { text: "關聯詞" }));
+      pane.appendChild(el("p", { class: "help", text: "會員在自由輸入欄位打過的詞，會自動收進對應的關聯詞，之後輸入時當作關聯詞顯示。這裡可以分開管理每一組關聯詞：編輯詞（已填寫的會員資料會一起改）、勾選多個合併成一個、刪除（只從建議中移除，不影響會員已填的內容）。" }));
       pane.appendChild(bar);
       api("GET", "/v1/admin/vocab/" + cur).then(function (t) {
         var terms = t.body.terms, box = m(), picked = {};
@@ -163,7 +232,7 @@ export const ADMIN_JS = String.raw`
             api("POST", "/v1/admin/vocab/" + cur + "/merge", { froms: froms, into: into.value.trim() }).then(done);
           } })]),
           box
-        ].concat(rows.length ? rows : [el("p", { class: "help", text: "這個詞庫還沒有詞。" })])));
+        ].concat(rows.length ? rows : [el("p", { class: "help", text: "這組關聯詞還沒有詞。" })])));
       });
     });
   }
@@ -339,19 +408,47 @@ export const ADMIN_JS = String.raw`
 
   function staff() {
     api("GET", "/v1/admin/staff").then(function (r) {
-      var b = r.body, id = el("input", { type: "text", placeholder: "會員識別碼" }), box = m();
-      var checks = b.roles.map(function (x) { var c = el("input", { type: "checkbox", value: x.role }); return [c, el("label", { text: x.label })]; });
-      pane.appendChild(card("管理人員", b.staff.map(function (s) { return el("div", { class: "row" }, [el("strong", { text: s.display_name || s.member_id }), el("div", { class: "help", text: s.roles.map(function (r) { var f = b.roles.filter(function (x) { return x.role === r; })[0]; return f ? f.label : r; }).join("、") + (s.center ? "（中心：" + s.center + "）" : "") }), el("div", { class: "mono help", text: s.member_id })]); })
-        .concat([el("div", { class: "inline" }, [id].concat([].concat.apply([], checks)).concat([el("button", { class: "primary", text: "設定角色", onclick: function () {
-          var roles = checks.filter(function (c) { return c[0].checked; }).map(function (c) { return c[0].value; });
-          api("PUT", "/v1/admin/staff/" + encodeURIComponent(id.value.trim()), { roles: roles }).then(function (res) {
-            if (res.status === 200) { pane.textContent = ""; staff(); return; }
-            if (res.body && res.body.error && res.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return; }
-            say(box, false, errText(res));
+      var b = r.body;
+      function labelOf(role) { var f = b.roles.filter(function (x) { return x.role === role; })[0]; return f ? f.label : role; }
+      var panel = el("div"), box = m();
+      // Pick a member from a searchable list, then tick the positions.
+      var qi = el("input", { type: "text", placeholder: "搜尋會員（編號、姓名）", maxlength: 100 }), results = el("div");
+      function choose(id, name) {
+        api("GET", "/v1/admin/members/" + id).then(function (d) {
+          var current = (d.body && d.body.staff_roles) || [];
+          var checks = b.roles.map(function (x) { var c = el("input", { type: "checkbox", value: x.role }); c.checked = current.indexOf(x.role) >= 0; return [c, el("label", { text: " " + x.label })]; });
+          panel.textContent = "";
+          panel.appendChild(el("div", { class: "row" }, [el("strong", { text: "給予職務：" + name })].concat(checks.map(function (c) { return el("div", {}, c); })).concat([
+            el("div", { class: "actions" }, [el("button", { class: "primary", text: "儲存職務", onclick: function () {
+              var roles = checks.filter(function (c) { return c[0].checked; }).map(function (c) { return c[0].value; });
+              api("PUT", "/v1/admin/staff/" + encodeURIComponent(id), { roles: roles }).then(function (res) {
+                if (res.status === 200) { pane.textContent = ""; staff(); return; }
+                if (res.body && res.body.error && res.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return; }
+                say(box, false, errText(res));
+              });
+            } }), box])
+          ])));
+        });
+      }
+      function search() {
+        api("GET", "/v1/admin/members?limit=20" + (qi.value.trim() ? "&q=" + encodeURIComponent(qi.value.trim()) : "")).then(function (res) {
+          results.textContent = "";
+          ((res.body && res.body.members) || []).forEach(function (x) {
+            var num = x.member_number ? (x.member_number.number.indexOf(x.member_number.country) === 0 ? x.member_number.number : x.member_number.country + x.member_number.number) : "";
+            results.appendChild(el("div", { class: "row" }, [el("button", { type: "button", class: "linklike", text: (x.display_name || "會員") + (num ? "（" + num + "）" : ""), onclick: function () { choose(x.member_id, x.display_name || "會員"); } })]));
           });
-        } }), box]))])));
+          if (!results.children.length) results.appendChild(el("p", { class: "help", text: "沒有符合的會員。" }));
+        });
+      }
+      pane.appendChild(card("管理人員", b.staff.map(function (s) {
+        return el("div", { class: "row" }, [el("strong", { text: s.display_name || s.member_id }), el("div", { class: "help", text: s.roles.map(labelOf).join("、") + (s.center ? "（中心：" + s.center + "）" : "") }),
+          el("button", { type: "button", class: "small", text: "編輯職務", onclick: function () { choose(s.member_id, s.display_name || "會員"); } })]);
+      })));
+      pane.appendChild(card("給予職務", [el("p", { class: "help", text: "搜尋會員、點選名字，再勾選要給的職務；取消全部勾選就是移除職務。" }), el("div", { class: "inline" }, [qi, el("button", { class: "primary", text: "搜尋", onclick: search })]), results, panel]));
+      search();
     });
   }
+
 
   function audit() {
     var t = el("input", { type: "text", placeholder: "對象（會員識別碼）" }), out = el("div");

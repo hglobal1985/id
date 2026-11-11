@@ -151,6 +151,14 @@ details.fold>summary{color:var(--fg)}
 /* tables */
 table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left;padding:8px 6px;border-top:1px solid var(--line);vertical-align:top;word-break:break-word}
 .tablewrap{overflow-x:auto}
+.dots{border-collapse:collapse;width:100%;font-size:.9rem}
+.dots th,.dots td{border:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
+.dots th:first-child,.dots td:first-child{text-align:left;white-space:normal;min-width:11em}
+.dots th.me{background:var(--green-soft);color:var(--green-d)}
+.dots td.y{color:var(--green);font-size:1.15rem}.dots td:not(.y):not(:first-child){color:#b9c2bc}
+.filters{display:grid;gap:8px;margin:8px 0}
+.filters select{width:100%;min-height:44px}
+.member-row .linklike{border:0;background:transparent;padding:0;min-height:0;color:var(--green);font-weight:700;text-align:left;text-decoration:underline}
 /* life number chart (same drawing data as the starry.phd member center) */
 .ln-card{max-width:380px;margin-inline:auto;background:#f6f8f4;color:#0f172a;border:1px solid var(--line);border-radius:18px;padding:12px 14px}
 .ln-head{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;padding-bottom:10px;border-bottom:2px solid #e3e8df}

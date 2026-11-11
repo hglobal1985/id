@@ -86,7 +86,7 @@ describe("access control", () => {
     const rv = await person("rv", "審核員", ["reviewer"]);
     const me = (await (await admin(rv, "GET", "/v1/admin/me")).json()) as { roles: { label: string }[]; permissions: string[] };
     expect(me.roles[0]?.label).toBe("審核員");
-    expect(me.permissions).toEqual(["review", "adjust", "members.read"]);
+    expect(me.permissions).toEqual(["review", "members.read"]); // reviewers review; only the head office changes members
   });
 
   it("refuses cross-site state changes", async () => {
@@ -179,45 +179,160 @@ describe("reviews", () => {
     expect(res.status).toBe(200);
     expect(db.raw.prepare("SELECT role FROM staff_roles WHERE member_id = ? ORDER BY role").all(target.id).map((r) => r.role)).toEqual(["activity", "course", "president", "sound", "ticket"]);
   });
-  it("reviewers adjust only the six fields, and only for members of their own center; the head office may adjust anyone", async () => {
-    const setCenter = (id: string, center: string) =>
-      db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_center', ?, NULL, 'approved', 1, '2026-11-11T10:00:00+08:00')").run(id, JSON.stringify(center));
+  it("only the head office changes a member's 系統, 中心 or 獎銜 (nothing else); reviewers only look up", async () => {
     const rv = await person("rv", "審核員", ["reviewer"]);
-    const other = await person("rv2", "別中心審核員", ["reviewer"]);
     const hq = await person("hq", "總部秘書", ["secretary"]);
-    setCenter(rv.id, "台北中心");
-    setCenter(other.id, "高雄 195");
     const m = await amwayMember("m", "小美");
-    await member(m, "PUT", "/v1/me/amway/fields/education_center", { value: "台北中心" });
-    let res = await admin(rv, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "15" });
+    expect((await admin(rv, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "15" })).status).toBe(403);
+    let res = await admin(hq, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "15" });
     expect(res.status).toBe(200);
     expect(((await (await member(m, "GET", "/v1/me/amway")).json()) as { fields: { rank: unknown } }).fields.rank).toMatchObject({ value: "15", status: "approved" });
-    res = await admin(rv, "PUT", `/v1/admin/members/${m.id}/amway/referrer`, { value: "x" });
-    expect(res.status).toBe(404);
-    res = await admin(rv, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "99" });
-    expect(res.status).toBe(422);
+    expect((await admin(hq, "PUT", `/v1/admin/members/${m.id}/amway/education_center`, { value: "台北中心" })).status).toBe(200);
+    expect((await admin(hq, "PUT", `/v1/admin/members/${m.id}/amway/education_system`, { value: "其他體系" })).status).toBe(200);
+    for (const other of ["referrer", "upline_diamond", "upline_platinum", "upline_crown_ambassador"]) {
+      res = await admin(hq, "PUT", `/v1/admin/members/${m.id}/amway/${other}`, { value: "x" });
+      expect(res.status, other).toBe(404);
+    }
+    expect((await admin(hq, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "99" })).status).toBe(422);
     expect((await admin(rv, "GET", "/v1/admin/vocab")).status).toBe(403);
-    // another center's reviewer, and a reviewer without a center, are refused; the head office is not
-    expect((await admin(other, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "12" })).status).toBe(403);
-    const nobody = await person("rv3", "未填中心的審核員", ["reviewer"]);
-    expect((await admin(nobody, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "12" })).status).toBe(403);
-    expect((await admin(hq, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "12" })).status).toBe(200);
   });
 
-  it("finds members by number, name or id", async () => {
-    const rv = await person("rv", "審核員", ["reviewer"]);
+  const setField = (id: string, key: string, value: unknown, approved = 1) =>
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, ?, ?, NULL, ?, ?, '2026-11-11T10:00:00+08:00')").run(id, key, JSON.stringify(value), approved ? "approved" : "not_required", approved);
+  const list = async (p: P, qs = "") => (await (await admin(p, "GET", `/v1/admin/members${qs}`)).json()) as { members: { member_id: string; system: string | null; center: string | null; rank: string | null }[]; total: number; scope: string[]; can_manage: boolean };
+  const ids = (r: { members: { member_id: string }[] }) => r.members.map((x) => x.member_id).sort();
+
+  it("the head office finds members by number, name or id and lists everyone without a search word", async () => {
+    const hq = await person("hq", "總部秘書", ["secretary"]);
     const m = await person("m", "王小美");
     const num = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(m.id)?.number as string;
-    for (const q of [num, "小美", m.id, num.toLowerCase()]) {
-      const r = (await (await admin(rv, "GET", `/v1/admin/members?q=${encodeURIComponent(q)}`)).json()) as { members: { member_id: string }[] };
-      expect(r.members.map((x) => x.member_id), q).toContain(m.id);
-    }
-    const r = (await (await admin(rv, "GET", "/v1/admin/members?q=%25")).json()) as { members: unknown[] };
-    expect(r.members).toEqual([]); // LIKE wildcards are escaped
-    const detail = (await (await admin(rv, "GET", `/v1/admin/members/${m.id}`)).json()) as { display_name: string; member_numbers: unknown[] };
+    for (const q of [num, "小美", m.id, num.toLowerCase()]) expect(ids(await list(hq, `?q=${encodeURIComponent(q)}`)), q).toContain(m.id);
+    expect(ids(await list(hq, "?q=%25"))).toEqual([]); // LIKE wildcards are escaped
+    const all = await list(hq); // no search word: the list is not empty
+    expect(ids(all)).toEqual([hq.id, m.id].sort());
+    expect(all.total).toBe(2);
+    expect(all.scope).toEqual(["全部會員"]);
+    expect(all.can_manage).toBe(true);
+    const detail = (await (await admin(hq, "GET", `/v1/admin/members/${m.id}`)).json()) as { display_name: string; member_numbers: unknown[]; can_manage: boolean };
     expect(detail.display_name).toBe("王小美");
     expect(detail.member_numbers).toHaveLength(1);
+    expect(detail.can_manage).toBe(true);
   });
+
+  it("filters: system, center, rank, status, Amway; paging", async () => {
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    const a = await amwayMember("a", "甲");
+    const b = await amwayMember("b", "乙");
+    const c = await person("c", "丙");
+    setField(a.id, "education_system", "寰宇"); setField(a.id, "education_center", "新竹 122"); setField(a.id, "rank", "15");
+    setField(b.id, "education_system", "其他體系"); setField(b.id, "education_center", "台南 187"); setField(b.id, "rank", "12");
+    expect(ids(await list(hq, "?system=" + encodeURIComponent("寰宇")))).toEqual([a.id]);
+    expect(ids(await list(hq, "?center=" + encodeURIComponent("台南 187")))).toEqual([b.id]);
+    expect(ids(await list(hq, "?rank=12"))).toEqual([b.id]);
+    expect(ids(await list(hq, "?amway=no"))).toEqual([hq.id, c.id].sort());
+    expect(ids(await list(hq, "?amway=yes&system=" + encodeURIComponent("其他體系")))).toEqual([b.id]);
+    db.raw.prepare("UPDATE members SET status = 'disabled' WHERE id = ?").run(c.id);
+    expect(ids(await list(hq, "?status=disabled"))).toEqual([c.id]);
+    const page = await list(hq, "?limit=2");
+    expect(page.members).toHaveLength(2);
+    expect(page.total).toBe(4);
+    expect(ids(await list(hq, "?limit=2&offset=2"))).toHaveLength(2);
+    const filters = (await (await admin(hq, "GET", "/v1/admin/member-filters")).json()) as { systems: string[]; centers: string[]; ranks: { value: string }[] };
+    expect(filters.centers).toContain("新竹 122");
+    expect(filters.ranks.map((r) => r.value)).toEqual(["12", "15"]);
+  });
+
+  it("every position may look up its own center's members, read only; 會長 the 寰宇 list; 鑽石級以上獎銜 everyone; nobody else", async () => {
+    // a ladder with a 鑽石 step
+    db.raw.prepare("INSERT INTO amway_options (field_key, value, label, sort_order) VALUES ('rank', 'diamond', '鑽石', 50)").run();
+    const rv = await person("rv", "審核員", ["reviewer"]);
+    const ticket = await person("t", "票務", ["ticket"]);
+    const pres = await person("p", "會長", ["president"]);
+    const dia = await person("d", "鑽石級人員", ["activity"]);
+    const nobody = await person("n", "沒填中心的課務", ["course"]);
+    const a = await amwayMember("a", "甲"); // 新竹, 寰宇
+    const b = await amwayMember("b", "乙"); // 台南, other system
+    const c = await amwayMember("c", "丙"); // 新竹, other system
+    setField(a.id, "education_system", "寰宇"); setField(a.id, "education_center", "新竹 122");
+    setField(b.id, "education_system", "其他體系"); setField(b.id, "education_center", "台南 187");
+    setField(c.id, "education_system", "其他體系"); setField(c.id, "education_center", "新竹 122");
+    setField(rv.id, "education_center", "新竹 122");
+    setField(ticket.id, "education_center", "台南 187");
+    setField(dia.id, "rank", "diamond"); // approved
+    // own center only (any position), and only looking up
+    const own = await list(rv);
+    expect(ids(own)).toEqual([a.id, c.id, rv.id].sort());
+    expect(own.scope).toEqual(["自己中心的會員"]);
+    expect(own.can_manage).toBe(false);
+    expect(ids(await list(ticket))).toEqual([b.id, ticket.id].sort());
+    // 會長: the 寰宇 members (and, like everyone, the own center's, if a center is filled in)
+    const pr = await list(pres);
+    expect(ids(pr)).toEqual([a.id]);
+    expect(pr.scope).toEqual(["系統＝寰宇的會員"]);
+    // 鑽石級以上獎銜: everyone, read only
+    const dl = await list(dia);
+    expect(dl.total).toBeGreaterThanOrEqual(8);
+    expect(dl.scope).toContain("全部會員");
+    expect(dl.can_manage).toBe(false);
+    // a self-declared (unreviewed) 鑽石 does not count
+    setField(nobody.id, "rank", "diamond", 0);
+    expect((await list(nobody)).members).toEqual([]);
+    expect((await list(nobody)).scope).toEqual([]);
+    // the member page follows the scope; reading only
+    expect((await admin(rv, "GET", `/v1/admin/members/${a.id}`)).status).toBe(200);
+    expect((await admin(rv, "GET", `/v1/admin/members/${b.id}`)).status).toBe(403);
+    expect(((await (await admin(rv, "GET", `/v1/admin/members/${a.id}`)).json()) as { can_manage: boolean }).can_manage).toBe(false);
+    expect((await admin(rv, "POST", `/v1/admin/members/${a.id}/status`, { status: "disabled" })).status).toBe(403);
+    expect((await admin(rv, "POST", `/v1/admin/members/${a.id}/delete`)).status).toBe(403);
+    expect((await admin(pres, "PUT", `/v1/admin/members/${a.id}/amway/rank`, { value: "15" })).status).toBe(403);
+    // someone with no position at all is not staff
+    const plain = await person("plain", "一般會員");
+    expect((await admin(plain, "GET", "/v1/admin/members")).status).toBe(403);
+  });
+
+  it("the head office suspends, reinstates and deletes members; a suspended member is signed out; the last super admin is protected", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    const m = await person("m", "小美");
+    const res = await admin(hq, "POST", `/v1/admin/members/${m.id}/status`, { status: "disabled" });
+    expect(res.status).toBe(200);
+    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(m.id)?.status).toBe("disabled");
+    expect((await admin(m, "GET", "/v1/admin/me")).status).toBe(401); // the member's session is revoked
+    expect(db.raw.prepare("SELECT action FROM audit_log WHERE action = 'member.suspend'").get()).toEqual({ action: "member.suspend" });
+    expect((await admin(hq, "POST", `/v1/admin/members/${m.id}/status`, { status: "active" })).status).toBe(200);
+    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(m.id)?.status).toBe("active");
+    // cannot suspend oneself or the last super admin
+    expect((await admin(sa, "POST", `/v1/admin/members/${sa.id}/status`, { status: "disabled" })).status).toBe(409);
+    expect((await admin(hq, "POST", `/v1/admin/members/${sa.id}/status`, { status: "disabled" })).status).toBe(409);
+    // delete
+    const del = await admin(hq, "POST", `/v1/admin/members/${m.id}/delete`);
+    expect(del.status).toBe(200);
+    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(m.id)?.status).toBe("deleted");
+    expect(db.raw.prepare("SELECT action FROM audit_log WHERE action = 'member.delete'").get()).toEqual({ action: "member.delete" });
+    expect((await admin(hq, "POST", `/v1/admin/members/${m.id}/delete`)).status).toBe(404);
+    expect((await admin(hq, "POST", `/v1/admin/members/${sa.id}/delete`)).status).toBe(409); // the last super admin
+    expect((await admin(hq, "POST", `/v1/admin/members/${hq.id}/delete`)).status).toBe(409); // not oneself
+    // deleted members are not listed
+    expect(ids(await list(hq))).not.toContain(m.id);
+  });
+
+  it("the 權限 page data: a dot chart built from the same rules the server enforces", async () => {
+    const rv = await person("rv", "審核員", ["reviewer"]);
+    const r = (await (await admin(rv, "GET", "/v1/admin/permissions")).json()) as { roles: { role: string; label: string }[]; features: { label: string; roles: string[]; diamond: boolean }[]; mine: string[] };
+    expect(r.roles.map((x) => x.label)).toEqual(["超級管理員", "總部秘書", "審核員", "會長", "課務", "音控", "票務", "活動"]);
+    expect(r.mine).toEqual(["reviewer"]);
+    const row = (t: string) => r.features.find((f) => f.label.includes(t))!;
+    expect(row("自己中心的會員").roles).toHaveLength(8);
+    expect(row("系統＝寰宇").roles).toEqual(["president"]);
+    expect(row("全部會員，不分系統").roles).toEqual(["super_admin", "secretary"]);
+    expect(row("全部會員，不分系統").diamond).toBe(true);
+    expect(row("修改會員").roles).toEqual(["super_admin", "secretary"]);
+    expect(row("刪除會員").roles).toEqual(["super_admin", "secretary"]);
+    expect(row("管理關聯詞").roles).toEqual(["super_admin"]);
+    expect(row("指派職務").roles).toEqual(["super_admin"]);
+    expect(row("審核中心／獎銜申請：自己中心").roles).toEqual(["reviewer"]);
+  });
+
 });
 
 describe("options and vocabularies", () => {
