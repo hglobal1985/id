@@ -215,4 +215,16 @@ describe("social icons on the public page and in the data export", () => {
     expect((await req(a, "POST", "/v1/me/delete-account")).status).toBe(200);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM social_links").get()?.n).toBe(0);
   });
+
+  it("a member edits the address and the shown name of her own link; an empty name shows the platform name again", async () => {
+    const a = await person("a", "甲");
+    const o = await person("o", "乙");
+    const added = (await (await req(a, "POST", "/v1/me/social-links", { platform_key: "line", url: "https://line.me/ti/p/abc" })).json()) as { id: string };
+    const res = await req(a, "PUT", `/v1/me/social-links/${added.id}`, { url: "line.me/ti/p/new", label: "健管" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ url: "https://line.me/ti/p/new", label: "健管" });
+    expect((await req(a, "PUT", `/v1/me/social-links/${added.id}`, { url: "javascript:alert(1)" })).status).toBe(422);
+    expect((await req(o, "PUT", `/v1/me/social-links/${added.id}`, { url: "https://x.com/u" })).status).toBe(404); // not hers
+    expect(await (await req(a, "PUT", `/v1/me/social-links/${added.id}`, { url: "https://line.me/ti/p/new", label: "" })).json()).toMatchObject({ label: null });
+  });
 });

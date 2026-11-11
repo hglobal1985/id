@@ -84,6 +84,11 @@ export const SHARE_JS = String.raw`
 export const SOCIAL_JS = String.raw`
 (function () {
   "use strict";
+  // The name sits in a box two lines high: a long name takes a smaller font to fit.
+  Array.prototype.forEach.call(document.querySelectorAll(".soc-copy"), function (b) {
+    var f = parseFloat(getComputedStyle(b).fontSize) || 11;
+    while (b.scrollHeight > b.clientHeight + 1 && f > 6) { f -= 0.5; b.style.fontSize = f + "px"; }
+  });
   Array.prototype.forEach.call(document.querySelectorAll(".soc-copy"), function (b) {
     b.addEventListener("click", function () {
       var url = b.getAttribute("data-url") || "";

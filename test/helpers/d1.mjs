@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite");
 
+// The real D1 returns a BLOB column as an array of numbers: do the same so a handler that forgets to convert fails here.
+const plainRow = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v instanceof Uint8Array ? Array.from(v) : v]));
+
 class Stmt {
   constructor(db, sql, params = []) {
     this.db = db;
@@ -19,18 +22,18 @@ class Stmt {
   async first(col) {
     const row = this.db.prepare(this.sql).get(...this.params);
     if (!row) return null;
-    const plain = { ...row };
+    const plain = plainRow(row);
     return col ? plain[col] : plain;
   }
   async all() {
-    return { results: this.db.prepare(this.sql).all(...this.params).map((r) => ({ ...r })), success: true, meta: {} };
+    return { results: this.db.prepare(this.sql).all(...this.params).map(plainRow), success: true, meta: {} };
   }
   async run() {
     return this.runSync();
   }
   runSync() {
     if (/^\s*(SELECT|WITH)\b/i.test(this.sql)) {
-      return { success: true, results: this.db.prepare(this.sql).all(...this.params).map((r) => ({ ...r })), meta: { changes: 0 } };
+      return { success: true, results: this.db.prepare(this.sql).all(...this.params).map(plainRow), meta: { changes: 0 } };
     }
     const r = this.db.prepare(this.sql).run(...this.params);
     return { success: true, results: [], meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };

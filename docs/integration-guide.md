@@ -60,7 +60,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - Amway 相關資料（會員編號、獎銜、上手、資格結果）不得被 App 或 App 後端保存，也不得寫入日誌或分析工具。
 - 日誌不得有 Token、信箱、姓名。
 - 對會員顯示的品牌只用 starry.phd、H-Global1985、Amway；畫面上不提其他系統名稱，一律用「合作營運單位」。
-- 隱私權政策 `/privacy`、完整隱私說明 `/privacy/amway`；修改基本資料與刪除帳號在 `/my/edit`。
+- 隱私權政策（含完整隱私說明，同一份文件）`/privacy`；修改基本資料與刪除帳號在 `/my/edit`。
 
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
