@@ -69,7 +69,7 @@ export const ME_JS = String.raw`
       if (editing) { ed = cfg.editor(); valueBox.appendChild(ed.node); }
       else valueBox.appendChild(cfg.display());
     }
-    function stop() { editing = false; ed = null; paintValue(); paintBtn(); }
+    function stop() { editing = false; ed = null; paintValue(); paintBtn(); if (cfg.onStop) cfg.onStop(); }
     edit.addEventListener("click", function () {
       if (!editing) { editing = true; paintValue(); paintBtn(); m.textContent = ""; return; }
       edit.disabled = true;
@@ -185,7 +185,14 @@ export const ME_JS = String.raw`
         return api("PUT", "/v1/me/profile/fields/" + l.dept, { value: v.dept }).then(function (r2) { if (r2.status === 200) f[l.dept].value = r2.body.value; return r2; });
       });
     }
-    return makeRow({ label: l.label, keys: [l.school, l.dept], vis: vis, display: display, editor: editor, save: save });
+    // A master or doctor line that stays empty disappears again (also when the member cancels).
+    function onStop() {
+      if (l.key === "university" || levelHas(l)) return;
+      UI[l.key] = false;
+      if (l.key === "master" && !levelHas(LEVELS[2])) UI.doctor = false;
+      render();
+    }
+    return makeRow({ label: l.label, keys: [l.school, l.dept], vis: vis, display: display, editor: editor, save: save, onStop: onStop });
   }
   function educationCard() {
     var kids = [];
@@ -299,7 +306,9 @@ export const ME_JS = String.raw`
         return { node: dd.el, get: function () { return dd.get() || null; } };
       }
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
-      return { node: d.suggest ? HG.suggestBox(input, suggestFetcher(d.suggest)) : input, get: function () { return input.value.trim() || null; } };
+      // The regional center offers its own related words only while the training system means H-Global1985.
+      var useSuggest = d.suggest && (!d.suggest_when_hglobal || S.amway.hglobal);
+      return { node: useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest)) : input, get: function () { return input.value.trim() || null; } };
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
     return makeRow({ label: d.label, keys: [d.key], vis: st.visibility, display: display, editor: editor, save: save, reload: true });
@@ -309,13 +318,11 @@ export const ME_JS = String.raw`
     var box = HG.checkbox("我是Amway會員", isAmway(), function (on) {
       api("PUT", "/v1/me/amway/enabled", { enabled: on }).then(function (r) { if (r.status === 200) load(); else { say(m, false, errText(r)); box.setChecked(!on); } });
     });
-    var kids = [box, m, numberRow()];
-    if (isAmway()) {
-      S.adefs.fields.slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (d) {
-        if (d.visible_when && !S.amway.hglobal) return;
-        kids.push(amwayFieldRow(d));
-      });
-    }
+    var kids = [box, m];
+    // The member number and the Amway fields in the order the administrator set; the number is always there.
+    var items = [{ order: S.def.member_number.order, make: numberRow }];
+    if (isAmway()) S.adefs.fields.forEach(function (d) { items.push({ order: d.order, make: function () { return amwayFieldRow(d); } }); });
+    items.sort(function (a, b) { return a.order - b.order; }).forEach(function (it) { kids.push(it.make()); });
     return el("section", { class: "card" }, kids);
   }
 
@@ -376,45 +383,42 @@ export const ME_JS = String.raw`
     return fold("登入紀錄", [
       el("div", { class: "tablewrap" }, [el("table", {}, [el("tr", {}, [el("th", { text: "App" }), el("th", { text: "裝置" }), el("th", { text: "最後使用" }), el("th")])].concat(rows))]),
       el("div", { class: "actions" }, [el("button", { type: "button", class: "danger", text: "登出所有裝置", onclick: function () {
-        if (!confirm("會登出所有裝置與所有 H-Global1985 App（包含這個瀏覽器）。確定嗎？")) return;
+        if (!confirm("會登出所有裝置與所有 App（包含這個瀏覽器）。確定嗎？")) return;
         api("POST", "/v1/me/logout-all").then(function (r) { if (r.status === 200) location.href = "/"; else say(m, false, errText(r)); });
       } }), m])
     ]);
   }
   function deletionCard() {
-    var m = msg(), open = S.del.requests.filter(function (r) { return r.status === "requested"; });
-    function ask(scope, text) { return el("button", { type: "button", class: "danger", text: text, onclick: function () {
-      if (!confirm("送出後，管理人員會在 " + S.del.processing_days + " 日內處理。確定送出嗎？")) return;
-      api("POST", "/v1/me/deletion-requests", { scope: scope }).then(function (r) {
-        if (r.status === 200) return load();
-        if (r.body && r.body.error && r.body.error.code === "reauth_required") { location.href = r.body.error.details.login_url; return; }
-        say(m, false, errText(r));
-      });
-    } }); }
-    return fold("資料刪除", [el("p", { class: "help", text: "為避免他人冒用，送出前需要重新登入確認。" })].concat(
-      open.map(function (r) { return el("div", { class: "inline" }, [el("span", { text: (r.scope === "account" ? "刪除帳號" : "刪除 Amway 資料") + "：處理中，預計 " + r.due_at.slice(0, 10) + " 前完成" }),
-        el("button", { type: "button", class: "small", text: "取消申請", onclick: function () { api("POST", "/v1/me/deletion-requests/" + r.id + "/cancel").then(load); } })]); }),
-      [el("div", { class: "actions" }, [ask("amway", "申請刪除 Amway 資料"), ask("account", "申請刪除帳號")]), m]));
+    var m = msg();
+    return fold("刪除帳號", [
+      el("p", { class: "help", text: "按下後立即生效：您的資料會被移除、所有裝置登出，無法復原。為避免他人冒用，需要先重新登入確認。" }),
+      el("div", { class: "actions" }, [el("button", { type: "button", class: "danger", text: "刪除帳號", onclick: function () {
+        if (!confirm("確定要立即刪除帳號嗎？刪除後無法復原。")) return;
+        api("POST", "/v1/me/delete-account").then(function (r) {
+          if (r.status === 200) { location.href = "/"; return; }
+          if (r.body && r.body.error && r.body.error.code === "reauth_required") { location.href = r.body.error.details.login_url; return; }
+          say(m, false, errText(r));
+        });
+      } })]), m]);
   }
 
   function render() {
     root.textContent = "";
     root.appendChild(el("div", { class: "pagebar" }, [el("a", { class: "button small", href: ownPage(), text: "← 回到我的頁面" })]));
-    root.appendChild(avatarBlock());
-    root.appendChild(amwayCard());
-    var defs = S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; });
-    root.appendChild(card("基本資料", defs.map(profileField)));
-    root.appendChild(educationCard());
-    var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
-    root.appendChild(card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField))));
-    var bd = S.def.birthday;
-    root.appendChild(card("生日", [profileField(bd)]));
-    var ch = chartCard(); if (ch) root.appendChild(ch);
+    function basicCard() { return card("基本資料", S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField)); }
+    function contactCard() {
+      var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
+      return card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField)));
+    }
+    var makers = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { return card("生日", [profileField(S.def.birthday)]); }, life: chartCard };
+    (S.defs.blocks || []).slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (blk) {
+      var make = makers[blk.key], node = make ? make() : null; if (node) root.appendChild(node);
+    });
     var sp = spouseCard(); if (sp) root.appendChild(sp);
     root.appendChild(devicesCard());
     root.appendChild(deletionCard());
     root.appendChild(el("div", { class: "actions" }, [
-      el("a", { class: "button", href: "/v1/me/export", download: "h-global1985-my-data.json", text: "下載我的資料" }),
+      el("a", { class: "button", href: "/v1/me/export", download: "my-data.json", text: "下載我的資料" }),
       el("a", { class: "button", href: "/logout", text: "登出" })
     ]));
   }

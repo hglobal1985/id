@@ -16,7 +16,7 @@ import {
 } from "../db/member-numbers";
 import { auditStatement } from "../db/audit";
 import { getActiveBinding, otherSide } from "../db/spouse";
-import { sameList, validateMemberNumbers } from "../profile/member-number";
+import { publicId, sameList, validateMemberNumbers, type MemberNumberEntry } from "../profile/member-number";
 import { taipeiIso } from "../lib/time";
 import { resolveIssuer } from "../oidc/config";
 import { missingScope } from "./auth";
@@ -41,7 +41,7 @@ export async function putMemberNumbers(c: C, deps: Deps): Promise<Response> {
 
   const current = await readNumbers(db, memberId);
   const issuer = resolveIssuer(c.env, c.req.url);
-  const publicUrl = `${issuer}/${encodeURIComponent((v.value[0] as { number: string }).number)}`;
+  const publicUrl = `${issuer}/${encodeURIComponent(publicId(v.value[0] as MemberNumberEntry))}`;
   if (sameList(current, v.value)) {
     return c.json({ field_key: "member_number", value: v.value, updated_at: null, public_url: publicUrl, duplicate_candidates: [] }, 200);
   }

@@ -78,6 +78,8 @@ describe("JWT", () => {
 
 import { initialsOf, tileClass } from "../src/web/initials";
 import { trafficLights } from "../src/admin/lights";
+import { charUnits, clipName, rankBadge, textUnits } from "../src/web/nav-text";
+import { publicId } from "../src/profile/member-number";
 
 describe("member center helpers", () => {
   it("initials: family + given name for Chinese, first + last for Latin, H when empty", () => {
@@ -92,7 +94,7 @@ describe("member center helpers", () => {
     expect(tileClass("learn")).toMatch(/^c[0-7]$/);
   });
   it("traffic lights: green when quiet, yellow when something waits, red when overdue or stopped", () => {
-    const quiet = { appStatuses: ["active"], invalidApps: 0, pendingReviews: 0, oldestReviewDays: null, openDeletions: 0, overdueDeletions: 0 };
+    const quiet = { appStatuses: ["active"], invalidApps: 0, pendingReviews: 0, oldestReviewDays: null };
     expect(trafficLights(quiet).every((l) => l.color === "green")).toBe(true);
     const c = (over: object) => Object.fromEntries(trafficLights({ ...quiet, ...over }).map((l) => [l.key, l.color]));
     expect(c({ appStatuses: ["active", "paused"] }).apps).toBe("yellow");
@@ -100,8 +102,31 @@ describe("member center helpers", () => {
     expect(c({ pendingReviews: 2, oldestReviewDays: 1 }).reviews).toBe("green");
     expect(c({ pendingReviews: 2, oldestReviewDays: 4 }).reviews).toBe("yellow");
     expect(c({ pendingReviews: 2, oldestReviewDays: 8 }).reviews).toBe("red");
-    expect(c({ openDeletions: 1 }).deletions).toBe("yellow");
-    expect(c({ openDeletions: 1, overdueDeletions: 1 }).deletions).toBe("red");
     expect(c({ invalidApps: 1 }).invalid_apps).toBe("red");
+  });
+});
+
+describe("main menu text", () => {
+  it("cuts names to 4 Chinese-character widths", () => {
+    expect(clipName("王小明")).toBe("王小明");
+    expect(clipName("王小明明明")).toBe("王小明明…");
+    expect(clipName("Al")).toBe("Al");
+    expect(clipName("Alexander Smith")).toBe("Alexand…"); // about 4 character widths of Latin letters
+    expect(charUnits("王")).toBe(1);
+    expect(textUnits("12%")).toBeCloseTo(1.65);
+  });
+  it("rank box: 創辦人 becomes F and the font shrinks to fit five characters", () => {
+    expect(rankBadge("創辦人鑽石")).toEqual({ text: "F鑽石", size: 0 });
+    expect(rankBadge("12%初階")).toEqual({ text: "12%初階", size: 0 });
+    expect(rankBadge("創辦人執行專才鑽石")).toEqual({ text: "F執行專才鑽石", size: 2 });
+    expect(rankBadge("創辦人雙鑽石")?.size).toBe(0);
+    expect(rankBadge("很長很長很長很長的獎銜")?.size).toBe(3);
+    expect(rankBadge("無")).toBeNull();
+    expect(rankBadge(null)).toBeNull();
+  });
+  it("public identifier: country code and number, joined, never doubled", () => {
+    expect(publicId({ country: "TW", number: "9475831" })).toBe("TW9475831");
+    expect(publicId({ country: "TW", number: "TW0112342" })).toBe("TW0112342");
+    expect(publicId({ country: "JP", number: "0123" })).toBe("JP0123");
   });
 });

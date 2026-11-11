@@ -14,7 +14,7 @@ function layout(title: string, body: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${escapeHtml(title)} · H-Global1985</title>
+<title>會員中心</title>
 <style>
 :root{color-scheme:dark;--bg:#07061a;--card:rgba(24,20,56,.72);--fg:#ecebff;--muted:#a8a5d0;--accent:#a78bfa;--line:rgba(167,139,250,.28)}
 *{box-sizing:border-box}html{background:#07061a}
@@ -26,7 +26,7 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;widt
 a.btn:hover{filter:brightness(1.08)}
 </style>
 </head>
-<body><main><p class="brand">✦ H-Global1985</p>${body}</main></body>
+<body><main><p class="brand">會員中心</p>${body}</main></body>
 </html>`;
 }
 

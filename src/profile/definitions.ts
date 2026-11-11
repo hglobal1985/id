@@ -180,7 +180,7 @@ export const INFO_BLOCKS = [
 export const MEMBER_NUMBER_DEFINITION = {
   key: "member_number",
   group: "member_number",
-  order: 10,
+  order: 5,
   label: "會員編號",
   label_when_amway: "Amway會員編號",
   help: "第一組為預設編號，用於公開基本資料網址與客服查詢。修改編號後，舊網址會失效。",

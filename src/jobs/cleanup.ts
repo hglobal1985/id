@@ -1,9 +1,7 @@
 // Daily housekeeping (cron). Removes expired short-lived records, and Amway data kept for 1 year after a
 // member turned the Amway area off (privacy notice v2, section 4: kept until 1 year after unticking).
-import { uuidv7 } from "../lib/crypto";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { auditStatement } from "../db/audit";
-import { CONSENT_DOCUMENT, CONSENT_VERSION } from "../amway/consent";
 
 export const RETENTION_DAYS = 365;
 
@@ -36,14 +34,10 @@ export async function runCleanup(db: D1Database, now: Date): Promise<{ purgedMem
     .bind(cutoff)
     .all<{ id: string }>();
   const ids = (r.results ?? []).map((x) => x.id);
-  const ts = taipeiIso(now);
   for (const id of ids) {
     await db.batch([
       db.prepare("DELETE FROM amway_field_values WHERE member_id = ?").bind(id),
       db.prepare("DELETE FROM amway_review_requests WHERE member_id = ?").bind(id),
-      db
-        .prepare("INSERT INTO consent_records (id, member_id, document, version, action, occurred_at) VALUES (?, ?, ?, ?, 'withdraw', ?)")
-        .bind(uuidv7(now.getTime()), id, CONSENT_DOCUMENT, CONSENT_VERSION, ts),
       auditStatement(db, { actorType: "system", action: "amway.retention.purge", targetType: "member", targetId: id, result: "success", detail: { retention_days: RETENTION_DAYS } }, now),
     ]);
   }

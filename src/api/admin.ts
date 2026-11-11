@@ -12,17 +12,15 @@ import { listStaff, rolesOf, setRoles } from "../db/staff";
 import { decideReview, listOptions, readAmwayFields, staffAdjust } from "../db/amway";
 import { readNumbers } from "../db/member-numbers";
 import { getActiveBinding, otherSide } from "../db/spouse";
-import { auditStatement } from "../db/audit";
-import { AMWAY_FIELDS, REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
+import { REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
 import { REAUTH_MAX_AGE, ROLES, ROLE_LABELS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds } from "../lib/time";
-import { completeDeletion, openRequests } from "../db/deletion";
 import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
 import { POOLS, POOL_KEYS, isPool } from "../vocab/terms";
 import { loadOverview } from "../db/overview";
 import { loadLayout, saveLayout } from "../db/layout";
-import { LAYOUT_GROUPS, LAYOUT_GROUP_LABELS, defaultLayout, validateLayout } from "../profile/layout";
+import { BLOCK_PREFIX, LAYOUT_GROUPS, LAYOUT_GROUP_LABELS, defaultLayout, validateLayout } from "../profile/layout";
 
 type C = Context<AppBindings>;
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -113,31 +111,6 @@ const adjustRoute = createRoute({
     body: { required: true, content: json(z.object({ value: z.union([z.string(), z.object({ option: z.string(), custom_text: z.string().nullable() }), z.null()]) })) },
   },
   responses: { 200: { description: "Adjusted", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
-});
-
-const optionsRoute = createRoute({ method: "get", path: "/v1/admin/amway/options", tags: ["admin"], summary: "All Amway option lists, including inactive ones", security, responses: { 200: { description: "Options", content: json(Any) }, ...common } });
-
-const putOptionRoute = createRoute({
-  method: "put",
-  path: "/v1/admin/amway/options",
-  tags: ["admin"],
-  summary: "Create or update one option (rank sort_order = ladder position, low to high)",
-  security,
-  request: {
-    body: {
-      required: true,
-      content: json(
-        z.object({
-          field_key: z.string().max(64),
-          value: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
-          label: z.string().trim().min(1).max(50),
-          sort_order: z.number().int().min(0).max(100000),
-          active: z.boolean(),
-        }),
-      ),
-    },
-  },
-  responses: { 200: { description: "Saved", content: json(Any) }, ...common, 422: err("invalid_field") },
 });
 
 const layoutGetRoute = createRoute({ method: "get", path: "/v1/admin/profile-layout", tags: ["admin"], summary: "Order of the profile fields on every member page, per group (super admin)", security, responses: { 200: { description: "Layout", content: json(Any) }, ...common } });
@@ -236,25 +209,6 @@ const auditRoute = createRoute({
     }),
   },
   responses: { 200: { description: "Entries", content: json(Any) }, ...common },
-});
-
-const deletionsRoute = createRoute({
-  method: "get",
-  path: "/v1/admin/deletion-requests",
-  tags: ["admin"],
-  summary: "Open data deletion requests (due within 15 days of the request)",
-  security,
-  responses: { 200: { description: "Requests", content: json(Any) }, ...common },
-});
-
-const completeDeletionRoute = createRoute({
-  method: "post",
-  path: "/v1/admin/deletion-requests/{id}/complete",
-  tags: ["admin"],
-  summary: "Carry out a deletion request (account: anonymize and close; amway: remove Amway data). Needs a sign-in within 10 minutes.",
-  security,
-  request: { params: z.object({ id: z.string().max(64) }) },
-  responses: { 200: { description: "Done", content: json(Any) }, ...common, 404: err("not_found") },
 });
 
 export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
@@ -366,31 +320,6 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return c.json({ member_id, field_key, value: v.value, status: "approved" }, 200);
   });
 
-  app.openapi(optionsRoute, async (c) => {
-    const d = deny(c, "options.manage");
-    if (d) return d as never;
-    const r = await c.env.DB.prepare("SELECT field_key, value, label, sort_order, active FROM amway_options ORDER BY field_key, sort_order, value").all();
-    return c.json({ options: r.results ?? [], fields: AMWAY_FIELDS.filter((f) => f.type !== "text").map((f) => ({ key: f.key, label: f.label })) }, 200);
-  });
-
-  app.openapi(putOptionRoute, async (c) => {
-    const d = deny(c, "options.manage");
-    if (d) return d as never;
-    const o = c.req.valid("json");
-    const def = getAmwayField(o.field_key);
-    const bad = (reason: string, message: string) => c.json(errorBody("invalid_field", message, c.get("requestId"), { field_key: o.field_key, reason }), 422);
-    if (!def || def.type === "text") return bad("unknown_field", "此欄位沒有選項");
-    const now = deps.now();
-    await c.env.DB.batch([
-      c.env.DB.prepare(
-        `INSERT INTO amway_options (field_key, value, label, sort_order, active) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (field_key, value) DO UPDATE SET label = excluded.label, sort_order = excluded.sort_order, active = excluded.active`,
-      ).bind(o.field_key, o.value, o.label, o.sort_order, o.active ? 1 : 0),
-      auditStatement(c.env.DB, { actorType: "staff", actorId: c.get("staff").memberId, action: "amway.option.set", targetType: "amway_option", targetId: `${o.field_key}:${o.value}`, result: "success", requestId: c.get("requestId"), detail: { sort_order: o.sort_order, active: o.active } }, now),
-    ]);
-    return c.json(o, 200);
-  });
-
   const actor = (c: C) => ({ memberId: c.get("staff").memberId, requestId: c.get("requestId"), now: deps.now() });
   const poolOr404 = (c: C, pool: string) => (isPool(pool) ? pool : null);
   const noPool = (c: C) => c.json(errorBody("not_found", "沒有這個詞庫", c.get("requestId")), 404);
@@ -398,7 +327,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   const layoutView = async (c: C) => {
     const saved = await loadLayout(c.env.DB);
     return {
-      groups: LAYOUT_GROUPS.map((g) => ({ group: g, label: LAYOUT_GROUP_LABELS[g], fields: defaultLayout(g).sort((a, b) => (saved.get(a.key) ?? 1e6) - (saved.get(b.key) ?? 1e6) || 0) })),
+      groups: LAYOUT_GROUPS.map((g) => ({ group: g, label: LAYOUT_GROUP_LABELS[g], fields: defaultLayout(g).sort((a, b) => (saved.get((g === "blocks" ? BLOCK_PREFIX : "") + a.key) ?? 1e6) - (saved.get((g === "blocks" ? BLOCK_PREFIX : "") + b.key) ?? 1e6) || 0) })),
       customized: saved.size > 0,
     };
   };
@@ -510,25 +439,6 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const ok = await setRoles(c.env.DB, member_id, roles, staff.memberId, c.get("requestId"), deps.now());
     if (!ok) return c.json(errorBody("invalid_field", "至少要保留一位超級管理員", c.get("requestId"), { field_key: "roles", reason: "last_super_admin" }), 422);
     return c.json({ member_id, roles }, 200);
-  });
-
-  app.openapi(deletionsRoute, async (c) => {
-    const d = deny(c, "deletion.execute");
-    if (d) return d as never;
-    const rows = await openRequests(c.env.DB);
-    return c.json({ requests: await Promise.all(rows.map(async (r) => ({ ...r, display_name: await displayName(c.env.DB, r.member_id) }))) }, 200);
-  });
-
-  app.openapi(completeDeletionRoute, async (c) => {
-    const d = deny(c, "deletion.execute");
-    if (d) return d as never;
-    const staff = c.get("staff");
-    if (epochSeconds(deps.now()) - staff.authTime > REAUTH_MAX_AGE) {
-      return c.json(errorBody("reauth_required", "請重新登入後再試", c.get("requestId"), { login_url: "/login?return_to=%2Fadmin" }), 401);
-    }
-    const ok = await completeDeletion(c.env.DB, c.req.valid("param").id, staff.memberId, deps.now(), c.get("requestId"));
-    if (!ok) return c.json(errorBody("not_found", "No open request", c.get("requestId")), 404);
-    return c.json({ completed: true }, 200);
   });
 
   app.openapi(auditRoute, async (c) => {

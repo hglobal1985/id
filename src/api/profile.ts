@@ -12,7 +12,7 @@ import { POOLS, isPool, poolOfField } from "../vocab/terms";
 import { randomMotto } from "../profile/mottos";
 import { AMWAY_KEYS } from "../amway/fields";
 import { loadLayout } from "../db/layout";
-import { applyOrder } from "../profile/layout";
+import { BLOCKS, BLOCK_PREFIX, applyOrder } from "../profile/layout";
 import {
   AVATAR_DEFINITION,
   MEMBER_NUMBER_DEFINITION,
@@ -30,6 +30,7 @@ import { lifeChartOf, zodiacSign } from "../profile/astro";
 import { bearerAuth, missingScope } from "./auth";
 import { ensureMemberNumber } from "../db/member-numbers";
 import { putMemberNumbers } from "./member-number";
+import { publicId } from "../profile/member-number";
 import { resolveIssuer } from "../oidc/config";
 
 type C = Context<AppBindings>;
@@ -77,6 +78,7 @@ const DefinitionsSchema = z
     version: z.string(),
     groups: z.array(z.object({ key: z.string(), label: z.string(), order: z.number().int() })),
     fields: z.array(FieldDefinitionSchema),
+    blocks: z.array(z.object({ key: z.string(), label: z.string(), order: z.number().int() })).openapi({ description: "The big blocks of the page in the order the super admin set (avatar, amway, basic, education, contact, birthday, life); render the blocks in this order." }),
     info: z.array(z.object({ key: z.string(), group: z.string(), order: z.number().int(), label: z.string(), type: z.string(), collapsed: z.boolean() })),
     avatar: z.record(z.unknown()),
   })
@@ -245,7 +247,8 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       {
         version: DEFINITIONS_VERSION,
         groups: GROUPS,
-        fields: [{ ...MEMBER_NUMBER_DEFINITION, options: memberNumberCountryOptions() }, ...applyOrder(fieldDefinitions(), layout)] as z.infer<typeof FieldDefinitionSchema>[],
+        fields: [{ ...MEMBER_NUMBER_DEFINITION, order: layout.get("member_number") ?? MEMBER_NUMBER_DEFINITION.order, options: memberNumberCountryOptions() }, ...applyOrder(fieldDefinitions(), layout)] as z.infer<typeof FieldDefinitionSchema>[],
+        blocks: BLOCKS.map((b) => ({ ...b, order: layout.get(BLOCK_PREFIX + b.key) ?? b.order })),
         info: INFO_BLOCKS.map((b) => ({ ...b })),
         avatar: AVATAR_DEFINITION as unknown as Record<string, unknown>,
       },
@@ -278,7 +281,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       label: amway ? MEMBER_NUMBER_DEFINITION.label_when_amway : MEMBER_NUMBER_DEFINITION.label,
       note: amway ? MEMBER_NUMBER_DEFINITION.help_when_amway : MEMBER_NUMBER_DEFINITION.help_when_not_amway,
       max_items: amway ? MEMBER_NUMBER_DEFINITION.max_items_when_amway : MEMBER_NUMBER_DEFINITION.max_items,
-      public_url: numbers[0] ? `${issuer}/${encodeURIComponent(numbers[0].number)}` : null,
+      public_url: numbers[0] ? `${issuer}/${encodeURIComponent(publicId(numbers[0]))}` : null,
     };
     const birthday = typeof fields.birthday?.value === "string" ? fields.birthday.value : null;
     const chart = birthday ? lifeChartOf(birthday) : null;

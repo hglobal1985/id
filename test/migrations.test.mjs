@@ -87,4 +87,21 @@ describe("D1 migrations", () => {
     ]));
     db.close();
   });
+
+  it("0015 turns education-center codes into text and seeds the center vocabulary in the owner's order", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 15)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-11T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('m1','g1','active','${ts}','${ts}')`);
+    db.exec(`INSERT INTO amway_options (field_key, value, label, sort_order) VALUES ('education_center', 'c_tp', '台北中心', 10)`);
+    db.prepare("INSERT INTO amway_field_values (member_id, field_key, value, status, updated_at) VALUES ('m1', 'education_center', ?, 'not_required', ?)").run(JSON.stringify("c_tp"), ts);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0015"))), "utf8"));
+    expect(JSON.parse(db.prepare("SELECT value FROM amway_field_values WHERE member_id = 'm1' AND field_key = 'education_center'").get().value)).toBe("台北中心");
+    const centers = db.prepare("SELECT term FROM vocab_terms WHERE pool = 'education_center' ORDER BY sort_order").all().map((r) => r.term);
+    expect(centers.slice(0, 5)).toEqual(["無", "飛登", "南京", "自強", "明星"]);
+    expect(centers.slice(0, 29).at(-1)).toBe("越南");
+    expect(centers).toContain("台北中心"); // options the administrator had defined are kept as terms
+    expect(db.prepare("SELECT hglobal FROM vocab_terms WHERE pool = 'education_system' AND term = '寰宇'").get()).toEqual({ hglobal: 1 });
+    db.close();
+  });
 });

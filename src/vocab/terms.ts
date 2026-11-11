@@ -16,6 +16,7 @@ export const POOLS = {
   school: { label: "學校名稱（大學、碩士、博士共用）", profileFields: ["university", "grad_school", "phd_school"], amwayFields: [] },
   dept: { label: "系所名稱（大學、碩士、博士共用）", profileFields: ["university_dept", "grad_dept", "phd_dept"], amwayFields: [] },
   education_system: { label: "直銷商培訓系統", profileFields: [], amwayFields: ["education_system"] },
+  education_center: { label: "地區教育中心（直銷商培訓系統為寰宇時的專屬關聯詞）", profileFields: [], amwayFields: ["education_center"] },
   upline_diamond: { label: "上手鑽石", profileFields: [], amwayFields: ["upline_diamond"] },
   upline_platinum: { label: "上手白金", profileFields: [], amwayFields: ["upline_platinum"] },
   upline_crown_ambassador: { label: "皇冠大使", profileFields: [], amwayFields: ["upline_crown_ambassador"] },
@@ -70,11 +71,15 @@ export function matchScore(term: string, query: string): number {
   return score;
 }
 
-export function rankTerms<T extends { term: string; uses: number }>(terms: readonly T[], query: string, limit: number): T[] {
+/** Pools whose terms are kept in the administrator's own order (the sort order wins over how often a term was used). */
+export const ORDERED_POOLS: readonly string[] = ["education_center"];
+
+export function rankTerms<T extends { term: string; uses: number; sort_order?: number }>(terms: readonly T[], query: string, limit: number, ordered = false): T[] {
+  const place = (t: T) => (t.sort_order && t.sort_order > 0 ? t.sort_order : 1e9);
   return terms
     .map((t) => ({ t, s: matchScore(t.term, query) }))
     .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s || b.t.uses - a.t.uses || a.t.term.localeCompare(b.t.term))
+    .sort((a, b) => b.s - a.s || (ordered ? place(a.t) - place(b.t) : 0) || b.t.uses - a.t.uses || a.t.term.localeCompare(b.t.term))
     .slice(0, limit)
     .map((x) => x.t);
 }

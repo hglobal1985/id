@@ -1,8 +1,9 @@
 // Amway area field rules (framework-free). Field keys follow the integration instruction pack, section 4.
 // `amway_id` is not here: it was merged into the member number field (section 4B).
-// Option lists (centers, ranks) live in the database so administrators can maintain them. The training system and
-// the upline fields are free text with suggestion vocabularies (src/vocab); the education-system terms marked
-// H-Global1985 by the administrator are what need review and unlock eligibility.
+// The rank ladder lives in the database (a fixed 33-step ladder). The training system, the regional education center
+// and the upline fields are free text with suggestion vocabularies (src/vocab); the education-system terms marked
+// H-Global1985 by the administrator are what need review and unlock eligibility, and only for those members does the
+// center field offer its own vocabulary.
 
 import { normTerm } from "../vocab/terms";
 
@@ -25,11 +26,13 @@ export interface AmwayFieldDef {
   review: "when_hglobal" | "never";
   /** Vocabulary of related words offered while typing (free typing is always allowed). */
   suggest?: string;
+  /** The suggestions apply only while the member's training system means H-Global1985 (otherwise plain free text). */
+  suggest_when_hglobal?: boolean;
 }
 
 export const AMWAY_FIELDS: AmwayFieldDef[] = [
   { key: "education_system", order: 10, label: "直銷商培訓系統", type: "text", max_length: 50, visible_when: null, review: "when_hglobal", suggest: "education_system" },
-  { key: "education_center", order: 20, label: "教育中心", type: "select", visible_when: { field: "education_system", equals: HGLOBAL }, review: "never" },
+  { key: "education_center", order: 20, label: "地區教育中心", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "education_center", suggest_when_hglobal: true },
   { key: "rank", order: 30, label: "獎銜", type: "select", visible_when: null, review: "when_hglobal" },
   { key: "referrer", order: 40, label: "推薦人", type: "text", max_length: 50, visible_when: null, review: "never" },
   { key: "upline_crown_ambassador", order: 50, label: "皇冠大使", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_crown_ambassador" },

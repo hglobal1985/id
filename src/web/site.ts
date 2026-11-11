@@ -22,9 +22,13 @@ import { NOTES_JS, SHARE_JS } from "./assets/notes";
 import { chartHtml } from "./chart";
 import { lifeChartOf } from "../profile/astro";
 import { AMWAY_FIELDS } from "../amway/fields";
-import { listOptions, readAmwayFields } from "../db/amway";
+import { approvedRankLabel, listOptions, readAmwayFields } from "../db/amway";
+import { rankBadge } from "./nav-text";
 import { readNumbers } from "../db/member-numbers";
+import { publicId } from "../profile/member-number";
 import { loadLayout } from "../db/layout";
+import { BLOCKS, BLOCK_PREFIX } from "../profile/layout";
+import { fieldDefinitions } from "../profile/definitions";
 import { ADMIN_JS } from "./assets/admin";
 
 type C = Context<AppBindings>;
@@ -42,9 +46,10 @@ async function currentSession(c: C, deps: Deps) {
 
 /** Name and picture for the main menu. */
 async function navUser(db: D1Database, memberId: string): Promise<NavUser> {
-  const [member, dn] = await Promise.all([
+  const [member, dn, rank] = await Promise.all([
     getMember(db, memberId),
     db.prepare("SELECT value FROM profile_field_values WHERE member_id = ? AND field_key = 'display_name'").bind(memberId).first<{ value: string }>(),
+    approvedRankLabel(db, memberId),
   ]);
   let name: string | null = null;
   if (dn) {
@@ -56,7 +61,7 @@ async function navUser(db: D1Database, memberId: string): Promise<NavUser> {
     }
   }
   name = (name ?? member?.display_name ?? "").trim() || "會員";
-  return { name, initials: initialsOf(name), avatar_url: member?.avatar_url ?? null };
+  return { name, initials: initialsOf(name), avatar_url: member?.avatar_url ?? null, rank: rankBadge(rank) };
 }
 
 async function navFor(c: C, deps: Deps, path: string): Promise<SiteNav> {
@@ -87,7 +92,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
 
   app.get("/", async (c) => {
     if (await currentSession(c, deps)) return c.redirect("/me", 302);
-    return page(c, sitePage({ title: "會員中心", nav: { signedIn: false }, body: '<section class="card"><h1>H-Global1985 會員中心</h1><p>登入後可以管理您的基本資料。</p><p><a class="button primary" href="/login">使用 Google 帳號登入</a></p></section>' }));
+    return page(c, sitePage({ title: "會員中心", nav: { signedIn: false }, body: '<section class="card"><h1>會員中心</h1><p>登入後可以管理您的基本資料。</p><p><a class="button primary" href="/login">使用 Google 帳號登入</a></p></section>' }));
   });
 
   app.get("/logout", (c) => c.redirect("/oauth/logout", 302));
@@ -110,7 +115,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const s = await currentSession(c, deps);
     if (!s) return c.redirect("/login?return_to=%2Fme", 302);
     const first = (await readNumbers(c.env.DB, s.member_id))[0];
-    return c.redirect(first ? `/${encodeURIComponent(first.number)}` : "/me/edit", 302);
+    return c.redirect(first ? `/${encodeURIComponent(publicId(first))}` : "/me/edit", 302);
   });
 
   app.get("/me/edit", async (c) => {
@@ -150,8 +155,13 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         return `<div class="lc-row">${main}${links ? `<div class="lc-links">${links}</div>` : ""}</div>`;
       })
       .join("");
-    const body = `<h1>H-Global1985 Apps</h1><div class="card lc-list">${rows || '<p class="help">目前沒有可使用的 App。</p>'}</div>`;
-    return page(c, sitePage({ title: "H-Global1985 Apps", nav: await navFor(c, deps, APPS_PATH), body }));
+    const nav = await navFor(c, deps, APPS_PATH);
+    // The first entry of the launcher is 登出 (only when someone is signed in).
+    const out = nav.signedIn
+      ? `<div class="lc-row"><a class="lc-main" href="/logout"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lc-text"><span class="lc-name">登出</span></span></a></div>`
+      : "";
+    const body = `<h1>Apps</h1><div class="card lc-list">${out}${rows || '<p class="help">目前沒有可使用的 App。</p>'}</div>`;
+    return page(c, sitePage({ title: "Apps", nav, body }));
   });
 
   // Static legal text: escaped, then the {{amway}} token becomes a link to the Amway notice.
@@ -189,15 +199,15 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   });
 
   // Public profile: /<default member number>. Bound spouses share one URL; visitors switch between them.
-  app.get("/:number{[A-Z0-9][A-Z0-9-]{0,19}}", async (c) => {
-    const number = c.req.param("number");
+  app.get("/:number{[A-Za-z0-9][A-Za-z0-9-]{0,24}}", async (c) => {
+    const number = c.req.param("number").toUpperCase();
     const db = c.env.DB;
     const r = await db
       .prepare(
         `SELECT n.member_id FROM member_numbers n JOIN members m ON m.id = n.member_id
-         WHERE n.position = 0 AND n.number = ? AND m.status = 'active' ORDER BY m.created_at LIMIT 5`,
+         WHERE n.position = 0 AND (n.country || n.number = ? OR n.number = ?) AND m.status = 'active' ORDER BY m.created_at LIMIT 5`,
       )
-      .bind(number)
+      .bind(number, number)
       .all<{ member_id: string }>();
     let ids = (r.results ?? []).map((x) => x.member_id);
     if (ids.length === 1) {
@@ -206,6 +216,9 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     }
     const nav = await navFor(c, deps, "/");
     if (!ids.length) return page(c, sitePage({ title: "找不到會員", nav, body: '<section class="card"><h2>找不到此會員</h2><p>網址可能已經變更。</p></section>' }), 404);
+    // One canonical address: country code + number (TW9475831). Older number-only addresses forward to it.
+    const first = (await readNumbers(db, ids[0] as string))[0];
+    if (first && publicId(first) !== number) return c.redirect(`/${encodeURIComponent(publicId(first))}${new URL(c.req.url).search}`, 302);
     const pick = Math.min(Math.max(Number(c.req.query("m") ?? 0) || 0, 0), ids.length - 1);
     const viewer = await currentSession(c, deps);
     const options = await listOptions(db);
@@ -258,22 +271,37 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     };
     const motto = p.items.find((i) => i.key === "motto");
     const row = (label: string, html: string) => `<div class="row"><div class="row-head"><label>${escapeHtml(label)}</label></div><div class="value">${html}</div></div>`;
-    const rows =
+    // The rows follow the block order the super admin set; the Amway and 生命靈數 cards come after, in their own order.
+    const place = (k: string) => layout.get(BLOCK_PREFIX + k) ?? (BLOCKS.find((b) => b.key === k)?.order ?? 99);
+    const groupOf = new Map(fieldDefinitions().map((f) => [f.key, f.group]));
+    const byGroup = (g: string) =>
       p.items
-        .filter((i) => i.key !== "display_name" && i.key !== "motto" && !eduKeys.has(i.key))
+        .filter((i) => i.key !== "display_name" && i.key !== "motto" && !eduKeys.has(i.key) && groupOf.get(i.key) === g)
         .map((i) => row(i.label, value(i)))
-        .join("") + p.edu.map((l) => row(l.label, escapeHtml(l.text))).join("");
+        .join("");
+    const rowBlocks: { block: string; html: string }[] = [
+      { block: "basic", html: byGroup("basic") },
+      { block: "education", html: p.edu.map((l) => row(l.label, escapeHtml(l.text))).join("") },
+      { block: "contact", html: byGroup("contact") },
+      { block: "birthday", html: byGroup("birthday") },
+    ];
+    const rows = rowBlocks.sort((a, b) => place(a.block) - place(b.block)).map((b) => b.html).join("");
     const amwayRows = p.amway.map((a) => row(a.label, escapeHtml(a.text))).join("");
     const mine = viewer?.member_id === p.id;
-    const share = `<button type="button" class="small" id="share" data-label="分享"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
+    const share = `<button type="button" class="small" id="share" data-label="分享" data-title="${escapeHtml(nameOf(p))}｜會員中心"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
     const edit = mine ? `<a class="button small primary" href="/me/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>` : "";
     const body =
       `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}</div></div>` +
       `<section class="card"><div class="hero">${avatar}<div><h1>${escapeHtml(nameOf(p))}</h1><div class="sub"><span class="help">會員</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
       `${rows || '<p class="help">還沒有公開的資料。</p>'}</section>` +
-      (amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "") +
-      (p.chart ? `<section class="card"><h2>生命靈數</h2>${chartHtml(p.chart)}</section>` : "");
+      [
+        { block: "amway", html: amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "" },
+        { block: "life", html: p.chart ? `<section class="card"><h2>生命靈數</h2>${chartHtml(p.chart)}</section>` : "" },
+      ]
+        .sort((a, b) => place(a.block) - place(b.block))
+        .map((b) => b.html)
+        .join("");
     return page(c, sitePage({ title: nameOf(p), nav, body, script: "/assets/share.js" }));
   });
 }

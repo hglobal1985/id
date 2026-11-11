@@ -15,14 +15,19 @@ p{margin:0 0 10px}
 .foot{max-width:680px;margin:0 auto;padding:4px 14px 40px;color:var(--muted);font-size:14px}
 .foot a{margin-right:16px;color:var(--muted)}
 /* main menu */
-.starnav{position:sticky;top:0;z-index:30;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 4px;padding:6px 8px;background:#fff;border-top:4px solid transparent;border-image:var(--grad) 1;border-bottom:1px solid var(--line)}
-.starnav a{position:relative;color:var(--fg);text-decoration:none;padding:6px 12px;min-height:40px;border-radius:999px;display:inline-flex;align-items:center;gap:8px;flex:0 0 auto}
+.starnav{position:sticky;top:0;z-index:30;display:flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:2px;padding:4px 6px;background:#fff;border-top:4px solid transparent;border-image:var(--grad) 1;border-bottom:1px solid var(--line)}
+.starnav a{position:relative;color:var(--fg);text-decoration:none;padding:6px 10px;min-height:40px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;white-space:nowrap}
 .starnav a:hover{background:var(--green-soft)}
 .starnav a.on{background:var(--green);color:#fff;font-weight:700}
 .starnav .me{font-weight:600}
+.starnav .me .nm{overflow:hidden;text-overflow:ellipsis}
+/* rank box beside the name: fixed width of 5 Chinese characters, smaller than the name, text shrinks to fit */
+.rank{display:inline-flex;align-items:center;justify-content:center;flex:none;width:3.9rem;height:1.45rem;padding:0 2px;border-radius:7px;border:1px solid #e6c48c;background:var(--orange-soft);color:var(--orange);font-weight:700;line-height:1;overflow:hidden;white-space:nowrap}
+.rank.rk0{font-size:.72rem}.rank.rk1{font-size:.6rem}.rank.rk2{font-size:.48rem}.rank.rk3{font-size:.4rem}
+.starnav a.on .rank{background:#fff}
 .guest-brand{display:block;text-align:center;padding:14px;font-weight:700;color:var(--green);text-decoration:none;background:#fff;border-bottom:1px solid var(--line);border-top:4px solid transparent;border-image:var(--grad) 1}
 .launcher,.bell{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;color:var(--fg);text-decoration:none}
-.starnav .launcher,.starnav .bell{padding:0}
+.starnav .launcher,.starnav .bell{padding:0;flex:none}
 .launcher:hover,.bell:hover{background:var(--green-soft)}
 .launcher.on,.bell.on{background:var(--green);color:#fff}
 .bell .dot{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--orange);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
@@ -154,6 +159,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .lc-main{display:flex;align-items:center;gap:10px;color:var(--fg);text-decoration:none;min-width:0}
 .lc-main.off{opacity:.5}
 .lc-ico{width:52px;height:52px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:1.2rem}
+.lc-ico.out{background:#6b786f}.lc-ico.out .ico{width:1.4rem;height:1.4rem}
 .lc-ico.c0{background:#0c603c}.lc-ico.c1{background:#486c48}.lc-ico.c2{background:#cc6c0c}.lc-ico.c3{background:#b5543a}.lc-ico.c4{background:#2f7d6d}.lc-ico.c5{background:#8a9a2b}.lc-ico.c6{background:#9a6a1a}.lc-ico.c7{background:#c4912f}
 .lc-text{display:flex;flex-direction:column;min-width:0}
 .lc-name{font-weight:600;line-height:1.25}
@@ -192,10 +198,10 @@ body.admin .wrap{max-width:none;margin:0;padding:16px clamp(12px,3vw,40px) 32px}
 .topbar details.more .drop a,.topbar details.more .drop button{display:block;text-align:left}
 @media (max-width:900px){
 .topbar .burger{display:block}
-.topbar .menu{display:none;width:100%;flex-direction:column;align-items:stretch;gap:2px}
+.topbar .menu{display:none;position:absolute;right:10px;top:calc(100% + 4px);z-index:25;width:max-content;max-width:calc(100vw - 20px);flex-direction:column;align-items:stretch;gap:2px;padding:6px;background:#fff;border:1.5px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(29,42,34,.18)}
 .topbar .menu-toggle:checked ~ .menu{display:flex}
 .topbar details.more .drop{position:static;box-shadow:none;border:0;padding:0 0 0 12px;min-width:0;background:transparent}
-.topbar .menu a,.topbar .menu button,.topbar .menu summary{padding:12px;text-align:left}
+.topbar .menu a,.topbar .menu button,.topbar .menu summary{padding:10px 14px;text-align:left}
 }
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px;align-items:start}
 .grid>.card{margin:0}

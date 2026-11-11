@@ -290,6 +290,29 @@
               "$ref": "#/components/schemas/FieldDefinition"
             }
           },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "order": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "order"
+              ]
+            },
+            "description": "The big blocks of the page in the order the super admin set (avatar, amway, basic, education, contact, birthday, life); render the blocks in this order."
+          },
           "info": {
             "type": "array",
             "items": {
@@ -333,6 +356,7 @@
           "version",
           "groups",
           "fields",
+          "blocks",
           "info",
           "avatar"
         ]
@@ -766,7 +790,7 @@
           },
           "hglobal": {
             "type": "boolean",
-            "description": "The training system (effective or pending) is a term marked as H-Global1985: the education center field applies."
+            "description": "The training system (effective or pending) is a term marked as H-Global1985: the regional education center offers its own related words (field definition suggest_when_hglobal)."
           },
           "fields": {
             "type": "object",
@@ -901,49 +925,6 @@
           "audience"
         ],
         "additionalProperties": false
-      },
-      "DeletionRequest": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "amway",
-              "account"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "requested",
-              "completed",
-              "cancelled"
-            ]
-          },
-          "requested_at": {
-            "type": "string"
-          },
-          "due_at": {
-            "type": "string"
-          },
-          "completed_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "scope",
-          "status",
-          "requested_at",
-          "due_at",
-          "completed_at"
-        ]
       },
       "AppTokenPair": {
         "type": "object",
@@ -3738,146 +3719,6 @@
         }
       }
     },
-    "/v1/admin/amway/options": {
-      "get": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "All Amway option lists, including inactive ones",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Options",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthenticated or reauth_required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Create or update one option (rank sort_order = ladder position, low to high)",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "field_key": {
-                    "type": "string",
-                    "maxLength": 64
-                  },
-                  "value": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z0-9_-]{1,32}$"
-                  },
-                  "label": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 50
-                  },
-                  "sort_order": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 100000
-                  },
-                  "active": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "field_key",
-                  "value",
-                  "label",
-                  "sort_order",
-                  "active"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Saved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthenticated or reauth_required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "invalid_field",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/admin/profile-layout": {
       "get": {
         "tags": [
@@ -4744,119 +4585,6 @@
         }
       }
     },
-    "/v1/admin/deletion-requests": {
-      "get": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Open data deletion requests (due within 15 days of the request)",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthenticated or reauth_required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/admin/deletion-requests/{id}/complete": {
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Carry out a deletion request (account: anonymize and close; amway: remove Amway data). Needs a sign-in within 10 minutes.",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "maxLength": 64
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Done",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthenticated or reauth_required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "not_found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/admin/audit": {
       "get": {
         "tags": [
@@ -4951,12 +4679,12 @@
         }
       }
     },
-    "/v1/me/deletion-requests": {
-      "get": {
+    "/v1/me/delete-account": {
+      "post": {
         "tags": [
           "deletion"
         ],
-        "summary": "My data deletion requests (member site only)",
+        "summary": "Delete my account at once (member site only; needs a sign-in within 10 minutes). The account is anonymized, every device is signed out, and the Google account is released.",
         "security": [
           {
             "session": []
@@ -4964,91 +4692,22 @@
         ],
         "responses": {
           "200": {
-            "description": "Requests",
+            "description": "Deleted",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "requests": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/DeletionRequest"
-                      }
-                    },
-                    "processing_days": {
-                      "type": "integer"
+                    "deleted": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
                     }
                   },
                   "required": [
-                    "requests",
-                    "processing_days"
+                    "deleted"
                   ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "deletion"
-        ],
-        "summary": "Ask for deletion of the Amway area data or the whole account (needs a sign-in within 10 minutes)",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "scope": {
-                    "type": "string",
-                    "enum": [
-                      "amway",
-                      "account"
-                    ]
-                  }
-                },
-                "required": [
-                  "scope"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Requested",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeletionRequest"
                 }
               }
             }
@@ -5073,85 +4732,8 @@
               }
             }
           },
-          "422": {
-            "description": "invalid_field",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/me/deletion-requests/{id}/cancel": {
-      "post": {
-        "tags": [
-          "deletion"
-        ],
-        "summary": "Cancel a request that has not been carried out yet",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "maxLength": 64
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Cancelled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "cancelled": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    }
-                  },
-                  "required": [
-                    "cancelled"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "not_found",
+          "409": {
+            "description": "last_super_admin (hand the role over first)",
             "content": {
               "application/json": {
                 "schema": {
