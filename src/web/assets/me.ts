@@ -228,8 +228,8 @@ export const ME_JS = String.raw`
     var row = el("div", { class: "socials" + (dense ? " dense" : "") });
     links.forEach(function (l) {
       var name = l.label || l.platform_name || "連結";
-      var copy = el("button", { type: "button", class: "soc-copy", text: "複製", onclick: function () {
-        function done(t) { copy.textContent = t; setTimeout(function () { copy.textContent = "複製"; }, 1500); }
+      var copy = el("button", { type: "button", class: "soc-copy", title: "點一下複製連結", text: name, onclick: function () {
+        function done(t) { copy.textContent = t; setTimeout(function () { copy.textContent = name; }, 1500); }
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(l.url).then(function () { done("已複製"); }, function () { done("請手動複製"); }); else done("請手動複製");
       } });
       row.appendChild(el("div", { class: "soc" }, [
@@ -247,7 +247,7 @@ export const ME_JS = String.raw`
     var m = msg(), key = S.platforms.length ? S.platforms[0].key : "", iconBlob = null;
     var dd = HG.dropdown({ options: S.platforms.map(function (p) { return { value: p.key, label: p.name }; }), value: key, block: true, searchable: true, onchange: function (v) { key = v; paintCustom(); } });
     var url = el("input", { type: "url", placeholder: "貼上你的個人頁網址（https://…）", "aria-label": "網址" });
-    var label = el("input", { type: "text", maxlength: 30, placeholder: "名稱（選填）", "aria-label": "名稱" });
+    var label = el("input", { type: "text", maxlength: 30, placeholder: "顯示名稱（選填，例如：健管、XS系列；不填就顯示平台名稱）", "aria-label": "名稱" });
     var file = el("input", { type: "file", accept: "image/*", hidden: true, "aria-label": "選擇圖示" });
     var preview = el("img", { class: "soc-preview", alt: "", hidden: true });
     var custom = el("div");
@@ -255,7 +255,7 @@ export const ME_JS = String.raw`
     function paintCustom() {
       custom.textContent = "";
       if (!isCustom()) { iconBlob = null; return; }
-      custom.appendChild(el("div", { class: "gap" })); custom.appendChild(label);
+      custom.appendChild(el("div", { class: "gap" }));
       custom.appendChild(el("div", { class: "inline" }, [el("button", { type: "button", class: "small", text: "上傳圖示（選填）", onclick: function () { file.click(); } }), preview, file]));
     }
     file.addEventListener("change", function () {
@@ -267,9 +267,9 @@ export const ME_JS = String.raw`
     });
     paintCustom();
     var panel = el("div", { class: "soc-panel" }, [
-      el("label", { text: "選擇平台" }), dd.el, el("div", { class: "gap" }), url, custom, el("div", { class: "actions" }, [
+      el("label", { text: "選擇平台" }), dd.el, el("div", { class: "gap" }), url, el("div", { class: "gap" }), label, custom, el("div", { class: "actions" }, [
         el("button", { type: "button", class: "primary", text: "新增", onclick: function () {
-          var body = { platform_key: key, url: url.value.trim() }; if (isCustom() && label.value.trim()) body.label = label.value.trim();
+          var body = { platform_key: key, url: url.value.trim() }; if (label.value.trim()) body.label = label.value.trim();
           api("POST", "/v1/me/social-links", body).then(function (r) {
             if (r.status !== 200) { say(m, false, errText(r)); return; }
             if (iconBlob && isCustom()) api("PUT", "/v1/me/social-links/" + encodeURIComponent(r.body.id) + "/icon", undefined, { type: iconBlob.type, data: iconBlob }).then(function () { refreshSocial(); });
@@ -340,7 +340,7 @@ export const ME_JS = String.raw`
     var units = 0; Array.from(shownName() || "我的帳號").forEach(function (ch) { units += /[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef\u3000-\u303f]/.test(ch) ? 1 : 0.55; });
     var nm = units <= 6 ? 0 : units <= 8 ? 1 : units <= 10 ? 2 : 3;
     return el("section", { class: "card" }, [
-      el("div", { class: "hero" }, [HG.bubble("lg", p.avatar.url, shownName()), el("div", { class: "hero-main" }, [el("div", { class: "nameline" }, [el("h1", { class: "nm nm-" + nm, text: shownName() || "我的帳號" }), badges]), el("div", { class: "sub" }, [el("span", { class: "help", text: "會員編號" }), first ? el("span", { class: "badge num", text: first }) : null])])]),
+      el("div", { class: "hero" }, [HG.bubble("lg", p.avatar.url, shownName()), el("div", { class: "hero-main" }, [el("div", { class: "nameline" }, [el("h1", { class: "nm nm-" + nm, text: shownName() || "我的帳號" }), badges]), el("div", { class: "sub" }, [el("span", { class: "help", text: "會員編號" }), first ? el("span", { class: "help", text: first }) : null])])]),
       // The three picture buttons sit in one full-width row under the picture.
       el("div", { class: "avbtns" }, [
         el("button", { type: "button", text: "上傳圖片", onclick: function () { file.click(); } }),
@@ -485,31 +485,45 @@ export const ME_JS = String.raw`
     if (r.birthday) rings.push("rg-birthday");
     if (r.zodiac) rings.push("rg-zodiac");
     for (i = 0; i < r.talent; i++) rings.push("rg-talent");
-    if (!rings.length && !r.life) return el("td", { class: "ln-cell ln-empty" }, [el("span", { class: "ln-n", text: String(n) })]);
+    if (!rings.length && !r.life) return el("div", { class: "ln-cell ln-empty" }, [el("span", { class: "ln-n", text: String(n) })]);
+    // From the inside out: the number, the red triangle (innermost), then the circles.
     var inner = el("span", { class: "ln-n" + (rings.length ? "" : " ln-red"), text: String(n) });
-    rings.forEach(function (c) { inner = el("span", { class: "ln-ring " + c }, [inner]); });
     if (r.life) {
       var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       s.setAttribute("viewBox", "0 0 100 90"); s.setAttribute("preserveAspectRatio", "none"); s.setAttribute("aria-hidden", "true");
       s.innerHTML = '<polygon points="50,5 96,85 4,85" fill="none" stroke="#e5303a" stroke-width="5" stroke-linejoin="round"/>';
       inner = el("span", { class: "ln-tri" }, [s, inner]);
     }
-    return el("td", { class: "ln-cell" }, [inner]);
+    rings.forEach(function (c, k) { inner = el("span", { class: "ln-ring " + c + (k === 0 && r.life ? " ln-ring-t" : "") }, [inner]); });
+    return el("div", { class: "ln-cell" }, [inner]);
+  }
+  function svgIcon(cls, html) {
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("class", cls); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true"); s.innerHTML = html; return s;
   }
   // The 生命靈數 chart inside the birthday block (one block for both).
   function chartBody() {
     var c = S.profile.life_chart; if (!c) return null;
     function item(cls, label, value, badge) { return el("div", { class: "ln-item " + cls }, [el("span", { text: label }), el("span", { class: "ln-badge " + badge, text: String(value) })]); }
     function legend(cls, text) { return el("div", {}, [el("span", { class: "ln-dot " + cls }), el("span", { text: text })]); }
-    var rows = CHART_ROWS.map(function (row) { return el("tr", {}, row.map(function (n) { return cell(n, c.rings[n]); })); });
+    var cells = [];
+    CHART_ROWS.forEach(function (row) { row.forEach(function (n) { cells.push(cell(n, c.rings[n])); }); });
+    var lines = c.lines || [];
+    if (lines.length) {
+      var lay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      lay.setAttribute("class", "ln-lines"); lay.setAttribute("viewBox", "0 0 3 3"); lay.setAttribute("preserveAspectRatio", "none"); lay.setAttribute("aria-hidden", "true");
+      lay.innerHTML = lines.map(function (l) { function x(n) { return Math.floor((n - 1) / 3) + 0.5; } function y(n) { return ((n - 1) % 3) + 0.5; } return '<line x1="' + x(l[0]) + '" y1="' + y(l[0]) + '" x2="' + x(l[2]) + '" y2="' + y(l[2]) + '"/>'; }).join("");
+      cells.unshift(lay);
+    }
     return el("div", { class: "row" }, [
       el("div", { class: "row-head" }, [el("label", { text: "生命靈數" }), el("div", { class: "row-tools" }, [lockedPill()])]),
       el("div", { class: "ln-card" }, [
         el("div", { class: "ln-head" }, [item("z", "星座：" + c.zodiac_name, c.zodiac_number, "ln-b-zodiac"), item("b", "生日數：", c.birthday_number, "ln-b-birthday"), item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent"), item("l", "加總命數：", c.life_number, "ln-b-life")]),
-        el("table", { class: "ln-grid", "aria-label": "彩色九宮格" }, rows),
+        el("div", { class: "ln-grid", role: "img", "aria-label": "彩色九宮格" }, cells),
         el("div", { class: "ln-legend" }, [
-          legend("rg-black", "先天數生日數字（黑色線圈，出現幾次畫幾圈）"), legend("rg-birthday", "生日數（黃色圈線，出生日期相加至個位數）"), legend("rg-zodiac", "星座數（紫色圈線）"), legend("rg-talent", "天賦數（亮綠圈線）"),
-          el("div", {}, [HG.icon("tri", "ln-dot-tri"), el("span", { text: "加總命數（紅色三角形包圍數字）" })])])
+          legend("rg-black", "先天數生日數字"), legend("rg-birthday", "生日數"), legend("rg-zodiac", "星座數"), legend("rg-talent", "天賦數"),
+          el("div", {}, [HG.icon("tri", "ln-dot-tri"), el("span", { text: "加總命數" })]),
+          el("div", {}, [svgIcon("ln-dot-tri", '<line x1="2" y1="12" x2="22" y2="12" stroke="#2563eb" stroke-width="3.7" stroke-linecap="round"/>'), el("span", { text: "特殊連線" })])])
       ])
     ]);
   }
