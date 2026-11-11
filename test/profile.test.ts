@@ -81,7 +81,22 @@ describe("field definitions API", () => {
     expect(d.fields.find((f) => f.key === "birthday")?.scope).toBe("profile.birthday.write");
     const country = d.fields.find((f) => f.key === "country");
     expect(country?.options?.[0]).toEqual({ value: "TW", label: "台灣" });
-    expect(d.info.find((i) => i.key === "member_id")?.collapsed).toBe(true);
+    expect(d.info.map((i) => i.key)).toEqual(["zodiac", "life_path_number", "talent_number"]); // no 帳號資訊 block
+    // Related-word vocabularies, rows of the education block and the member-number countries (same order as starry.phd).
+    const byKey = Object.fromEntries((d.fields as unknown as { key: string; label: string; suggest?: string; ui?: string; row?: { key: string; label: string }; options?: { value: string; label: string }[] }[]).map((f) => [f.key, f]));
+    expect(byKey.occupation).toMatchObject({ type: "tags", suggest: "occupation" });
+    expect(byKey.interests).toMatchObject({ label: "興趣與專長", type: "tags", suggest: "interests" });
+    expect(byKey.website?.label).toBe("社群連結");
+    expect(byKey.university).toMatchObject({ label: "大學校名", suggest: "school", row: { key: "university", label: "大學" } });
+    expect(byKey.grad_dept).toMatchObject({ label: "碩士系名", suggest: "dept", row: { key: "master", label: "碩士" } });
+    expect(byKey.phd_school).toMatchObject({ label: "博士校名", row: { key: "doctor", label: "博士" } });
+    expect(byKey.country?.ui).toBe("autocomplete");
+    expect(Object.keys(byKey)).not.toContain("primary_name");
+    expect(Object.keys(byKey)).not.toContain("skills");
+    const mn = byKey.member_number?.options ?? [];
+    expect(mn.slice(0, 6).map((o) => o.value)).toEqual(["TW", "HK", "MO", "CN", "JP", "KR"]);
+    expect(mn[0]?.label).toBe("台灣（TW）+886");
+    expect(mn.map((o) => o.value).indexOf("US")).toBeGreaterThan(mn.map((o) => o.value).indexOf("AU")); // nearby first, rest by calling code
     const text = JSON.stringify(d);
     for (const banned of ["starry", "繁星", "寰宇", "安麗"]) expect(text).not.toContain(banned);
   });
@@ -107,6 +122,12 @@ describe("GET /v1/me/profile", () => {
 });
 
 describe("PUT /v1/me/profile/fields/{field_key}", () => {
+  it("the legal-name field is gone for good", async () => {
+    const t = await token();
+    expect((await call("PUT", "/v1/me/profile/fields/primary_name", { token: t, body: { value: "x" } })).status).toBe(404);
+    expect((await call("PUT", "/v1/me/profile/fields/skills", { token: t, body: { value: ["x"] } })).status).toBe(404);
+  });
+
   it("saves a field, is idempotent, and audits the app and field without the value", async () => {
     const t = await token();
     let res = await call("PUT", "/v1/me/profile/fields/contact_email", { token: t, body: { value: "  new@example.com " } });
@@ -146,8 +167,8 @@ describe("PUT /v1/me/profile/fields/{field_key}", () => {
       ["display_name", "", "required"],
       ["nickname", "x".repeat(31), "too_long"],
       ["nickname", "a\u0000b", "invalid_characters"],
-      ["skills", Array.from({ length: 21 }, (_, i) => `s${i}`), "too_many"],
-      ["skills", "not-a-list", "type"],
+      ["interests", Array.from({ length: 31 }, (_, i) => `s${i}`), "too_many"],
+      ["interests", "not-a-list", "type"],
     ] as [string, unknown, string][]) {
       res = await call("PUT", `/v1/me/profile/fields/${key}`, { token: t, body: { value } });
       expect(res.status, `${key}=${JSON.stringify(value)}`).toBe(422);
@@ -211,19 +232,78 @@ describe("visibility and avatar", () => {
     expect(res.status).toBe(403);
   });
 
-  it("upload and Google avatar return 501 not_available; remove works", async () => {
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 73, 72, 68, 82]);
+  const upload = (t: string, bytes: Uint8Array, type = "image/png") =>
+    app.request("/v1/me/profile/avatar", { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": type }, body: bytes }, env);
+
+  it("uploads a small image (checked by its bytes), serves it publicly, and removes it", async () => {
     const t = await token();
-    for (const path of ["/v1/me/profile/avatar", "/v1/me/profile/avatar/google"]) {
-      const res = await call("POST", path, { token: t });
-      expect(res.status).toBe(501);
-      expect(((await res.json()) as { error: { code: string } }).error.code).toBe("not_available");
-    }
-    db.raw.prepare("UPDATE members SET avatar_url = 'https://cdn.example/a.png', avatar_source = 'upload'").run();
-    const res = await call("DELETE", "/v1/me/profile/avatar", { token: t });
+    expect((await upload(t, new TextEncoder().encode("<html><script>alert(1)</script>"), "image/png")).status).toBe(422);
+    expect((await upload(t, new Uint8Array(129 * 1024).fill(1))).status).toBe(413);
+    const res = await upload(t, PNG);
     expect(res.status).toBe(200);
+    const { avatar } = (await res.json()) as { avatar: { url: string; source: string } };
+    expect(avatar.source).toBe("upload");
+    expect(avatar.url).toMatch(new RegExp(`^${ISSUER}/avatar/${memberId}\\?v=\\d+$`));
+    const img = await app.request(`/avatar/${memberId}`, {}, env);
+    expect(img.status).toBe(200);
+    expect(img.headers.get("content-type")).toBe("image/png");
+    expect(img.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await app.request("/avatar/00000000-0000-0000-0000-000000000000", {}, env)).status).toBe(404);
+    expect((await upload(await token("openid profile.read"), PNG)).status).toBe(403);
+    const del = await call("DELETE", "/v1/me/profile/avatar", { token: t });
+    expect(del.status).toBe(200);
     expect(db.raw.prepare("SELECT avatar_url, avatar_source FROM members").get()).toEqual({ avatar_url: null, avatar_source: "none" });
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM member_avatars").get()).toEqual({ n: 0 });
+    expect((await app.request(`/avatar/${memberId}`, {}, env)).status).toBe(404);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'profile.avatar.remove'").get()?.n).toBe(1);
     expect((await call("DELETE", "/v1/me/profile/avatar", { token: await token("openid profile.read") })).status).toBe(403);
+  });
+
+  it("uses the Google picture without copying it; refuses when there is none", async () => {
+    const t = await token();
+    db.raw.prepare("UPDATE members SET google_picture_url = NULL").run();
+    expect((await call("POST", "/v1/me/profile/avatar/google", { token: t })).status).toBe(422);
+    db.raw.prepare("UPDATE members SET google_picture_url = 'https://lh3.googleusercontent.com/a/x'").run();
+    const res = await call("POST", "/v1/me/profile/avatar/google", { token: t });
+    expect(res.status).toBe(200);
+    expect(db.raw.prepare("SELECT avatar_url, avatar_source FROM members").get()).toEqual({ avatar_url: "https://lh3.googleusercontent.com/a/x", avatar_source: "google" });
+  });
+
+  it("a new member starts with the Google picture; later sign-ins keep it fresh only while it is the chosen avatar", async () => {
+    const { member } = await upsertMemberByGoogle(db, { sub: "pic", emailVerified: true, name: "圖", picture: "https://lh3.googleusercontent.com/a/1" }, "TW", new Date(), "r");
+    expect(member.avatar_url).toBe("https://lh3.googleusercontent.com/a/1");
+    await upsertMemberByGoogle(db, { sub: "pic", emailVerified: true, name: "圖", picture: "https://lh3.googleusercontent.com/a/2" }, "TW", new Date(), "r");
+    expect(db.raw.prepare("SELECT avatar_url FROM members WHERE id = ?").get(member.id)?.avatar_url).toBe("https://lh3.googleusercontent.com/a/2");
+    db.raw.prepare("UPDATE members SET avatar_source = 'none', avatar_url = NULL WHERE id = ?").run(member.id);
+    await upsertMemberByGoogle(db, { sub: "pic", emailVerified: true, name: "圖", picture: "https://lh3.googleusercontent.com/a/3" }, "TW", new Date(), "r");
+    expect(db.raw.prepare("SELECT avatar_url FROM members WHERE id = ?").get(member.id)?.avatar_url).toBeNull();
+  });
+
+  it("suggests related words: any typed character, any order; remembers what members save", async () => {
+    const t = await token();
+    for (const v of ["國立臺灣大學", "臺灣科技大學", "政治大學"]) await call("PUT", "/v1/me/profile/fields/university", { token: t, body: { value: v } });
+    const sug = async (q: string, pool = "school") => ((await (await call("GET", `/v1/vocab/suggestions?pool=${pool}&q=${encodeURIComponent(q)}`, { token: t })).json()) as { suggestions: string[] }).suggestions;
+    expect(await sug("臺大")).toEqual(expect.arrayContaining(["國立臺灣大學", "臺灣科技大學", "政治大學"]));
+    expect((await sug("臺大"))[0]).toMatch(/臺灣/); // both characters match: best first
+    expect(await sug("治")).toEqual(["政治大學"]);
+    expect(await sug("")).toEqual([]);
+    expect(await sug("x")).toEqual([]);
+    expect((await call("GET", "/v1/vocab/suggestions?pool=nope&q=a", { token: t })).status).toBe(422);
+    // An existing spelling wins; the term is counted once per save.
+    await call("PUT", "/v1/me/profile/fields/grad_school", { token: t, body: { value: "政治大學" } });
+    expect(db.raw.prepare("SELECT uses FROM vocab_terms WHERE pool = 'school' AND term = '政治大學'").get()).toEqual({ uses: 2 });
+    // Schools are shared by 大學 / 碩士 / 博士; departments are a separate pool.
+    await call("PUT", "/v1/me/profile/fields/phd_dept", { token: t, body: { value: "資訊工程學系" } });
+    expect(await sug("資", "dept")).toEqual(["資訊工程學系"]);
+    expect(await sug("資", "school")).toEqual([]);
+  });
+
+  it("serves random mottos, never the current one", async () => {
+    const t = await token();
+    const m = (await (await call("GET", "/v1/profile/suggestions/motto", { token: t })).json()) as { motto: string };
+    expect(m.motto.length).toBeGreaterThan(2);
+    expect(m.motto).not.toContain("星");
   });
 });
 
@@ -232,7 +312,10 @@ describe("field rules (unit)", () => {
   const def = (k: string) => getFieldDefinition(k)!;
   it("normalizes values", () => {
     expect(validateFieldValue(def("country"), "tw", today)).toEqual({ ok: true, value: "TW" });
-    expect(validateFieldValue(def("skills"), [" a ", "a", "b", ""], today)).toEqual({ ok: true, value: ["a", "b"] });
+    expect(validateFieldValue(def("interests"), [" a ", "a", "b", ""], today)).toEqual({ ok: true, value: ["a", "b"] });
+    expect(validateFieldValue(def("country"), "台灣", today)).toEqual({ ok: true, value: "TW" });
+    expect(validateFieldValue(def("country"), "japan", today)).toEqual({ ok: true, value: "JP" });
+    expect(validateFieldValue(def("country"), "火星", today).ok).toBe(false);
     expect(validateFieldValue(def("website"), "https://example.com", today)).toEqual({ ok: true, value: "https://example.com/" });
     expect(validateFieldValue(def("phone"), "+886 912-345-678", today).ok).toBe(true);
     expect(validateFieldValue(def("birthday"), "2026-11-10", today).ok).toBe(true);
@@ -242,8 +325,8 @@ describe("field rules (unit)", () => {
   });
   it("every definition has a write scope and the documented field keys", () => {
     expect(FIELD_KEYS).toEqual([
-      "display_name", "nickname", "primary_name", "motto", "bio", "occupation", "organization", "website", "languages", "interests", "skills",
-      "university", "university_dept", "grad_school", "grad_dept", "locale", "contact_email", "phone", "country", "region", "city", "birthday",
+      "display_name", "nickname", "motto", "bio", "occupation", "organization", "website", "languages", "interests",
+      "university", "university_dept", "grad_school", "grad_dept", "phd_school", "phd_dept", "locale", "contact_email", "phone", "country", "region", "city", "birthday",
     ]);
     for (const f of fieldDefinitions()) expect(f.scope).toMatch(/^profile\.(basic|contact|birthday)\.write$/);
   });

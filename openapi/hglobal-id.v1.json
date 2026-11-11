@@ -143,6 +143,33 @@
             "type": "string",
             "description": "text | textarea | url | email | phone | date | select | tags. Unknown types: show 「請更新 app」."
           },
+          "suggest": {
+            "type": "string",
+            "description": "Vocabulary for related words: GET /v1/vocab/suggestions?pool=<suggest>&q=<typed>. Free typing is always allowed."
+          },
+          "ui": {
+            "type": "string",
+            "description": "autocomplete: a type-to-search box over `options` (never a native select)."
+          },
+          "row": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "optional_after": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "description": "Fields with the same row.key share one line; a row with optional_after stays hidden until the member adds it (「新增碩士學歷」)."
+          },
           "scope": {
             "type": "string"
           },
@@ -404,6 +431,10 @@
                 "label": {
                   "type": "string"
                 },
+                "note": {
+                  "type": "string",
+                  "description": "member_number only: 隨機產生，不可修改 (Amway off) / 建議修改會員編號 (Amway on)"
+                },
                 "max_items": {
                   "type": "integer"
                 },
@@ -480,7 +511,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Read-only (imported from the old site)"
+                "description": "Talent numbers of the life number chart, joined with 、"
               }
             },
             "required": [
@@ -491,13 +522,39 @@
               "life_path_number",
               "talent_number"
             ]
+          },
+          "derived": {
+            "type": "object",
+            "properties": {
+              "visibility": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "private"
+                ]
+              }
+            },
+            "required": [
+              "visibility"
+            ],
+            "description": "Visibility of the zodiac and life number chart (key `derived` in PUT /v1/me/profile/visibility)."
+          },
+          "life_chart": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {},
+            "description": "Life number chart data (zodiac, birthday, talent and life numbers; rings per digit 1-9) when a birthday is set."
           }
         },
         "required": [
           "member_id",
           "fields",
           "avatar",
-          "info"
+          "info",
+          "derived",
+          "life_chart"
         ]
       },
       "ProfileFieldWrite": {
@@ -662,10 +719,6 @@
         "type": "object",
         "additionalProperties": {}
       },
-      "AmwayConsent": {
-        "type": "object",
-        "additionalProperties": {}
-      },
       "AmwayValue": {
         "anyOf": [
           {
@@ -703,31 +756,6 @@
           "enabled": {
             "type": "boolean"
           },
-          "consent": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "properties": {
-              "version": {
-                "type": "string"
-              },
-              "accepted_at": {
-                "type": "string"
-              },
-              "current": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "version",
-              "accepted_at",
-              "current"
-            ]
-          },
-          "current_consent_version": {
-            "type": "string"
-          },
           "fields": {
             "type": "object",
             "additionalProperties": {
@@ -753,21 +781,27 @@
                     "string",
                     "null"
                   ]
+                },
+                "visibility": {
+                  "type": "string",
+                  "enum": [
+                    "public",
+                    "private"
+                  ]
                 }
               },
               "required": [
                 "value",
                 "pending_value",
                 "status",
-                "updated_at"
+                "updated_at",
+                "visibility"
               ]
             }
           }
         },
         "required": [
           "enabled",
-          "consent",
-          "current_consent_version",
           "fields"
         ]
       },
@@ -1078,14 +1112,6 @@
               "maxLength": 200
             },
             "maxItems": 10
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "maxLength": 64
-            },
-            "maxItems": 20
           },
           "min_version": {
             "type": "string",
@@ -1755,13 +1781,46 @@
         "tags": [
           "profile"
         ],
-        "summary": "Upload a cropped square avatar (≤512 px, JPEG/PNG/WebP, ≤2 MB). Currently returns 501.",
+        "summary": "Upload a square avatar: the raw image bytes as the request body (Content-Type image/jpeg, image/png or image/webp, at most 128 KB; resize to about 256 px first).",
         "security": [
           {
             "bearer": []
           }
         ],
         "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "avatar": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "upload"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "source"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "avatar"
+                  ]
+                }
+              }
+            }
+          },
           "401": {
             "description": "unauthenticated",
             "content": {
@@ -1782,8 +1841,18 @@
               }
             }
           },
-          "501": {
-            "description": "not_available (file storage is not enabled yet)",
+          "413": {
+            "description": "too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
             "content": {
               "application/json": {
                 "schema": {
@@ -1866,13 +1935,46 @@
         "tags": [
           "profile"
         ],
-        "summary": "Use my Google picture as avatar. Currently returns 501.",
+        "summary": "Use my Google picture as avatar",
         "security": [
           {
             "bearer": []
           }
         ],
         "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "avatar": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "google"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "source"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "avatar"
+                  ]
+                }
+              }
+            }
+          },
           "401": {
             "description": "unauthenticated",
             "content": {
@@ -1893,8 +1995,163 @@
               }
             }
           },
-          "501": {
-            "description": "not_available (file storage is not enabled yet)",
+          "422": {
+            "description": "invalid_field (no Google picture)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vocab/suggestions": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Related words while typing: terms of the pool that contain any typed character (any order), best matches first",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "required": true,
+            "name": "pool",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 60,
+              "default": ""
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Suggestions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pool": {
+                      "type": "string"
+                    },
+                    "suggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "pool",
+                    "suggestions"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field (unknown pool)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/profile/suggestions/motto": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "A random motto suggestion (fills the edit box; the member saves it explicitly)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "current",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Suggestion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "motto": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "motto"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (scope)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2364,52 +2621,7 @@
             }
           },
           "403": {
-            "description": "forbidden (scope) or consent_required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/amway/consent": {
-      "get": {
-        "tags": [
-          "amway"
-        ],
-        "summary": "Consent text (short version) and version. Render as given; never hard-code (cache up to 1 hour).",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Consent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AmwayConsent"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "forbidden (scope) or consent_required",
+            "description": "forbidden (scope) or amway_disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2454,7 +2666,7 @@
             }
           },
           "403": {
-            "description": "forbidden (scope) or consent_required",
+            "description": "forbidden (scope) or amway_disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2471,7 +2683,7 @@
         "tags": [
           "amway"
         ],
-        "summary": "Turn 「我是Amway會員」 on (needs the current consent_version) or off (data kept, eligibility paused)",
+        "summary": "Turn 「我是Amway會員」 on or off at once, no confirmation step (off keeps the data and pauses eligibility)",
         "security": [
           {
             "bearer": []
@@ -2486,10 +2698,6 @@
                 "properties": {
                   "enabled": {
                     "type": "boolean"
-                  },
-                  "consent_version": {
-                    "type": "string",
-                    "maxLength": 20
                   }
                 },
                 "required": [
@@ -2529,7 +2737,7 @@
             }
           },
           "403": {
-            "description": "forbidden (scope) or consent_required",
+            "description": "forbidden (scope) or amway_disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2646,7 +2854,7 @@
             }
           },
           "403": {
-            "description": "forbidden (scope) or consent_required",
+            "description": "forbidden (scope) or amway_disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2726,7 +2934,63 @@
             }
           },
           "403": {
-            "description": "forbidden (scope) or consent_required",
+            "description": "forbidden (scope) or amway_disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/notifications/read-all": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark all my notifications as read",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "read": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "read"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (scope) or amway_disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2793,7 +3057,7 @@
             }
           },
           "403": {
-            "description": "forbidden (scope) or consent_required",
+            "description": "forbidden (scope) or amway_disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -3601,12 +3865,12 @@
         }
       }
     },
-    "/v1/admin/amway/uplines/custom": {
+    "/v1/admin/vocab": {
       "get": {
         "tags": [
           "admin"
         ],
-        "summary": "Merge page: custom upline names typed by members, with counts",
+        "summary": "Suggestion vocabularies (super admin): pools with their term counts",
         "security": [
           {
             "session": []
@@ -3614,7 +3878,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Custom names",
+            "description": "Pools",
             "content": {
               "application/json": {
                 "schema": {
@@ -3647,15 +3911,93 @@
         }
       }
     },
-    "/v1/admin/amway/uplines/merge": {
+    "/v1/admin/vocab/{pool}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Terms of one vocabulary with use counts (most used first)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "required": true,
+            "name": "pool",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Terms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/vocab/{pool}/add": {
       "post": {
         "tags": [
           "admin"
         ],
-        "summary": "Merge page: fold one custom upline name into an existing option for every member",
+        "summary": "Add a term by hand",
         "security": [
           {
             "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "required": true,
+            "name": "pool",
+            "in": "path"
           }
         ],
         "requestBody": {
@@ -3665,27 +4007,224 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "field_key": {
-                    "type": "string",
-                    "enum": [
-                      "upline_crown_ambassador",
-                      "upline_diamond",
-                      "upline_platinum"
-                    ]
-                  },
-                  "custom_text": {
+                  "term": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 50
-                  },
-                  "into": {
-                    "type": "string",
-                    "maxLength": 32
+                    "maxLength": 100
                   }
                 },
                 "required": [
-                  "field_key",
-                  "custom_text",
+                  "term"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/vocab/{pool}/rename": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Edit a term; saved values follow. Renaming into an existing term merges the two.",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "required": true,
+            "name": "pool",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/vocab/{pool}/merge": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Merge several terms into one (saved values follow)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "required": true,
+            "name": "pool",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "froms": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "minItems": 1,
+                    "maxItems": 50
+                  },
+                  "into": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "froms",
                   "into"
                 ]
               }
@@ -3724,8 +4263,185 @@
               }
             }
           },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "422": {
             "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/vocab/{pool}/delete": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Delete a term from the suggestions (values members already saved stay as they are)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "required": true,
+            "name": "pool",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "term": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "term"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/vocab/education_system/hglobal": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Mark or unmark a 直銷商培訓系統 term as meaning H-Global1985 (needs review; unlocks eligibility)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "term": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "hglobal": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "term",
+                  "hglobal"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
             "content": {
               "application/json": {
                 "schema": {

@@ -45,4 +45,46 @@ describe("D1 migrations", () => {
     expect(db.prepare("SELECT COUNT(*) AS n FROM members").get().n).toBe(0);
     db.close();
   });
+
+  it("0013 converts existing data: legal name deleted, interests+skills merged, text lists, free-text Amway fields", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 13)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-10T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('m1','g1','active','${ts}','${ts}'), ('m2','g2','active','${ts}','${ts}')`);
+    const pv = db.prepare("INSERT INTO profile_field_values (member_id, field_key, value, updated_at) VALUES (?, ?, ?, ?)");
+    pv.run("m1", "primary_name", JSON.stringify("王小明"), ts);
+    pv.run("m1", "interests", JSON.stringify(["閱讀", "旅行"]), ts);
+    pv.run("m1", "skills", JSON.stringify(["旅行", "攝影"]), ts);
+    pv.run("m2", "skills", JSON.stringify(["程式"]), ts);
+    pv.run("m1", "occupation", JSON.stringify("工程師"), ts);
+    pv.run("m1", "organization", JSON.stringify("某公司"), ts);
+    db.prepare("INSERT INTO profile_visibility (member_id, field_key, visibility, updated_at) VALUES ('m1','skills','public',?)").run(ts);
+    const av = db.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, updated_at) VALUES (?, ?, ?, ?, 'not_required', ?)");
+    av.run("m1", "education_system", JSON.stringify({ option: "hglobal", custom_text: null }), null, ts);
+    av.run("m2", "education_system", null, JSON.stringify({ option: "other", custom_text: "某體系" }), ts);
+    av.run("m1", "upline_diamond", JSON.stringify({ option: "other", custom_text: "陳大華" }), null, ts);
+    av.run("m2", "upline_diamond", JSON.stringify({ option: "other", custom_text: "陳大華" }), null, ts);
+    av.run("m1", "rank", JSON.stringify("12"), null, ts);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0013"))), "utf8"));
+
+    const val = (m, k) => { const r = db.prepare("SELECT value FROM profile_field_values WHERE member_id = ? AND field_key = ?").get(m, k); return r ? JSON.parse(r.value) : null; };
+    expect(val("m1", "primary_name")).toBeNull();
+    expect(val("m1", "skills")).toBeNull();
+    expect(val("m1", "interests").sort()).toEqual(["攝影", "旅行", "閱讀"]);
+    expect(val("m2", "interests")).toEqual(["程式"]);
+    expect(val("m1", "occupation")).toEqual(["工程師"]);
+    expect(val("m1", "organization")).toEqual(["某公司"]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM profile_visibility WHERE field_key = 'skills'").get().n).toBe(0);
+    const am = (m, k) => db.prepare("SELECT value, pending_value FROM amway_field_values WHERE member_id = ? AND field_key = ?").get(m, k);
+    expect(JSON.parse(am("m1", "education_system").value)).toBe("H-Global1985");
+    expect(JSON.parse(am("m2", "education_system").pending_value)).toBe("某體系");
+    expect(JSON.parse(am("m1", "upline_diamond").value)).toBe("陳大華");
+    expect(JSON.parse(am("m1", "rank").value)).toBe("12");
+    const terms = db.prepare("SELECT pool, term, uses, hglobal FROM vocab_terms ORDER BY pool, term").all();
+    expect(terms).toEqual(expect.arrayContaining([
+      { pool: "education_system", term: "H-Global1985", uses: 0, hglobal: 1 },
+      { pool: "upline_diamond", term: "陳大華", uses: 2, hglobal: 0 },
+    ]));
+    db.close();
+  });
 });

@@ -56,11 +56,11 @@ const put = (m: M, path: string, body: unknown) =>
   app.request(path, { method: "PUT", headers: { authorization: `Bearer ${m.token}`, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 const check = async (m: M, rule: unknown) => (await (await call(m, "/v1/eligibility/check", { rule })).json()) as { allowed: boolean; reason: string };
 
-/** Enabled, consented, hglobal approved, rank approved. */
+/** Enabled, hglobal approved, rank approved. */
 async function verifiedMember(sub: string, rank: string): Promise<M> {
   const m = await member(sub);
-  await put(m, "/v1/me/amway/enabled", { enabled: true, consent_version: "2" });
-  await put(m, "/v1/me/amway/fields/education_system", { value: { option: "hglobal", custom_text: null } });
+  await put(m, "/v1/me/amway/enabled", { enabled: true });
+  await put(m, "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
   await put(m, "/v1/me/amway/fields/rank", { value: rank });
   for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff", ctx());
   return m;
@@ -72,12 +72,12 @@ describe("POST /v1/eligibility/check", () => {
     expect(await check(m, { audience: "everyone" })).toEqual({ allowed: true, reason: "ok" });
   });
 
-  it("hglobal_verified needs the Amway area on, the current consent and an approved hglobal education system", async () => {
+  it("hglobal_verified needs the Amway area on and an approved hglobal education system", async () => {
     const m = await member("a");
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "amway_disabled" });
-    await put(m, "/v1/me/amway/enabled", { enabled: true, consent_version: "2" });
+    await put(m, "/v1/me/amway/enabled", { enabled: true });
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "not_verified" });
-    await put(m, "/v1/me/amway/fields/education_system", { value: { option: "hglobal", custom_text: null } });
+    await put(m, "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "not_verified" }); // pending review
     for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff", ctx());
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: true, reason: "ok" });
@@ -88,8 +88,8 @@ describe("POST /v1/eligibility/check", () => {
 
   it("other education systems are not verified even if their rank was auto-approved", async () => {
     const m = await member("b");
-    await put(m, "/v1/me/amway/enabled", { enabled: true, consent_version: "2" });
-    await put(m, "/v1/me/amway/fields/education_system", { value: { option: "sys_b", custom_text: null } });
+    await put(m, "/v1/me/amway/enabled", { enabled: true });
+    await put(m, "/v1/me/amway/fields/education_system", { value: "其他體系B" });
     await put(m, "/v1/me/amway/fields/rank", { value: "15" });
     expect(await check(m, { audience: "hglobal_verified", min_rank: "12a" })).toEqual({ allowed: false, reason: "not_verified" });
   });
@@ -118,7 +118,7 @@ describe("POST /v1/eligibility/check", () => {
 
   it("an approved hglobal stays verified while a change back to hglobal is re-sent", async () => {
     const m = await verifiedMember("d3", "12");
-    await put(m, "/v1/me/amway/fields/education_system", { value: { option: "hglobal", custom_text: null } });
+    await put(m, "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: true, reason: "ok" });
   });
 

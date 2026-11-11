@@ -77,6 +77,19 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
 
   app.get("/logout", (c) => c.redirect("/oauth/logout", 302));
 
+  // Uploaded avatars (always public). Served as an image only, never as a page.
+  app.get("/avatar/:id{[0-9a-f-]{36}}", async (c) => {
+    const row = await c.env.DB.prepare("SELECT a.mime, a.data FROM member_avatars a JOIN members m ON m.id = a.member_id WHERE a.member_id = ? AND m.status = 'active'")
+      .bind(c.req.param("id"))
+      .first<{ mime: string; data: ArrayBuffer }>();
+    if (!row) return c.body("Not found", 404);
+    c.header("content-type", row.mime);
+    c.header("cache-control", "public, max-age=3600");
+    c.header("x-content-type-options", "nosniff");
+    c.header("content-security-policy", "default-src 'none'; sandbox");
+    return c.body(row.data, 200);
+  });
+
   app.get("/me", async (c) => {
     const s = await currentSession(c, deps);
     if (!s) return c.redirect("/login?return_to=%2Fme", 302);

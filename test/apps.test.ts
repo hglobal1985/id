@@ -5,7 +5,7 @@ import { createSession, upsertMemberByGoogle } from "../src/db/identity";
 import { clearAppCache } from "../src/db/apps";
 import { importSigningKey, signJwt, verifyJwt } from "../src/lib/jwt";
 import { GOOGLE_JWKS_URL, GOOGLE_TOKEN_URL, resetGoogleKeyCache } from "../src/auth/google";
-import { AppDefinitionError, allowedReturn, definitionFromForm, parseApp } from "../src/apps/registry";
+import { APP_SCOPES, AppDefinitionError, allowedReturn, definitionFromForm, parseApp } from "../src/apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, isUpToDate } from "../src/apps/handoff";
 import type { Env } from "../src/env";
 import { createHash } from "node:crypto";
@@ -106,7 +106,7 @@ describe("registry rules", () => {
       android_package: "com.hglobal1985.myapp",
       web_origins: ["https://my-app.hglobal1985.com"],
       return_urls: ["myapp://auth/google"],
-      scopes: ["profile.read", "amway.read"],
+      scopes: APP_SCOPES, // every App holds every scope
       status: "active",
       min_version: "0.0.0",
     });
@@ -121,8 +121,6 @@ describe("registry rules", () => {
       { ...base, name: "" },
       { ...base, status: "gone" },
       { ...base, min_version: "1.0" },
-      { ...base, scopes: ["openid"] },
-      { ...base, scopes: ["everything"] },
       { ...base, web_origins: ["http://a.example.com"] },
       { ...base, web_origins: ["https://a.example.com/path"] },
       { ...base, return_urls: ["https://a.example.com/x"] },
@@ -160,7 +158,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-10.3", digest: "c1a7dd3aa5d50ba0" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-10.3", digest: "7ae342086c77485a" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -178,14 +176,14 @@ describe("handoff text", () => {
 describe("app sign-in", () => {
   it("nonce → Google ID token → tokens that work on the /v1 APIs", async () => {
     const t = await signIn();
-    expect(t).toMatchObject({ token_type: "Bearer", expires_in: 900, refresh_expires_in: 2592000, scope: "profile.read amway.read", user: { is_new: true } });
+    expect(t).toMatchObject({ token_type: "Bearer", expires_in: 900, refresh_expires_in: 2592000, scope: APP_SCOPES.join(" "), user: { is_new: true } });
     const claims = await verifyJwt(t.access_token, [ourKey.publicJwk], { issuer: ISSUER, audience: ISSUER, typ: "at+jwt", now: Math.floor(now.getTime() / 1000) });
     expect(claims).toMatchObject({ sub: t.user.member_id, app_id: "learn", client_id: "learn" });
     expect((await get("/v1/me/profile", bearer(t.access_token))).status).toBe(200);
     expect((await post("/v1/eligibility/check", { rule: { audience: "everyone" } }, bearer(t.access_token))).status).toBe(200);
-    // Scopes come from the registration: learn cannot write the profile.
+    // Every App may edit the profile in place (all scopes are open).
     const w = await app.request("/v1/me/profile/fields/display_name", { method: "PUT", headers: { ...bearer(t.access_token), "content-type": "application/json" }, body: JSON.stringify({ value: "x" }) }, env);
-    expect(w.status).toBe(403);
+    expect(w.status).toBe(200);
     // Account-level pages stay on the member site, and back-office APIs never accept App tokens.
     expect((await post("/v1/me/deletion-requests", { scope: "account" }, bearer(t.access_token))).status).toBe(403);
     expect((await get("/v1/admin/apps", bearer(t.access_token))).status).toBe(401);
@@ -395,19 +393,19 @@ describe("back office", () => {
     expect(db.raw.prepare("SELECT action, target_id FROM audit_log WHERE action = 'app.register'").get()).toEqual({ action: "app.register", target_id: "shop" });
   });
 
-  it("editing needs a recent sign-in, keeps the status switch, and changes scopes on the next refresh", async () => {
+  it("editing needs a recent sign-in and keeps the status switch; scopes are always the full set", async () => {
     const stale = await staff("old", ["super_admin"], 11 * 60);
     expect(await errorCode(await admin(stale, "PUT", "/v1/admin/apps/learn", { name: "x" }))).toBe("reauth_required");
     const sa = await staff("sa", ["super_admin"]);
     const t = await signIn();
     await admin(sa, "PUT", "/v1/admin/apps/learn/status", { status: "paused" });
-    const saved = await admin(sa, "PUT", "/v1/admin/apps/learn", { name: "寰宇行動大學", ios_bundle_id: "com.hglobal1985.learn", web_origins: ["https://learn.hglobal1985.com"], return_urls: ["learn://auth/google"], scopes: ["profile.read"], min_version: "1.2.0" });
+    const saved = await admin(sa, "PUT", "/v1/admin/apps/learn", { name: "寰宇行動大學", ios_bundle_id: "com.hglobal1985.learn", web_origins: ["https://learn.hglobal1985.com"], return_urls: ["learn://auth/google"], min_version: "1.2.0" });
     expect(saved.status).toBe(200);
     expect(await (await get("/v1/apps/learn/config")).json()).toMatchObject({ status: "paused", min_version: "1.2.0" });
     await admin(sa, "PUT", "/v1/admin/apps/learn/status", { status: "active" });
     const t2 = (await (await post("/v1/auth/refresh", { refresh_token: t.refresh_token })).json()) as Tokens;
-    expect(t2.scope).toBe("profile.read");
-    expect((await post("/v1/eligibility/check", { rule: { audience: "everyone" } }, bearer(t2.access_token))).status).toBe(403);
+    expect(t2.scope).toBe(APP_SCOPES.join(" "));
+    expect((await post("/v1/eligibility/check", { rule: { audience: "everyone" } }, bearer(t2.access_token))).status).toBe(200);
     expect((await admin(sa, "PUT", "/v1/admin/apps/nope", { name: "x" })).status).toBe(404);
   });
 
@@ -448,7 +446,7 @@ describe("shared sign-in", () => {
     const r = await post("/v1/auth/sso/exchange", { app_id: "shop", sso_token: sso, device_label: "iPhone" });
     expect(r.status).toBe(200);
     const shop = (await r.json()) as Tokens;
-    expect(shop).toMatchObject({ scope: "profile.read", user: { member_id: t.user.member_id, is_new: false } });
+    expect(shop).toMatchObject({ scope: APP_SCOPES.join(" "), user: { member_id: t.user.member_id, is_new: false } });
     expect((await get("/v1/me/profile", bearer(shop.access_token))).status).toBe(200);
     expect(await errorCode(await post("/v1/auth/sso/exchange", { app_id: "shop", sso_token: `${sso.slice(0, -3)}AAA` }))).toBe("invalid_sso");
     expect(await errorCode(await post("/v1/auth/sso/exchange", { app_id: "nope", sso_token: sso }))).toBe("app_not_found");

@@ -4,15 +4,14 @@ import { taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
 import { getActiveBinding, otherSide } from "./spouse";
 import { notifyReviewersStatement } from "./staff";
-import { CONSENT_DOCUMENT, CONSENT_VERSION } from "../amway/consent";
+import { hglobalNorms } from "./vocab";
 import {
   AMWAY_FIELDS,
   HGLOBAL,
-  OTHER,
   getAmwayField,
   needsReview,
-  optionOf,
   sameValue,
+  systemKey,
   type AmwayValue,
   type Option,
   type ReviewStatus,
@@ -31,8 +30,6 @@ export async function listOptions(db: D1Database): Promise<Map<string, Option[]>
   const out = new Map<string, Option[]>();
   for (const f of AMWAY_FIELDS) out.set(f.key, []);
   for (const row of r.results ?? []) out.get(row.field_key)?.push({ value: row.value, label: row.label });
-  // "其他" (custom text) is always offered last for select-or-custom fields.
-  for (const f of AMWAY_FIELDS) if (f.type === "select_or_custom") out.get(f.key)?.push({ value: OTHER, label: "其他" });
   return out;
 }
 
@@ -41,45 +38,19 @@ export async function rankOrder(db: D1Database): Promise<Map<string, number>> {
   return new Map((r.results ?? []).map((x) => [x.value, x.sort_order]));
 }
 
-// ---------- consent & switch ----------
+// ---------- switch ----------
 
-export interface ConsentState {
-  version: string;
-  accepted_at: string;
-}
-
-/** Latest consent for the Amway document, or null if never accepted or last action was a withdrawal. */
-export async function latestConsent(db: D1Database, memberId: string): Promise<ConsentState | null> {
-  const r = await db
-    .prepare("SELECT version, action, occurred_at FROM consent_records WHERE member_id = ? AND document = ? ORDER BY occurred_at DESC, rowid DESC LIMIT 1")
-    .bind(memberId, CONSENT_DOCUMENT)
-    .first<{ version: string; action: string; occurred_at: string }>();
-  if (!r || r.action !== "accept") return null;
-  return { version: r.version, accepted_at: r.occurred_at };
-}
-
-export function consentIsCurrent(c: ConsentState | null): boolean {
-  return c?.version === CONSENT_VERSION;
-}
-
+/** Turns 「我是Amway會員」 on or off at once (no confirmation step; off keeps the data and pauses eligibility). */
 export async function setAmwayEnabled(db: D1Database, memberId: string, enabled: boolean, ctx: Ctx): Promise<void> {
   const ts = taipeiIso(ctx.now);
-  const stmts: D1PreparedStatement[] = [db.prepare("UPDATE members SET amway_enabled = ?, updated_at = ? WHERE id = ?").bind(enabled ? 1 : 0, ts, memberId)];
-  if (enabled) {
-    stmts.push(
-      db
-        .prepare("INSERT INTO consent_records (id, member_id, document, version, action, occurred_at, app_id) VALUES (?, ?, ?, ?, 'accept', ?, ?)")
-        .bind(uuidv7(ctx.now.getTime()), memberId, CONSENT_DOCUMENT, CONSENT_VERSION, ts, ctx.appId),
-    );
-  }
-  stmts.push(
+  await db.batch([
+    db.prepare("UPDATE members SET amway_enabled = ?, updated_at = ? WHERE id = ?").bind(enabled ? 1 : 0, ts, memberId),
     auditStatement(
       db,
-      { actorType: "member", actorId: memberId, action: enabled ? "amway.enable" : "amway.disable", targetType: "member", targetId: memberId, result: "success", appId: ctx.appId, requestId: ctx.requestId, detail: enabled ? { consent_version: CONSENT_VERSION } : null },
+      { actorType: "member", actorId: memberId, action: enabled ? "amway.enable" : "amway.disable", targetType: "member", targetId: memberId, result: "success", appId: ctx.appId, requestId: ctx.requestId },
       ctx.now,
     ),
-  );
-  await db.batch(stmts);
+  ]);
 }
 
 // ---------- field values ----------
@@ -156,7 +127,8 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   const ts = taipeiIso(ctx.now);
   const rows = await readAmwayFields(db, memberId);
   const sys = rows.get("education_system");
-  const educationSystem = { effective: optionOf(sys?.value ?? null), pending: optionOf(sys?.pending_value ?? null) };
+  const hg = await hglobalNorms(db);
+  const educationSystem = { effective: systemKey(sys?.value ?? null, hg), pending: systemKey(sys?.pending_value ?? null, hg) };
 
   if (key === "education_center" && value !== null && educationSystem.effective !== HGLOBAL && educationSystem.pending !== HGLOBAL) {
     return { ok: false, reason: "not_applicable", message: "教育體系為 H-Global1985 時才能選擇教育中心" };
@@ -175,7 +147,7 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
     return { ok: true, row: current }; // idempotent
   } else if (current && current.pending_value !== null && sameValue(current.pending_value, value)) {
     return { ok: true, row: current }; // same pending value re-sent
-  } else if (needsReview(def, value, educationSystem)) {
+  } else if (needsReview(def, value, educationSystem, hg)) {
     review = true;
     row = { value: current?.value ?? null, pending_value: value, status: "pending", value_approved: "keep" };
     const reviewId = uuidv7(ctx.now.getTime());
@@ -195,7 +167,7 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   }
 
   // Leaving "hglobal" (applied at once) releases a rank that was only pending because of it.
-  if (key === "education_system" && !review && optionOf(value) !== HGLOBAL) {
+  if (key === "education_system" && !review && systemKey(value, hg) !== HGLOBAL) {
     const rank = rows.get("rank");
     if (rank?.pending_value != null) {
       for (const h of await rankHolders(db, memberId)) {

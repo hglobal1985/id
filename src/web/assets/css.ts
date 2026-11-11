@@ -44,6 +44,10 @@ button,.button{display:inline-block;font:inherit;padding:8px 14px;border-radius:
 button:hover,.button:hover{border-color:var(--accent)}
 button.primary,.button.primary{background:linear-gradient(135deg,#7c5cff,#a78bfa);border-color:transparent;color:#0b0720;font-weight:600}
 button.danger,.button.danger{color:var(--danger);border-color:var(--danger)}
+/* custom checkbox: as big as the text, never the native control */
+.chk{position:relative;display:inline-block;flex:none;width:1.1em;height:1.1em;padding:0;margin:0 .3em 0 0;border:1.5px solid var(--line);border-radius:.25em;background:rgba(9,7,30,.7);vertical-align:-.15em;cursor:pointer}
+.chk.on,.chk[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.chk.on::after,.chk[aria-checked="true"]::after{content:"";position:absolute;left:.3em;top:.08em;width:.3em;height:.6em;border:solid #0b0720;border-width:0 .15em .15em 0;transform:rotate(45deg)}
 /* badges */
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.82rem;border:1px solid var(--line);background:rgba(9,7,30,.5)}
 .badge.pending,.badge.warn{color:var(--warn);border-color:var(--warn)}.badge.approved,.badge.ok{color:var(--ok);border-color:var(--ok)}.badge.rejected,.badge.bad{color:var(--bad);border-color:var(--bad)}

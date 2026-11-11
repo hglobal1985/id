@@ -13,11 +13,13 @@ import { decideReview, listOptions, readAmwayFields, staffAdjust } from "../db/a
 import { readNumbers } from "../db/member-numbers";
 import { getActiveBinding, otherSide } from "../db/spouse";
 import { auditStatement } from "../db/audit";
-import { AMWAY_FIELDS, OTHER, REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
-import { REAUTH_MAX_AGE, ROLES, ROLE_LABELS, UPLINE_FIELDS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
+import { AMWAY_FIELDS, REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
+import { REAUTH_MAX_AGE, ROLES, ROLE_LABELS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
-import { epochSeconds, taipeiIso } from "../lib/time";
+import { epochSeconds } from "../lib/time";
 import { completeDeletion, openRequests } from "../db/deletion";
+import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
+import { POOLS, POOL_KEYS, isPool } from "../vocab/terms";
 import { loadOverview } from "../db/overview";
 
 type C = Context<AppBindings>;
@@ -136,23 +138,61 @@ const putOptionRoute = createRoute({
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 422: err("invalid_field") },
 });
 
-const customUplinesRoute = createRoute({
+const PoolParam = z.object({ pool: z.string().max(40) });
+const vocabPoolsRoute = createRoute({ method: "get", path: "/v1/admin/vocab", tags: ["admin"], summary: "Suggestion vocabularies (super admin): pools with their term counts", security, responses: { 200: { description: "Pools", content: json(Any) }, ...common } });
+const vocabTermsRoute = createRoute({
   method: "get",
-  path: "/v1/admin/amway/uplines/custom",
+  path: "/v1/admin/vocab/{pool}",
   tags: ["admin"],
-  summary: "Merge page: custom upline names typed by members, with counts",
+  summary: "Terms of one vocabulary with use counts (most used first)",
   security,
-  responses: { 200: { description: "Custom names", content: json(Any) }, ...common },
+  request: { params: PoolParam },
+  responses: { 200: { description: "Terms", content: json(Any) }, ...common, 404: err("not_found") },
 });
-
-const mergeRoute = createRoute({
+const vocabAddRoute = createRoute({
   method: "post",
-  path: "/v1/admin/amway/uplines/merge",
+  path: "/v1/admin/vocab/{pool}/add",
   tags: ["admin"],
-  summary: "Merge page: fold one custom upline name into an existing option for every member",
+  summary: "Add a term by hand",
   security,
-  request: { body: { required: true, content: json(z.object({ field_key: z.enum(UPLINE_FIELDS), custom_text: z.string().min(1).max(50), into: z.string().max(32) })) } },
-  responses: { 200: { description: "Merged", content: json(Any) }, ...common, 422: err("invalid_field") },
+  request: { params: PoolParam, body: { required: true, content: json(z.object({ term: z.string().min(1).max(100) })) } },
+  responses: { 200: { description: "Added", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
+});
+const vocabRenameRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/vocab/{pool}/rename",
+  tags: ["admin"],
+  summary: "Edit a term; saved values follow. Renaming into an existing term merges the two.",
+  security,
+  request: { params: PoolParam, body: { required: true, content: json(z.object({ from: z.string().min(1).max(100), to: z.string().min(1).max(100) })) } },
+  responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
+});
+const vocabMergeRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/vocab/{pool}/merge",
+  tags: ["admin"],
+  summary: "Merge several terms into one (saved values follow)",
+  security,
+  request: { params: PoolParam, body: { required: true, content: json(z.object({ froms: z.array(z.string().min(1).max(100)).min(1).max(50), into: z.string().min(1).max(100) })) } },
+  responses: { 200: { description: "Merged", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
+});
+const vocabDeleteRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/vocab/{pool}/delete",
+  tags: ["admin"],
+  summary: "Delete a term from the suggestions (values members already saved stay as they are)",
+  security,
+  request: { params: PoolParam, body: { required: true, content: json(z.object({ term: z.string().min(1).max(100) })) } },
+  responses: { 200: { description: "Deleted", content: json(Any) }, ...common, 404: err("not_found") },
+});
+const vocabHglobalRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/vocab/education_system/hglobal",
+  tags: ["admin"],
+  summary: "Mark or unmark a 直銷商培訓系統 term as meaning H-Global1985 (needs review; unlocks eligibility)",
+  security,
+  request: { body: { required: true, content: json(z.object({ term: z.string().min(1).max(100), hglobal: z.boolean() })) } },
+  responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found") },
 });
 
 const staffRoute = createRoute({ method: "get", path: "/v1/admin/staff", tags: ["admin"], summary: "Staff and their roles", security, responses: { 200: { description: "Staff", content: json(Any) }, ...common } });
@@ -327,8 +367,6 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const def = getAmwayField(o.field_key);
     const bad = (reason: string, message: string) => c.json(errorBody("invalid_field", message, c.get("requestId"), { field_key: o.field_key, reason }), 422);
     if (!def || def.type === "text") return bad("unknown_field", "此欄位沒有選項");
-    if (o.value === OTHER) return bad("reserved", "「其他」是系統保留選項");
-    if (o.field_key === "education_system" && o.value === "hglobal" && !o.active) return bad("reserved", "此選項不能停用");
     const now = deps.now();
     await c.env.DB.batch([
       c.env.DB.prepare(
@@ -340,34 +378,74 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return c.json(o, 200);
   });
 
-  app.openapi(customUplinesRoute, async (c) => {
-    const d = deny(c, "uplines.merge");
+  const actor = (c: C) => ({ memberId: c.get("staff").memberId, requestId: c.get("requestId"), now: deps.now() });
+  const poolOr404 = (c: C, pool: string) => (isPool(pool) ? pool : null);
+  const noPool = (c: C) => c.json(errorBody("not_found", "沒有這個詞庫", c.get("requestId")), 404);
+
+  app.openapi(vocabPoolsRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
     if (d) return d as never;
-    const r = await c.env.DB.prepare(
-      `SELECT field_key, json_extract(value, '$.custom_text') AS custom_text, COUNT(*) AS members FROM amway_field_values
-       WHERE field_key IN ('upline_crown_ambassador','upline_diamond','upline_platinum') AND json_extract(value, '$.option') = 'other'
-       GROUP BY field_key, custom_text ORDER BY field_key, members DESC, custom_text`,
-    ).all();
-    return c.json({ custom: r.results ?? [] }, 200);
+    const counts = await c.env.DB.prepare("SELECT pool, COUNT(*) AS n FROM vocab_terms GROUP BY pool").all<{ pool: string; n: number }>();
+    const n = new Map((counts.results ?? []).map((r) => [r.pool, r.n]));
+    return c.json({ pools: POOL_KEYS.map((k) => ({ pool: k, label: POOLS[k].label, terms: n.get(k) ?? 0, fields: [...POOLS[k].profileFields, ...POOLS[k].amwayFields] })) }, 200);
   });
 
-  app.openapi(mergeRoute, async (c) => {
-    const d = deny(c, "uplines.merge");
+  app.openapi(vocabTermsRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
     if (d) return d as never;
-    const { field_key, custom_text, into } = c.req.valid("json");
-    const options = (await listOptions(c.env.DB)).get(field_key) ?? [];
-    if (into === OTHER || !options.some((o) => o.value === into)) {
-      return c.json(errorBody("invalid_field", "請選擇現有的選項", c.get("requestId"), { field_key: "into", reason: "not_an_option" }), 422);
-    }
-    const now = deps.now();
-    const [res] = await c.env.DB.batch([
-      c.env.DB.prepare(
-        `UPDATE amway_field_values SET value = json_object('option', ?, 'custom_text', NULL), updated_at = ?
-         WHERE field_key = ? AND json_extract(value, '$.option') = 'other' AND json_extract(value, '$.custom_text') = ?`,
-      ).bind(into, taipeiIso(now), field_key, custom_text),
-      auditStatement(c.env.DB, { actorType: "staff", actorId: c.get("staff").memberId, action: "amway.upline.merge", targetType: "amway_option", targetId: `${field_key}:${into}`, result: "success", requestId: c.get("requestId") }, now),
-    ]);
-    return c.json({ field_key, into, members_updated: res?.meta.changes ?? 0 }, 200);
+    const pool = poolOr404(c, c.req.valid("param").pool);
+    if (!pool) return noPool(c) as never;
+    return c.json({ pool, label: POOLS[pool].label, terms: await listTerms(c.env.DB, pool) }, 200);
+  });
+
+  const invalidTerm = (c: C) => c.json(errorBody("invalid_field", "詞不可空白，最多 100 字", c.get("requestId"), { field_key: "term", reason: "format" }), 422);
+
+  app.openapi(vocabAddRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
+    if (d) return d as never;
+    const pool = poolOr404(c, c.req.valid("param").pool);
+    if (!pool) return noPool(c) as never;
+    if (!(await addTerm(c.env.DB, pool, c.req.valid("json").term, actor(c)))) return invalidTerm(c) as never;
+    return c.json({ added: true }, 200);
+  });
+
+  app.openapi(vocabRenameRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
+    if (d) return d as never;
+    const pool = poolOr404(c, c.req.valid("param").pool);
+    if (!pool) return noPool(c) as never;
+    const { from, to } = c.req.valid("json");
+    const r = await renameTerm(c.env.DB, pool, from, to, actor(c));
+    if (!r.ok) return (r.reason === "invalid" ? invalidTerm(c) : c.json(errorBody("not_found", "找不到這個詞", c.get("requestId")), 404)) as never;
+    return c.json({ members_updated: r.members }, 200);
+  });
+
+  app.openapi(vocabMergeRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
+    if (d) return d as never;
+    const pool = poolOr404(c, c.req.valid("param").pool);
+    if (!pool) return noPool(c) as never;
+    const { froms, into } = c.req.valid("json");
+    const r = await mergeTerms(c.env.DB, pool, froms, into, actor(c));
+    if (!r.ok) return (r.reason === "invalid" ? invalidTerm(c) : c.json(errorBody("not_found", "找不到要合併的詞", c.get("requestId")), 404)) as never;
+    return c.json({ members_updated: r.members }, 200);
+  });
+
+  app.openapi(vocabDeleteRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
+    if (d) return d as never;
+    const pool = poolOr404(c, c.req.valid("param").pool);
+    if (!pool) return noPool(c) as never;
+    if (!(await deleteTerm(c.env.DB, pool, c.req.valid("json").term, actor(c)))) return c.json(errorBody("not_found", "找不到這個詞", c.get("requestId")), 404) as never;
+    return c.json({ deleted: true }, 200);
+  });
+
+  app.openapi(vocabHglobalRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
+    if (d) return d as never;
+    const { term, hglobal } = c.req.valid("json");
+    if (!(await setHglobalTerm(c.env.DB, term, hglobal, actor(c)))) return c.json(errorBody("not_found", "找不到這個詞", c.get("requestId")), 404) as never;
+    return c.json({ term, hglobal }, 200);
   });
 
   app.openapi(staffRoute, async (c) => {

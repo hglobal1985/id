@@ -11,7 +11,7 @@ export interface Rule {
 }
 
 export interface MemberEligibility {
-  /** 「我是Amway會員」 is on and the current consent version is accepted. */
+  /** 「我是Amway會員」 is on. */
   amwayActive: boolean;
   /** Effective education system is hglobal AND it was approved by review. */
   hglobalVerified: boolean;

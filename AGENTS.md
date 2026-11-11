@@ -19,7 +19,7 @@
 - 正式環境部署、Secrets 設定、正式資料的刪除或還原、刪除既有 Cloudflare 或 GitHub 資源。
 - 商店送審與正式發布、啟用廣告或真實金流、建立新的雲端或商店帳號、更換核心技術。
 - 寰宇 Cloudflare 帳號內**既有資源不可動**：Worker `hglobal1985-site-recovery`、KV `hglobal-gcloud-management-oauth`。
-- R2 暫不啟用；頭像上傳與「使用 Google 頭像」回 501 `not_available`。
+- R2 暫不啟用；頭像用 D1 存小圖（≤128 KB，ADR 0014），「使用 Google 頭像」引用 Google 圖片網址。
 
 ## 4. 工作流程
 1. 從 `main` 開分支 → 開 PR → 完整 CI 通過 → 受保護合併（squash）→ 合併後確認 main 的 CI 與部署結果。

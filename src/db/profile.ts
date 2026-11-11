@@ -109,8 +109,48 @@ export async function writeVisibility(db: D1Database, changes: [string, Visibili
   ]);
 }
 
+const AVATAR_MAX_BYTES = 128 * 1024;
+
+/** The image type by its first bytes (never by what the client says), or null. */
+export function sniffImage(bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null {
+  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes.length > 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "image/webp";
+  return null;
+}
+export { AVATAR_MAX_BYTES };
+
+/** Stores an uploaded avatar in D1 (small, already resized by the page) and points the member at it. */
+export async function saveAvatarUpload(db: D1Database, mime: string, bytes: Uint8Array, issuer: string, w: WriteContext): Promise<string> {
+  const ts = taipeiIso(w.now);
+  const url = `${issuer}/avatar/${w.memberId}?v=${Math.floor(w.now.getTime() / 1000)}`;
+  await db.batch([
+    db
+      .prepare("INSERT INTO member_avatars (member_id, mime, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (member_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at")
+      .bind(w.memberId, mime, bytes, ts),
+    db.prepare("UPDATE members SET avatar_url = ?, avatar_source = 'upload', updated_at = ? WHERE id = ?").bind(url, ts, w.memberId),
+    auditStatement(db, { actorType: "member", actorId: w.memberId, action: "profile.avatar.upload", targetType: "member", targetId: w.memberId, result: "success", appId: w.appId, requestId: w.requestId }, w.now),
+  ]);
+  return url;
+}
+
+/** Uses the member's Google picture (referenced, not copied). Null when there is none. */
+export async function useGoogleAvatar(db: D1Database, w: WriteContext): Promise<string | null> {
+  const m = await db.prepare("SELECT google_picture_url FROM members WHERE id = ?").bind(w.memberId).first<{ google_picture_url: string | null }>();
+  const url = m?.google_picture_url && /^https:\/\//.test(m.google_picture_url) ? m.google_picture_url : null;
+  if (!url) return null;
+  const ts = taipeiIso(w.now);
+  await db.batch([
+    db.prepare("UPDATE members SET avatar_url = ?, avatar_source = 'google', updated_at = ? WHERE id = ?").bind(url, ts, w.memberId),
+    db.prepare("DELETE FROM member_avatars WHERE member_id = ?").bind(w.memberId),
+    auditStatement(db, { actorType: "member", actorId: w.memberId, action: "profile.avatar.google", targetType: "member", targetId: w.memberId, result: "success", appId: w.appId, requestId: w.requestId }, w.now),
+  ]);
+  return url;
+}
+
 export async function removeAvatar(db: D1Database, w: WriteContext): Promise<boolean> {
   const ts = taipeiIso(w.now);
+  await db.prepare("DELETE FROM member_avatars WHERE member_id = ?").bind(w.memberId).run();
   const res = await db
     .prepare("UPDATE members SET avatar_url = NULL, avatar_source = 'none', updated_at = ? WHERE id = ? AND avatar_source != 'none'")
     .bind(ts, w.memberId)

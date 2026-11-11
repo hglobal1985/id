@@ -3,7 +3,9 @@
 // entirely from these definitions (group, order, label, help, type, options, visible_when, read_only, info),
 // so labels and limits live here, never in the apps.
 
-export const DEFINITIONS_VERSION = "2026-11-10.1";
+import { countryRows } from "./countries";
+
+export const DEFINITIONS_VERSION = "2026-11-11.1";
 
 export type FieldType = "text" | "textarea" | "url" | "email" | "phone" | "date" | "select" | "tags";
 export type Visibility = "public" | "private";
@@ -27,19 +29,25 @@ export interface FieldDefinition {
   max_items?: number;
   item_max_length?: number;
   options?: FieldOption[];
+  /** Vocabulary the field draws related words from (GET /v1/vocab/suggestions); free typing is always allowed. */
+  suggest?: string;
+  /** Type-to-search box over a fixed list (`options`): the member types, the list narrows. Never a native <select>. */
+  ui?: "autocomplete";
+  /** Fields sharing a row on the page (for example 大學: school + department). */
+  row?: { key: string; label: string; optional_after?: string };
   visible_when?: null;
   visibility: { configurable: true; default: Visibility };
 }
 
-export type GroupKey = "basic" | "contact" | "birthday";
+export type GroupKey = "basic" | "education" | "contact" | "birthday";
 
-export const GROUPS: { key: GroupKey | "avatar" | "account" | "member_number"; label: string; order: number }[] = [
+export const GROUPS: { key: GroupKey | "avatar" | "member_number"; label: string; order: number }[] = [
   { key: "avatar", label: "頭像", order: 10 },
   { key: "member_number", label: "會員編號", order: 15 },
   { key: "basic", label: "基本資料", order: 20 },
+  { key: "education", label: "學歷", order: 25 },
   { key: "contact", label: "聯絡與地區", order: 30 },
   { key: "birthday", label: "生日", order: 40 },
-  { key: "account", label: "帳號資訊", order: 90 },
 ];
 
 // ISO 3166-1 alpha-2 codes. Display names come from Intl (zh-TW) at runtime.
@@ -50,6 +58,7 @@ const COUNTRY_CODES =
 export const COUNTRY_SET = new Set(COUNTRY_CODES);
 
 let countryOptions: FieldOption[] | null = null;
+/** Countries in the picker order of the starry.phd member center (Taiwan, nearby countries, then by calling code). */
 export function countryOptionsList(): FieldOption[] {
   if (countryOptions) return countryOptions;
   let names: Intl.DisplayNames | null = null;
@@ -58,10 +67,36 @@ export function countryOptionsList(): FieldOption[] {
   } catch {
     names = null;
   }
-  const opts = COUNTRY_CODES.map((c) => ({ value: c, label: names?.of(c) ?? c }));
-  // Taiwan first, then the rest in code order.
-  countryOptions = [...opts.filter((o) => o.value === "TW"), ...opts.filter((o) => o.value !== "TW")];
+  const ordered = countryRows().map((r) => ({ value: r.iso, label: names?.of(r.iso) ?? r.iso }));
+  const listed = new Set(ordered.map((o) => o.value));
+  // Codes outside the calling-code table (islands, territories) follow in code order.
+  countryOptions = [...ordered, ...COUNTRY_CODES.filter((c) => !listed.has(c)).map((c) => ({ value: c, label: names?.of(c) ?? c }))];
   return countryOptions;
+}
+
+/** Countries for the member-number picker: label "台灣（TW）+886", same order as the starry.phd member center. */
+export function memberNumberCountryOptions(): FieldOption[] {
+  const names = new Map(countryOptionsList().map((o) => [o.value, o.label]));
+  return countryRows().map((r) => ({ value: r.iso, label: `${names.get(r.iso) ?? r.iso}（${r.iso}）+${r.callingCode}` }));
+}
+
+/** Resolves what a member typed (a code, a Chinese or an English name) to an ISO code, or null. */
+export function resolveCountry(input: string): string | null {
+  const t = input.normalize("NFKC").trim();
+  if (!t) return null;
+  const upper = t.toUpperCase();
+  if (COUNTRY_SET.has(upper)) return upper;
+  const lower = t.toLowerCase();
+  let en: Intl.DisplayNames | null = null;
+  try {
+    en = new Intl.DisplayNames(["en"], { type: "region" });
+  } catch {
+    en = null;
+  }
+  for (const o of countryOptionsList()) {
+    if (o.label === t || o.label.toLowerCase() === lower || en?.of(o.value)?.toLowerCase() === lower) return o.value;
+  }
+  return null;
 }
 
 const LOCALES: FieldOption[] = [
@@ -94,23 +129,23 @@ const contact = (d: Def): FieldDefinition => ({
 const RAW: FieldDefinition[] = [
   basic({ key: "display_name", group: "basic", order: 10, label: "顯示名稱", type: "text", max_length: 50, required: true }),
   basic({ key: "nickname", group: "basic", order: 20, label: "暱稱", type: "text", max_length: 30 }),
-  basic({ key: "primary_name", group: "basic", order: 30, label: "本名", help: "用於售後服務與身分確認。", type: "text", max_length: 50, visibility: "private" }),
-  basic({ key: "motto", group: "basic", order: 40, label: "座右銘", type: "text", max_length: 100 }),
-  basic({ key: "bio", group: "basic", order: 50, label: "自我介紹", type: "textarea", max_length: 1000 }),
-  basic({ key: "occupation", group: "basic", order: 60, label: "職業", type: "text", max_length: 50 }),
-  basic({ key: "organization", group: "basic", order: 70, label: "公司／單位", type: "text", max_length: 100 }),
-  basic({ key: "website", group: "basic", order: 80, label: "個人網站", help: "請輸入 https:// 開頭的網址。", type: "url", max_length: 200 }),
-  basic({ key: "languages", group: "basic", order: 90, label: "使用語言", type: "tags", max_items: 20, item_max_length: 30 }),
-  basic({ key: "interests", group: "basic", order: 100, label: "興趣", type: "tags", max_items: 20, item_max_length: 30 }),
-  basic({ key: "skills", group: "basic", order: 110, label: "專長", type: "tags", max_items: 20, item_max_length: 30 }),
-  basic({ key: "university", group: "basic", order: 120, label: "大學", type: "text", max_length: 100 }),
-  basic({ key: "university_dept", group: "basic", order: 130, label: "大學科系", type: "text", max_length: 100 }),
-  basic({ key: "grad_school", group: "basic", order: 140, label: "研究所", type: "text", max_length: 100 }),
-  basic({ key: "grad_dept", group: "basic", order: 150, label: "研究所系所", type: "text", max_length: 100 }),
+  basic({ key: "motto", group: "basic", order: 30, label: "座右銘", type: "text", max_length: 100 }),
+  basic({ key: "bio", group: "basic", order: 40, label: "自我介紹", type: "textarea", max_length: 1000 }),
+  basic({ key: "occupation", group: "basic", order: 50, label: "職業", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "occupation" }),
+  basic({ key: "organization", group: "basic", order: 60, label: "公司／單位", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 80, suggest: "organization" }),
+  basic({ key: "website", group: "basic", order: 70, label: "社群連結", help: "請輸入 https:// 開頭的網址。", type: "url", max_length: 200 }),
+  basic({ key: "languages", group: "basic", order: 80, label: "使用語言", type: "tags", max_items: 20, item_max_length: 30 }),
+  basic({ key: "interests", group: "basic", order: 90, label: "興趣與專長", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 30, item_max_length: 30, suggest: "interests" }),
+  basic({ key: "university", group: "education", order: 10, label: "大學校名", type: "text", max_length: 100, suggest: "school", row: { key: "university", label: "大學" } }),
+  basic({ key: "university_dept", group: "education", order: 20, label: "大學系名", type: "text", max_length: 100, suggest: "dept", row: { key: "university", label: "大學" } }),
+  basic({ key: "grad_school", group: "education", order: 30, label: "碩士校名", type: "text", max_length: 100, suggest: "school", row: { key: "master", label: "碩士", optional_after: "university" } }),
+  basic({ key: "grad_dept", group: "education", order: 40, label: "碩士系名", type: "text", max_length: 100, suggest: "dept", row: { key: "master", label: "碩士", optional_after: "university" } }),
+  basic({ key: "phd_school", group: "education", order: 50, label: "博士校名", type: "text", max_length: 100, suggest: "school", row: { key: "doctor", label: "博士", optional_after: "master" } }),
+  basic({ key: "phd_dept", group: "education", order: 60, label: "博士系名", type: "text", max_length: 100, suggest: "dept", row: { key: "doctor", label: "博士", optional_after: "master" } }),
   basic({ key: "locale", group: "basic", order: 160, label: "介面語言", type: "select", options: LOCALES, visibility: "private" }),
   contact({ key: "contact_email", group: "contact", order: 10, label: "聯絡信箱", help: "修改後立即生效，不影響登入。", type: "email", max_length: 254 }),
   contact({ key: "phone", group: "contact", order: 20, label: "手機", help: "可加國碼，例如 +886912345678。", type: "phone", max_length: 20 }),
-  contact({ key: "country", group: "contact", order: 30, label: "居住國家／地區", type: "select" }),
+  contact({ key: "country", group: "contact", order: 30, label: "居住國家／地區", help: "輸入國名或代碼，從建議中選擇。", type: "select", ui: "autocomplete" }),
   contact({ key: "region", group: "contact", order: 40, label: "縣市／州", type: "text", max_length: 50 }),
   contact({ key: "city", group: "contact", order: 50, label: "鄉鎮市區", type: "text", max_length: 50 }),
   {
@@ -130,11 +165,8 @@ export function fieldDefinitions(): FieldDefinition[] {
   return RAW.map((f) => (f.key === "country" ? { ...f, options: countryOptionsList() } : f));
 }
 
-/** Read-only information blocks shown on the profile page (not editable through any API). */
+/** Read-only information blocks shown on the profile page (derived from the birthday; not editable). */
 export const INFO_BLOCKS = [
-  { key: "member_id", group: "account", order: 10, label: "會員識別碼", type: "identifier", collapsed: true },
-  { key: "registration_country", group: "account", order: 20, label: "註冊國家", type: "text", collapsed: false },
-  { key: "account_status", group: "account", order: 30, label: "帳號狀態", type: "text", collapsed: false },
   { key: "zodiac", group: "birthday", order: 20, label: "星座", type: "text", collapsed: false },
   { key: "life_path_number", group: "birthday", order: 30, label: "生命靈數", type: "text", collapsed: false },
   { key: "talent_number", group: "birthday", order: 40, label: "天賦數字", type: "text", collapsed: false },
@@ -152,6 +184,8 @@ export const MEMBER_NUMBER_DEFINITION = {
   label: "會員編號",
   label_when_amway: "Amway會員編號",
   help: "第一組為預設編號，用於公開基本資料網址與客服查詢。修改編號後，舊網址會失效。",
+  help_when_amway: "建議修改會員編號",
+  help_when_not_amway: "隨機產生，不可修改",
   type: "member_numbers",
   scope: "profile.basic.write",
   required: true,
@@ -246,9 +280,11 @@ export function validateFieldValue(def: FieldDefinition, raw: unknown, today: Da
       if (!isValidIsoDate(v, today)) return fail("format", "日期格式不正確");
       return { ok: true, value: v };
     case "select": {
-      const options = def.key === "country" ? countryOptionsList() : def.options ?? [];
-      if (def.key === "country") v = v.toUpperCase();
-      if (!options.some((o) => o.value === v)) return fail("not_an_option", "請從選項中選擇");
+      if (def.key === "country") {
+        const code = resolveCountry(v);
+        return code ? { ok: true, value: code } : fail("not_an_option", "找不到這個國家／地區，請從建議中選擇");
+      }
+      if (!(def.options ?? []).some((o) => o.value === v)) return fail("not_an_option", "請從選項中選擇");
       return { ok: true, value: v };
     }
     default:

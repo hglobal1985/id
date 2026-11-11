@@ -27,7 +27,6 @@ export interface AppEntry {
 
 /** Scopes an App may hold. `openid` and `profile` belong to the OIDC flow only. */
 export const APP_SCOPES: readonly string[] = SUPPORTED_SCOPES.filter((s) => s !== "openid" && s !== "profile");
-export const DEFAULT_APP_SCOPES: readonly string[] = ["profile.read", "amway.read"];
 
 /** app_ids that can never be registered: they name the central site itself. */
 export const RESERVED_APP_IDS: readonly string[] = ["central", "account", "id", "admin", "www"];
@@ -71,9 +70,6 @@ export function parseApp(item: unknown): AppEntry {
   if (!name || name.length > 80 || /\p{Cc}/u.test(name)) throw new AppDefinitionError("名稱必填，最多 80 字。");
   if (!APP_STATUSES.includes(item.status as AppStatus)) throw new AppDefinitionError("狀態需為 active、paused 或 killed。");
   if (typeof item.min_version !== "string" || !SEMVER.test(item.min_version)) throw new AppDefinitionError("最低版本要寫成 1.2.3 的格式。");
-  if (!Array.isArray(item.scopes) || !item.scopes.every((s) => typeof s === "string" && APP_SCOPES.includes(s))) {
-    throw new AppDefinitionError("權限範圍有不支援的項目。");
-  }
   if (item.config !== undefined && !isRecord(item.config)) throw new AppDefinitionError("config 需為物件。");
   const auth = item.auth === undefined ? {} : item.auth;
   if (!isRecord(auth)) throw new AppDefinitionError("auth 需為物件。");
@@ -83,7 +79,9 @@ export function parseApp(item: unknown): AppEntry {
     ios_bundle_id: platformId(item.ios_bundle_id, "iOS Bundle ID"),
     android_package: platformId(item.android_package, "Android 套件名稱"),
     status: item.status as AppStatus,
-    scopes: Object.freeze(APP_SCOPES.filter((s) => (item.scopes as string[]).includes(s))),
+    // Every App holds every scope (owner decision 2026-11-11): what a member can do is decided by the member's own
+    // sign-in and the central rules, not by trimming App permissions. Stored lists are ignored.
+    scopes: APP_SCOPES,
     min_version: item.min_version,
     config: Object.freeze({ ...(item.config as Record<string, unknown> | undefined) }),
     auth: Object.freeze({ google_audiences: list(auth.google_audiences, AUDIENCE, "額外的 Google 用戶端 ID", 10) }),
@@ -118,7 +116,6 @@ export interface AppForm {
   web_origins?: string[];
   return_urls?: string[];
   extra_google_audiences?: string[];
-  scopes?: string[];
   min_version?: string;
 }
 
@@ -145,7 +142,7 @@ export function definitionFromForm(form: AppForm, options: { defaults?: boolean;
     android_package: android,
     // Status and remote settings are not part of the form: editing never un-pauses an App or drops its settings.
     status: options.keep?.status ?? "active",
-    scopes: form.scopes ?? options.keep?.scopes ?? DEFAULT_APP_SCOPES,
+    scopes: APP_SCOPES,
     min_version: (form.min_version ?? "").trim() || options.keep?.min_version || "0.0.0",
     config: options.keep?.config ?? {},
     auth: { google_audiences: clean(form.extra_google_audiences) },

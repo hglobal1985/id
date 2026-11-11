@@ -1,7 +1,10 @@
 // Amway area field rules (framework-free). Field keys follow the integration instruction pack, section 4.
 // `amway_id` is not here: it was merged into the member number field (section 4B).
-// Option lists (education systems, centers, ranks, uplines) live in the database so administrators can
-// maintain them; only the structural options `hglobal` and `other` are fixed.
+// Option lists (centers, ranks) live in the database so administrators can maintain them. The training system and
+// the upline fields are free text with suggestion vocabularies (src/vocab); the education-system terms marked
+// H-Global1985 by the administrator are what need review and unlock eligibility.
+
+import { normTerm } from "../vocab/terms";
 
 export const HGLOBAL = "hglobal";
 export const OTHER = "other";
@@ -20,16 +23,18 @@ export interface AmwayFieldDef {
   visible_when: { field: "education_system"; equals: typeof HGLOBAL } | null;
   /** How review is decided; the central system decides, apps only show `status`. */
   review: "when_hglobal" | "never";
+  /** Vocabulary of related words offered while typing (free typing is always allowed). */
+  suggest?: string;
 }
 
 export const AMWAY_FIELDS: AmwayFieldDef[] = [
-  { key: "education_system", order: 10, label: "教育體系", type: "select_or_custom", max_length: 50, visible_when: null, review: "when_hglobal", help: "找不到時請選「其他」並自行填寫。" },
+  { key: "education_system", order: 10, label: "直銷商培訓系統", type: "text", max_length: 50, visible_when: null, review: "when_hglobal", suggest: "education_system" },
   { key: "education_center", order: 20, label: "教育中心", type: "select", visible_when: { field: "education_system", equals: HGLOBAL }, review: "never" },
   { key: "rank", order: 30, label: "獎銜", type: "select", visible_when: null, review: "when_hglobal" },
   { key: "referrer", order: 40, label: "推薦人", type: "text", max_length: 50, visible_when: null, review: "never" },
-  { key: "upline_crown_ambassador", order: 50, label: "上手皇冠大使", type: "select_or_custom", max_length: 50, visible_when: null, review: "never" },
-  { key: "upline_diamond", order: 60, label: "上手鑽石", type: "select_or_custom", max_length: 50, visible_when: null, review: "never" },
-  { key: "upline_platinum", order: 70, label: "上手白金", type: "select_or_custom", max_length: 50, visible_when: null, review: "never" },
+  { key: "upline_crown_ambassador", order: 50, label: "皇冠大使", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_crown_ambassador" },
+  { key: "upline_diamond", order: 60, label: "上手鑽石", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_diamond" },
+  { key: "upline_platinum", order: 70, label: "上手白金", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_platinum" },
 ];
 
 /** The six fields reviewers may adjust directly (treated as approved). */
@@ -98,12 +103,22 @@ export function optionOf(v: AmwayValue): string | null {
 }
 
 /**
- * Whether a new value needs review. Education system "hglobal" needs review; rank needs review while the
- * member's education system (effective or pending) is "hglobal". Everything else applies at once.
+ * Which training system a value means: "hglobal" when its text is one of the terms the administrator marked as
+ * H-Global1985, otherwise the text itself (or null). `hglobalNorms` holds the normalized spellings of those terms.
  */
-export function needsReview(def: AmwayFieldDef, value: AmwayValue, educationSystem: { effective: string | null; pending: string | null }): boolean {
+export function systemKey(v: AmwayValue, hglobalNorms: ReadonlySet<string>): string | null {
+  const text = optionOf(v);
+  if (text === null) return null;
+  return hglobalNorms.has(normTerm(text)) ? HGLOBAL : text;
+}
+
+/**
+ * Whether a new value needs review. A training system that means H-Global1985 needs review; rank needs review
+ * while the member's training system (effective or pending) is H-Global1985. Everything else applies at once.
+ */
+export function needsReview(def: AmwayFieldDef, value: AmwayValue, educationSystem: { effective: string | null; pending: string | null }, hglobalNorms: ReadonlySet<string>): boolean {
   if (def.review === "never" || value === null) return false;
-  if (def.key === "education_system") return optionOf(value) === HGLOBAL;
+  if (def.key === "education_system") return systemKey(value, hglobalNorms) === HGLOBAL;
   if (def.key === "rank") return educationSystem.effective === HGLOBAL || educationSystem.pending === HGLOBAL;
   return false;
 }

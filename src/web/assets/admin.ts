@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["review", "審核", reviews], ["members.read", "會員", members], ["options.manage", "選項", options],
-    ["uplines.merge", "合併頁", merge], ["deletion.execute", "刪除申請", deletions], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
+    ["vocab.manage", "詞庫", function () { vocab(); }], ["deletion.execute", "刪除申請", deletions], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -152,18 +152,51 @@ export const ADMIN_JS = String.raw`
     });
   }
 
-  function merge() {
-    Promise.all([api("GET", "/v1/admin/amway/uplines/custom"), api("GET", "/v1/amway/field-definitions")]).then(function (r) {
-      var defs = r[1].body.fields;
-      var rows = r[0].body.custom.map(function (x) {
-        var f = defs.filter(function (d) { return d.key === x.field_key; })[0], box = m();
-        var sel = el("select", {}, f.options.filter(function (o) { return o.value !== "other"; }).map(function (o) { return el("option", { value: o.value, text: o.label }); }));
-        return el("div", { class: "row" }, [el("strong", { text: f.label + "：「" + x.custom_text + "」（" + x.members + " 人）" }),
-          el("div", { class: "inline" }, [sel, el("button", { class: "primary", text: "合併", onclick: function () {
-            api("POST", "/v1/admin/amway/uplines/merge", { field_key: x.field_key, custom_text: x.custom_text, into: sel.value }).then(function (res) { if (res.status === 200) { pane.textContent = ""; merge(); } else say(box, false, errText(res)); });
-          } }), box])]);
+  // 詞庫：each suggestion vocabulary is curated on its own (edit, merge, delete); members' saved values follow.
+  function vocab(poolKey) {
+    api("GET", "/v1/admin/vocab").then(function (r) {
+      if (r.status !== 200) { pane.appendChild(card("詞庫", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      var pools = r.body.pools, cur = poolKey || pools[0].pool, bar = el("div", { class: "tabs" });
+      pools.forEach(function (p) { bar.appendChild(el("button", { class: p.pool === cur ? "on" : "", text: p.label + "（" + p.terms + "）", onclick: function () { pane.textContent = ""; vocab(p.pool); } })); });
+      pane.appendChild(el("h1", { text: "關聯詞庫" }));
+      pane.appendChild(el("p", { class: "help", text: "會員在自由輸入欄位打過的詞，會自動收進對應的詞庫，之後輸入時當作關聯詞顯示。這裡可以分開管理每個詞庫：編輯詞（已填寫的會員資料會一起改）、勾選多個合併成一個、刪除（只從建議中移除，不影響會員已填的內容）。" }));
+      pane.appendChild(bar);
+      api("GET", "/v1/admin/vocab/" + cur).then(function (t) {
+        var terms = t.body.terms, box = m(), picked = {};
+        function reload() { pane.textContent = ""; vocab(cur); }
+        function done(res) { if (res.status === 200) reload(); else say(box, false, errText(res)); }
+        var add = el("input", { type: "text", placeholder: "新增一個詞", maxlength: 100 });
+        var into = el("input", { type: "text", placeholder: "合併後的詞", maxlength: 100 });
+        var rows = terms.map(function (x) {
+          var chk = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": "false", "aria-label": "選取 " + x.term, onclick: function () {
+            picked[x.term] = !picked[x.term]; chk.setAttribute("aria-checked", picked[x.term] ? "true" : "false"); chk.className = "chk" + (picked[x.term] ? " on" : "");
+          } });
+          var kids = [chk, el("strong", { text: x.term }), el("span", { class: "help", text: "使用 " + x.uses + " 次" })];
+          if (cur === "education_system") kids.push(el("button", { class: x.hglobal ? "primary" : "", text: x.hglobal ? "✓ 代表 H-Global1985" : "標示為 H-Global1985", onclick: function () {
+            api("POST", "/v1/admin/vocab/education_system/hglobal", { term: x.term, hglobal: !x.hglobal }).then(done);
+          } }));
+          kids.push(el("button", { text: "編輯", onclick: function () {
+            var to = prompt("把「" + x.term + "」改成：", x.term); if (to === null || !to.trim() || to.trim() === x.term) return;
+            api("POST", "/v1/admin/vocab/" + cur + "/rename", { from: x.term, to: to.trim() }).then(done);
+          } }));
+          kids.push(el("button", { class: "danger", text: "刪除", onclick: function () {
+            if (!confirm("從建議中刪除「" + x.term + "」？（會員已填的內容不會被改）")) return;
+            api("POST", "/v1/admin/vocab/" + cur + "/delete", { term: x.term }).then(done);
+          } }));
+          return el("div", { class: "row" }, [el("div", { class: "inline" }, kids)]);
+        });
+        pane.appendChild(card(t.body.label + "（" + terms.length + " 個詞）", [
+          cur === "education_system" ? el("p", { class: "help", text: "標示為「代表 H-Global1985」的詞：會員填這個詞時需要審核，審核通過才有資格。" }) : null,
+          el("div", { class: "inline" }, [add, el("button", { class: "primary", text: "新增", onclick: function () { api("POST", "/v1/admin/vocab/" + cur + "/add", { term: add.value }).then(done); } })]),
+          el("div", { class: "inline" }, [into, el("button", { text: "把勾選的合併成這個詞", onclick: function () {
+            var froms = Object.keys(picked).filter(function (k) { return picked[k]; });
+            if (!froms.length) { say(box, false, "請先勾選要合併的詞"); return; }
+            if (!into.value.trim()) { say(box, false, "請輸入合併後的詞"); return; }
+            api("POST", "/v1/admin/vocab/" + cur + "/merge", { froms: froms, into: into.value.trim() }).then(done);
+          } })]),
+          box
+        ].concat(rows.length ? rows : [el("p", { class: "help", text: "這個詞庫還沒有詞。" })])));
       });
-      pane.appendChild(card("合併頁：會員自填的上手名稱", rows.length ? [el("p", { class: "help", text: "請先在「選項」新增正式名稱，再合併。" })].concat(rows) : [el("p", { class: "help", text: "目前沒有自填的上手名稱。" })]));
     });
   }
 
@@ -198,10 +231,8 @@ export const ADMIN_JS = String.raw`
       var ret = el("textarea", { placeholder: "留空自動產生 <app_id>://auth/google" }); ret.value = a ? a.return_urls.join("\n") : "";
       var aud = el("textarea", { placeholder: "一般留空（只有改用原生 Google 登入才需要）" }); aud.value = a ? a.auth.google_audiences.join("\n") : "";
       var min = el("input", { type: "text", value: a ? a.min_version : "0.0.0" });
-      var checks = b.scopes.map(function (sc) { var c = el("input", { type: "checkbox", value: sc }); c.checked = a ? a.scopes.indexOf(sc) >= 0 : (sc === "profile.read" || sc === "amway.read"); return [c, el("label", { text: sc })]; });
       function save() {
-        var body = { name: name.value, ios_bundle_id: ios.value, android_package: android.value, web_origins: lines(web), return_urls: lines(ret), extra_google_audiences: lines(aud), min_version: min.value,
-          scopes: checks.filter(function (c) { return c[0].checked; }).map(function (c) { return c[0].value; }) };
+        var body = { name: name.value, ios_bundle_id: ios.value, android_package: android.value, web_origins: lines(web), return_urls: lines(ret), extra_google_audiences: lines(aud), min_version: min.value };
         if (!a) body.app_id = id.value.trim();
         api(a ? "PUT" : "POST", "/v1/admin/apps" + (a ? "/" + encodeURIComponent(a.app_id) : ""), body).then(function (res) {
           if (res.status === 200 || res.status === 201) { reload(); return; }
@@ -213,7 +244,7 @@ export const ADMIN_JS = String.raw`
         field("名稱", name), field("iOS Bundle ID", ios), field("Android 套件名稱", android),
         field("網頁版來源（一行一個）", web, "只填 https://網域，不含路徑。"), field("App 回傳網址（一行一個）", ret),
         field("額外的 Google 用戶端 ID", aud), field("最低版本", min, "低於這個版本的 App 會被要求更新。"),
-        el("div", { class: "row" }, [el("label", { text: "權限範圍" }), el("div", { class: "inline" }, [].concat.apply([], checks))]),
+        el("p", { class: "help", text: "所有 App 都擁有全部權限範圍，不需要設定。" }),
         el("div", { class: "inline" }, [el("button", { class: "primary", text: a ? "儲存" : "建立", onclick: save }), el("button", { text: "取消", onclick: reload }), box]),
         a ? el("div", { class: "help", text: "儲存需要 10 分鐘內登入過；會跳到登入頁再回來。" }) : null
       ]);
