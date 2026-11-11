@@ -252,6 +252,7 @@ describe("visibility and avatar", () => {
     const img = await app.request(`/avatar/${memberId}`, {}, env);
     expect(img.status).toBe(200);
     expect(img.headers.get("content-type")).toBe("image/png");
+    expect((await img.arrayBuffer()).byteLength).toBeGreaterThan(0); // D1 hands a BLOB back as an array of numbers: it must still be served as bytes
     expect(img.headers.get("x-content-type-options")).toBe("nosniff");
     expect((await app.request("/avatar/00000000-0000-0000-0000-000000000000", {}, env)).status).toBe(404);
     expect((await upload(await token("openid profile.read"), PNG)).status).toBe(403);

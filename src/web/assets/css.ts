@@ -12,8 +12,10 @@ a{color:var(--green)}
 h1{font-size:1.4rem;line-height:1.3;margin:0 0 12px}h2{font-size:1.1rem;line-height:1.35;margin:0 0 10px}h3{font-size:1rem;margin:14px 0 6px}
 p{margin:0 0 10px}
 .wrap{max-width:680px;margin:0 auto;padding:16px 14px 28px}
-.foot{max-width:680px;margin:0 auto;padding:4px 14px 40px;color:var(--muted);font-size:14px}
-.foot a{margin-right:16px;color:var(--muted)}
+.foot{max-width:680px;margin:0 auto;padding:4px 14px 40px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:16px}
+.foot a{color:var(--muted)}
+.foot .credit{margin-left:auto;text-align:right}
+hr.part{border:0;border-top:2px solid var(--line);margin:28px 0 20px}
 /* main menu */
 .starnav{position:sticky;top:0;z-index:30;display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-start;gap:2px;padding:4px 6px;background:#fff;border-top:4px solid transparent;border-image:var(--grad) 1;border-bottom:1px solid var(--line)}
 .starnav a{position:relative;color:var(--fg);text-decoration:none;padding:6px 10px;min-height:40px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;white-space:nowrap}
@@ -152,20 +154,10 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .ln-item{display:flex;align-items:center;gap:4px;font-weight:400;font-size:.8rem;line-height:1.3;white-space:nowrap}
 .ln-item.z{color:#8b2fe0}.ln-item.b{color:#8a6500}.ln-item.t{color:#3d7a06}.ln-item.l{color:#e5303a}
 .ln-badge{display:inline;font-weight:inherit}
-.ln-grid{position:relative;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;margin:4px 0 0}
-.ln-cell{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;padding:5px 0}
-.ln-lines{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
-.ln-lines line{stroke:#2563eb;stroke-width:2.5;stroke-linecap:round;vector-effect:non-scaling-stroke}
-.ln-empty .ln-n{color:#c3cbbf}
-.ln-ring{display:inline-flex;align-items:center;justify-content:center;aspect-ratio:1;padding:2px;border:2.5px solid;border-radius:50%;background:#fff}
+.ln-svg{display:block;width:100%;height:auto;margin:4px 0 0}
+.ln-svg text{font-family:inherit;font-weight:800}
 .ln-dot{flex:none;width:16px;height:16px;border-radius:50%;border:2.5px solid;box-sizing:border-box}
 .rg-black{border-color:#0f172a}.rg-birthday{border-color:#f5b400}.rg-zodiac{border-color:#8b2fe0}.rg-talent{border-color:#7ccf1b}
-.ln-n{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;font-size:1.3rem;font-weight:800;color:#0f172a;line-height:1}
-.ln-red{color:#e5303a}
-.ln-ring-t{padding:9px}
-.ln-tri{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:11px 9px 3px}
-.ln-tri svg{position:absolute;inset:0;width:100%;height:100%}
-.ln-tri>*{position:relative}
 .ln-legend{border-top:2px solid #e3e8df;margin-top:4px;padding-top:8px;display:grid;grid-template-columns:1fr;gap:4px;font-size:.8rem;color:#1e293b;line-height:1.3}
 .ln-legend>div{display:flex;align-items:center;gap:8px}
 .ln-dot-tri{flex:none;width:16px;height:16px}
@@ -206,7 +198,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .soc-link{display:block;line-height:0}
 .soc-ico,.soc-plus{width:44px;height:44px;border-radius:10px;display:block;object-fit:cover}
 .socials.dense .soc-ico,.socials.dense .soc-plus{width:34px;height:34px}
-.soc-copy,.soc-tag{font:inherit;font-size:.7rem;line-height:1.25;padding:3px 7px;min-height:0;max-width:100%;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--muted);white-space:normal;overflow-wrap:anywhere;text-align:center}
+.soc-copy,.soc-tag{font:inherit;font-size:.7rem;line-height:1.2;box-sizing:border-box;height:2.3rem;display:flex;align-items:center;justify-content:center;padding:2px 6px;min-height:0;max-width:100%;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--muted);white-space:normal;overflow:hidden;overflow-wrap:anywhere;text-align:center}
 .soc-copy:hover{border-color:var(--green);color:var(--green)}
 .soc-tag{border-color:transparent;background:transparent}
 .soc-plus{display:flex;align-items:center;justify-content:center;border:2px dashed var(--green);background:#fff;color:var(--green);min-height:0;padding:0}

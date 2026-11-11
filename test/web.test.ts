@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { loginPage, messagePage } from "../src/web/pages";
 import { createApp } from "../src/app";
 import { createTestD1, type TestD1 } from "./helpers/d1.mjs";
 import { createSession, upsertMemberByGoogle } from "../src/db/identity";
@@ -98,7 +99,7 @@ describe("pages", () => {
   });
 
   it("the full privacy page shows sections 1–8 and none of the document's internal notes", async () => {
-    const res = await req(null, "GET", "/privacy/amway");
+    const res = await req(null, "GET", "/privacy");
     const html = await res.text();
     expect(html).toContain("Amway 會員資料之蒐集與跨系統利用告知");
     for (const h of ["1. 蒐集者", "5. 重複編號比對與夫妻綁定", "8. 資料正確性與責任"]) expect(html).toContain(h);
@@ -116,11 +117,20 @@ describe("pages", () => {
     expect(html).toContain("<h1>隱私權政策</h1>");
     for (const h of ["1. 營運單位", "6. Cookie", "8. 您的權利", "11. 聯絡我們"]) expect(html).toContain(h);
     expect(html).toContain("hglobal1985@gmail.com");
-    expect(html).toContain('<a href="/privacy/amway">完整隱私說明</a>');
+    expect(html).toContain('<a href="#full">完整隱私說明</a>');
     expect(html).not.toContain("{{amway}}");
     for (const banned of ["繁星", "安麗", "回聲"]) expect(html).not.toContain(banned);
-    const amway = await (await req(null, "GET", "/privacy/amway")).text();
-    expect(amway).toContain('<a href="/privacy">隱私權政策</a>');
+    // One document, one address: the old second address forwards to the full part.
+    const old = await req(null, "GET", "/privacy/amway");
+    expect(old.status).toBe(301);
+    expect(old.headers.get("location")).toBe("/privacy#full");
+    expect(html).toContain("Amway 會員資料之蒐集與跨系統利用告知");
+    // Every page ends with the privacy link and the credit line; the clean public profile has neither.
+    const foot = await (await req(null, "GET", "/")).text();
+    expect(foot).toContain('<a href="/privacy">隱私權政策</a><span class="credit">網站設計 杜杜龍</span>');
+    expect(foot).not.toContain("/privacy/amway");
+    expect(messagePage("x", "y")).toContain("網站設計 杜杜龍");
+    expect(loginPage("/x")).toContain("網站設計 杜杜龍");
   });
 
   it("member-facing site pages never name the other system in Chinese", async () => {

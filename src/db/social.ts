@@ -143,6 +143,14 @@ export async function addLink(db: D1Database, memberId: string, platformKey: str
   return { ok: true, id };
 }
 
+/** Changes the address and the shown name of one of the member's links (the platform stays). */
+export async function updateLink(db: D1Database, memberId: string, id: string, url: string, label: string | null, now: Date, requestId: string): Promise<boolean> {
+  const r = await db.prepare("UPDATE social_links SET url = ?, label = ? WHERE id = ? AND member_id = ?").bind(url, label, id, memberId).run();
+  if (!r.meta.changes) return false;
+  await auditStatement(db, { actorType: "member", actorId: memberId, action: "social.link.update", targetType: "member", targetId: memberId, result: "success", requestId }, now).run();
+  return true;
+}
+
 export async function removeLink(db: D1Database, memberId: string, id: string, now: Date, requestId: string): Promise<boolean> {
   const r = await db.prepare("DELETE FROM social_links WHERE id = ? AND member_id = ?").bind(id, memberId).run();
   if (!r.meta.changes) return false;

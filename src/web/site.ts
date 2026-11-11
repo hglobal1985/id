@@ -34,6 +34,7 @@ import { iconsPerRow } from "../social/rules";
 import { heroBadges } from "../db/badges";
 import { BLOCKS, BLOCK_PREFIX } from "../profile/layout";
 import { fieldDefinitions } from "../profile/definitions";
+import { blobBytes } from "../lib/blob";
 import { ADMIN_JS } from "./assets/admin";
 
 type C = Context<AppBindings>;
@@ -107,7 +108,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const row = await platformIcon(c.env.DB, c.req.param("key"));
     if (row?.data && row.mime) {
       iconHeaders(c, row.mime);
-      return c.body(row.data, 200);
+      return c.body(blobBytes(row.data), 200);
     }
     const icon = builtinIcon(row?.builtin ?? null);
     iconHeaders(c, icon.mime);
@@ -117,7 +118,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const row = await linkIcon(c.env.DB, c.req.param("id"));
     if (!row) return c.body("Not found", 404);
     iconHeaders(c, row.mime);
-    return c.body(row.data, 200);
+    return c.body(blobBytes(row.data), 200);
   });
   app.get("/assets/admin.js", (c) => asset(c, ADMIN_JS, "text/javascript; charset=utf-8"));
 
@@ -132,13 +133,13 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.get("/avatar/:id{[0-9a-f-]{36}}", async (c) => {
     const row = await c.env.DB.prepare("SELECT a.mime, a.data FROM member_avatars a JOIN members m ON m.id = a.member_id WHERE a.member_id = ? AND m.status = 'active'")
       .bind(c.req.param("id"))
-      .first<{ mime: string; data: ArrayBuffer }>();
+      .first<{ mime: string; data: unknown }>();
     if (!row) return c.body("Not found", 404);
     c.header("content-type", row.mime);
     c.header("cache-control", "public, max-age=3600");
     c.header("x-content-type-options", "nosniff");
     c.header("content-security-policy", "default-src 'none'; sandbox");
-    return c.body(row.data, 200);
+    return c.body(blobBytes(row.data), 200);
   });
 
   // /my/<id>: the owner's own page (menu, share, edit); /my/<id>/edit: editing. The plain /<id> is the clean public page.
@@ -202,7 +203,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   });
 
   // Static legal text: escaped, then the {{amway}} token becomes a link to the Amway notice.
-  const text = (t: string) => escapeHtml(t).replaceAll("{{amway}}", '<a href="/privacy/amway">完整隱私說明</a>');
+  const text = (t: string) => escapeHtml(t).replaceAll("{{amway}}", '<a href="#full">完整隱私說明</a>');
   const sections = (list: PrivacySection[]) =>
     list
       .map(
@@ -213,27 +214,20 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       )
       .join("");
 
+  // One document: the general policy first, then the full Amway privacy notice (#full). One address only.
   app.get("/privacy", async (c) => {
     const nav = await navFor(c, deps, "/privacy");
     const body =
       `<article class="card"><h1>${escapeHtml(POLICY_TITLE)}</h1><p class="help">最後更新：${escapeHtml(POLICY_UPDATED)}</p>` +
       sections(POLICY_SECTIONS) +
+      `<hr class="part"><h1 id="full">${escapeHtml(PRIVACY_TITLE)}</h1><p class="help">版本 ${escapeHtml(PRIVACY_VERSION)}</p>` +
+      sections(PRIVACY_SECTIONS) +
       "</article>";
     c.header("content-security-policy", SITE_CSP);
     c.header("cache-control", "public, max-age=300");
     return c.html(sitePage({ title: POLICY_TITLE, nav, body }));
   });
-
-  app.get("/privacy/amway", async (c) => {
-    const nav = await navFor(c, deps, "/privacy/amway");
-    const body =
-      `<article class="card"><h1>${escapeHtml(PRIVACY_TITLE)}</h1><p class="help">版本 ${escapeHtml(PRIVACY_VERSION)}</p>` +
-      sections(PRIVACY_SECTIONS) +
-      "</article>";
-    c.header("content-security-policy", SITE_CSP);
-    c.header("cache-control", "public, max-age=300");
-    return c.html(sitePage({ title: "完整隱私說明", nav, body }));
-  });
+  app.get("/privacy/amway", (c) => c.redirect("/privacy#full", 301));
 
   // Public profile: /<default member number>. Bound spouses share one URL; visitors switch between them.
   app.get("/:number{[A-Za-z0-9][A-Za-z0-9-]{0,24}}", (c) => profilePage(c, c.req.param("number").toUpperCase(), false));
@@ -343,7 +337,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const share = `<button type="button" class="small" id="share" data-label="分享" data-title="${escapeHtml(nameOf(p))}｜會員中心"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
     const edit = `<a class="button small primary" href="/my/${encodeURIComponent(number)}/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>`;
     const body =
-      (owner ? `${tabs}<div class="pagebar"><a class="button small" href="/${encodeURIComponent(number)}">預覽公開頁</a><div class="tools">${share}${edit}</div></div>` : tabs) +
+      (owner ? `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}<a class="button small" href="/${encodeURIComponent(number)}">預覽公開頁</a></div></div>` : tabs) +
       `<section class="card"><div class="hero">${avatar}<div class="hero-main"><div class="nameline"><h1 class="nm nm-${nameSize(nameOf(p))}">${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="help">${escapeHtml(number)}</span></div></div></div>` + socials +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
       `${rows || (amwayRows || p.chart || socials ? "" : '<p class="help">還沒有公開的資料。</p>')}</section>` +

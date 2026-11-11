@@ -81,6 +81,17 @@ export const COMMON_JS = String.raw`
     if (parts.length >= 2) return (ch(parts[0])[0] + ch(parts[parts.length - 1])[0]).toUpperCase();
     var a = ch(parts[0]); return (a.length >= 2 ? a[0] + a[1] : a[0]).toUpperCase();
   };
+  // The name under a link icon sits in a box two lines high: a long name takes a smaller font to fit the box.
+  HG.fitLabels = function (root) {
+    function run() {
+      Array.prototype.forEach.call(root.querySelectorAll(".soc-copy"), function (b) {
+        b.style.fontSize = ""; var f = parseFloat(getComputedStyle(b).fontSize) || 11;
+        while (b.scrollHeight > b.clientHeight + 1 && f > 6) { f -= 0.5; b.style.fontSize = f + "px"; }
+      });
+    }
+    if (window.requestAnimationFrame) window.requestAnimationFrame(run); else run();
+  };
+
   HG.bubble = function (size, url, name) {
     return url ? el("img", { class: "avatar " + size, src: url, alt: name || "" }) : el("span", { class: "avatar " + size, role: "img", "aria-label": name || "", text: HG.initials(name) });
   };
