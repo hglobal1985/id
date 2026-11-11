@@ -66,7 +66,7 @@ button.primary,.button.primary{background:var(--green);border-color:var(--green)
 button.primary:hover,.button.primary:hover{background:var(--green-d);color:#fff}
 button.danger,.button.danger{color:var(--danger);border-color:#e8b4af}
 button.danger:hover{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
-button.small{min-height:34px;padding:3px 10px;font-size:.92rem}
+button.small,.button.small{min-height:34px;padding:3px 10px;font-size:.92rem}
 button[disabled]{opacity:.5;cursor:default}
 .ico{width:1.15em;height:1.15em;flex:none}
 /* visibility switch (eye) */
@@ -123,7 +123,8 @@ button[disabled]{opacity:.5;cursor:default}
 .crop-box .actions{margin-top:10px}
 .rank.k-system{background:var(--green-soft);color:var(--green-d);border-color:#bcd8c6}.rank.k-center{background:#f4f1dc;color:#6b5b12;border-color:#ddd4a0}.hero h1{margin:0 0 4px;word-break:break-word}.hero .sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pagebar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
-.pagebar .tools{display:flex;gap:8px}
+.pagebar .tools{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto}
+.pagebar .button,.pagebar button{white-space:nowrap;flex:none}
 .motto{margin:0 0 12px;color:var(--olive);font-style:italic}
 /* tabs and collapsible sections */
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
