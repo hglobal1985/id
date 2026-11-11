@@ -169,8 +169,8 @@ export const ADMIN_JS = String.raw`
         var into = el("input", { type: "text", placeholder: "合併後的詞", maxlength: 100 });
         var rows = terms.map(function (x) {
           var chk = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": "false", "aria-label": "選取 " + x.term, onclick: function () {
-            picked[x.term] = !picked[x.term]; chk.setAttribute("aria-checked", picked[x.term] ? "true" : "false"); chk.className = "chk" + (picked[x.term] ? " on" : "");
-          } });
+            picked[x.term] = !picked[x.term]; chk.setAttribute("aria-checked", picked[x.term] ? "true" : "false");
+          } }, [el("span", { class: "box" })]);
           var kids = [chk, el("strong", { text: x.term }), el("span", { class: "help", text: "使用 " + x.uses + " 次" })];
           if (cur === "education_system") kids.push(el("button", { class: x.hglobal ? "primary" : "", text: x.hglobal ? "✓ 代表 H-Global1985" : "標示為 H-Global1985", onclick: function () {
             api("POST", "/v1/admin/vocab/education_system/hglobal", { term: x.term, hglobal: !x.hglobal }).then(done);

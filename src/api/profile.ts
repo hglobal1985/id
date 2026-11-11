@@ -60,6 +60,8 @@ const FieldDefinitionSchema = z
     max_length: z.number().int().optional(),
     max_items: z.number().int().optional(),
     label_when_amway: z.string().optional(),
+    help_when_amway: z.string().optional().openapi({ description: "member_number: note beside the field when 我是Amway會員 is on" }),
+    help_when_not_amway: z.string().optional().openapi({ description: "member_number: note beside the field when 我是Amway會員 is off (the number is random and cannot be changed)" }),
     max_items_when_amway: z.number().int().optional(),
     item_max_length: z.number().int().optional(),
     options: z.array(OptionSchema).optional(),

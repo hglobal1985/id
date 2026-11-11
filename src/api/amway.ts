@@ -5,10 +5,10 @@ import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { getMember } from "../db/identity";
 import { listOptions, readAmwayFields, setAmwayEnabled, writeAmwayField } from "../db/amway";
-import { canonicalTerms, recordTerms } from "../db/vocab";
+import { canonicalTerms, hglobalNorms, recordTerms } from "../db/vocab";
 import { readProfile } from "../db/profile";
 import { isPool } from "../vocab/terms";
-import { AMWAY_FIELDS, getAmwayField, validateAmwayValue, type AmwayValue } from "../amway/fields";
+import { AMWAY_FIELDS, HGLOBAL, getAmwayField, systemKey, validateAmwayValue, type AmwayValue } from "../amway/fields";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
 
@@ -44,6 +44,7 @@ const meRoute = createRoute({
         z
           .object({
             enabled: z.boolean(),
+            hglobal: z.boolean().openapi({ description: "The training system (effective or pending) is a term marked as H-Global1985: the education center field applies." }),
             fields: z.record(FieldStateSchema.extend({ visibility: z.enum(["public", "private"]) })),
           })
           .openapi("MyAmway"),
@@ -144,7 +145,10 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       const vis = visibility.get(f.key) ?? "private";
       fields[f.key] = r ? { value: r.value, pending_value: r.pending_value, status: r.status, updated_at: r.updated_at, visibility: vis } : { value: null, pending_value: null, status: "not_required", updated_at: null, visibility: vis };
     }
-    return c.json({ enabled: member?.amway_enabled === 1, fields }, 200);
+    const hg = await hglobalNorms(c.env.DB);
+    const sys = rows.get("education_system");
+    const hglobal = systemKey(sys?.value ?? null, hg) === HGLOBAL || systemKey(sys?.pending_value ?? null, hg) === HGLOBAL;
+    return c.json({ enabled: member?.amway_enabled === 1, hglobal, fields }, 200);
   });
 
   app.openapi(enabledRoute, async (c) => {
