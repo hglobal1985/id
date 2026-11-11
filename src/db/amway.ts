@@ -3,7 +3,7 @@ import { uuidv7 } from "../lib/crypto";
 import { taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
 import { getActiveBinding, otherSide } from "./spouse";
-import { notifyReviewersStatement } from "./staff";
+import { notifyReviewersStatements } from "./staff";
 import { hglobalNorms } from "./vocab";
 import {
   AMWAY_FIELDS,
@@ -14,8 +14,10 @@ import {
   systemKey,
   type AmwayValue,
   type Option,
+  type ReviewContext,
   type ReviewStatus,
 } from "../amway/fields";
+import { normTerm } from "../vocab/terms";
 
 export interface Ctx {
   appId: string | null;
@@ -135,7 +137,13 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   const rows = await readAmwayFields(db, memberId);
   const sys = rows.get("education_system");
   const hg = await hglobalNorms(db);
-  const educationSystem = { effective: systemKey(sys?.value ?? null, hg), pending: systemKey(sys?.pending_value ?? null, hg) };
+  // The member as it will be after this write: the review rule looks at the training system and at whether a center is filled in.
+  const systemAfter = key === "education_system" ? { effective: systemKey(value, hg), pending: null } : { effective: systemKey(sys?.value ?? null, hg), pending: systemKey(sys?.pending_value ?? null, hg) };
+  const centerRow = rows.get("education_center");
+  const centerAfter = key === "education_center" ? value : (centerRow?.value ?? centerRow?.pending_value ?? null);
+  const centerText = typeof centerAfter === "string" ? centerAfter.trim() : "";
+  const reviewCtx: ReviewContext = { system: systemAfter, hasCenter: centerText !== "" };
+  const centerNorm = centerText ? normTerm(centerText) : null;
 
   const current = rows.get(key);
   const holders = key === "rank" ? await rankHolders(db, memberId) : [memberId];
@@ -144,7 +152,18 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   let review = false;
   // A value that should have been reviewed but never was (entered before the rule covered it): sending it again starts the
   // standard review, and it does not count as effective until approved — nobody, staff included, skips the review.
-  const unreviewed = !!current && current.value !== null && !current.value_approved && current.status === "not_required" && needsReview(def, current.value, educationSystem, hg);
+  const unreviewed = !!current && current.value !== null && !current.value_approved && current.status === "not_required" && needsReview(def, current.value, reviewCtx);
+
+  /** A review request for one field, with the notices to the reviewers of the same center. */
+  const requestReview = async (k: string, requested: AmwayValue): Promise<D1PreparedStatement[]> => {
+    const reviewId = uuidv7(ctx.now.getTime() + stmts.length);
+    return [
+      db
+        .prepare("INSERT INTO amway_review_requests (id, member_id, field_key, requested_value, status, created_at, app_id, center_norm) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)")
+        .bind(reviewId, memberId, k, JSON.stringify(requested), ts, ctx.appId, centerNorm),
+      ...(await notifyReviewersStatements(db, reviewId, k, centerNorm, ctx.now)),
+    ];
+  };
 
   if (current && current.status !== "rejected" && sameValue(current.value, value) && current.pending_value !== null) {
     // Back to the effective value: cancel the pending change.
@@ -153,16 +172,10 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
     return { ok: true, row: current }; // idempotent
   } else if (current && current.pending_value !== null && sameValue(current.pending_value, value)) {
     return { ok: true, row: current }; // same pending value re-sent
-  } else if (needsReview(def, value, educationSystem, hg)) {
+  } else if (needsReview(def, value, reviewCtx)) {
     review = true;
     row = { value: unreviewed ? null : (current?.value ?? null), pending_value: value, status: "pending", value_approved: "keep" };
-    const reviewId = uuidv7(ctx.now.getTime());
-    stmts.push(
-      db
-        .prepare("INSERT INTO amway_review_requests (id, member_id, field_key, requested_value, status, created_at, app_id) VALUES (?, ?, ?, ?, 'pending', ?, ?)")
-        .bind(reviewId, memberId, key, JSON.stringify(value), ts, ctx.appId),
-      notifyReviewersStatement(db, reviewId, ctx.now),
-    );
+    stmts.push(...(await requestReview(key, value)));
   } else {
     row = { value, pending_value: null, status: "not_required", value_approved: false };
   }
@@ -172,13 +185,28 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
     stmts.push(upsertRow(db, h, key, row, ts));
   }
 
-  // Leaving "hglobal" (applied at once) releases a rank that was only pending because of it.
-  if (key === "education_system" && !review && systemKey(value, hg) !== HGLOBAL) {
-    const rank = rows.get("rank");
-    if (rank?.pending_value != null) {
-      for (const h of await rankHolders(db, memberId)) {
-        stmts.push(supersedePending(db, h, "rank", ts));
-        stmts.push(upsertRow(db, h, "rank", { value: rank.pending_value, pending_value: null, status: "not_required", value_approved: false }, ts));
+  // Values saved earlier that only now need review (the member became 寰宇, or named a center): they wait for review too.
+  if (key === "education_system" || key === "education_center") {
+    for (const k of key === "education_system" ? ["education_center", "rank"] : ["rank"]) {
+      const r = rows.get(k);
+      const d = getAmwayField(k);
+      if (!r || !d || r.value === null || r.value_approved || r.status !== "not_required" || r.pending_value !== null || !needsReview(d, r.value, reviewCtx)) continue;
+      stmts.push(...(await requestReview(k, r.value)));
+      for (const h of k === "rank" ? await rankHolders(db, memberId) : [memberId]) {
+        stmts.unshift(supersedePending(db, h, k, ts));
+        stmts.push(upsertRow(db, h, k, { value: null, pending_value: r.value, status: "pending", value_approved: "keep" }, ts));
+      }
+    }
+  }
+
+  // Leaving 寰宇 (applied at once) releases the center and the rank that were only pending because of it.
+  if (key === "education_system" && systemKey(value, hg) !== HGLOBAL) {
+    for (const k of ["education_center", "rank"]) {
+      const r = rows.get(k);
+      if (r?.pending_value == null) continue;
+      for (const h of k === "rank" ? await rankHolders(db, memberId) : [memberId]) {
+        stmts.push(supersedePending(db, h, k, ts));
+        stmts.push(upsertRow(db, h, k, { value: r.pending_value, pending_value: null, status: "not_required", value_approved: false }, ts));
       }
     }
   }

@@ -1,12 +1,17 @@
 // Staff roles and permissions (framework-free). Staff are members who sign in with Google like everyone else.
 
-export const ROLES = ["super_admin", "secretary", "reviewer"] as const;
+export const ROLES = ["super_admin", "secretary", "reviewer", "president", "course", "sound", "ticket", "activity"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "超級管理員",
-  secretary: "秘書",
+  secretary: "總部秘書",
   reviewer: "審核員",
+  president: "會長",
+  course: "課務",
+  sound: "音控",
+  ticket: "票務",
+  activity: "活動",
 };
 
 export type Permission =
@@ -25,6 +30,12 @@ const MATRIX: Record<Role, Permission[]> = {
   super_admin: ["review", "adjust", "members.read", "vocab.manage", "layout.manage", "social.manage", "audit.read", "staff.manage", "apps.operate", "apps.manage"],
   secretary: ["review", "adjust", "members.read", "audit.read", "apps.operate"],
   reviewer: ["review", "adjust", "members.read"],
+  // 會長、課務、音控、票務、活動: the positions exist; what each one may do is added when the owner decides it.
+  president: [],
+  course: [],
+  sound: [],
+  ticket: [],
+  activity: [],
 };
 
 export function can(roles: Iterable<string>, p: Permission): boolean {

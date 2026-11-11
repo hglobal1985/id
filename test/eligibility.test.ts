@@ -56,11 +56,12 @@ const put = (m: M, path: string, body: unknown) =>
   app.request(path, { method: "PUT", headers: { authorization: `Bearer ${m.token}`, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 const check = async (m: M, rule: unknown) => (await (await call(m, "/v1/eligibility/check", { rule })).json()) as { allowed: boolean; reason: string };
 
-/** Enabled, hglobal approved, rank approved. */
+/** Enabled, 寰宇 with a regional center (approved by its reviewer), rank approved. */
 async function verifiedMember(sub: string, rank: string): Promise<M> {
   const m = await member(sub);
   await put(m, "/v1/me/amway/enabled", { enabled: true });
   await put(m, "/v1/me/amway/fields/education_system", { value: "寰宇" });
+  await put(m, "/v1/me/amway/fields/education_center", { value: "台北中心" });
   await put(m, "/v1/me/amway/fields/rank", { value: rank });
   for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff", ctx());
   return m;
@@ -72,13 +73,15 @@ describe("POST /v1/eligibility/check", () => {
     expect(await check(m, { audience: "everyone" })).toEqual({ allowed: true, reason: "ok" });
   });
 
-  it("hglobal_verified needs the Amway area on and an approved hglobal education system", async () => {
+  it("hglobal_verified needs the Amway area on and 寰宇; 寰宇 alone passes at once, with a center it waits for that center's review", async () => {
     const m = await member("a");
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "amway_disabled" });
     await put(m, "/v1/me/amway/enabled", { enabled: true });
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "not_verified" });
     await put(m, "/v1/me/amway/fields/education_system", { value: "寰宇" });
-    expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "not_verified" }); // pending review
+    expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: true, reason: "ok" }); // 寰宇 alone needs no review
+    await put(m, "/v1/me/amway/fields/education_center", { value: "台北中心" });
+    expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "not_verified" }); // the center is pending review
     for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff", ctx());
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: true, reason: "ok" });
     // Unticking pauses eligibility at once.

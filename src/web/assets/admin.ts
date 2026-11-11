@@ -154,7 +154,7 @@ export const ADMIN_JS = String.raw`
           return el("div", { class: "row" }, [el("div", { class: "inline" }, kids)]);
         });
         pane.appendChild(card(t.body.label + "（" + terms.length + " 個詞）", [
-          cur === "education_system" ? el("p", { class: "help", text: "標示為「代表 H-Global1985」的詞：會員填這個詞時需要審核，審核通過才有資格。" }) : null,
+          cur === "education_system" ? el("p", { class: "help", text: "標示為「代表寰宇」的詞：會員填這個詞又填了「地區教育中心」時，中心與獎銜需要由相同中心的審核員審核；只填系統不需審核。" }) : null,
           el("div", { class: "inline" }, [add, el("button", { class: "primary", text: "新增", onclick: function () { api("POST", "/v1/admin/vocab/" + cur + "/add", { term: add.value }).then(done); } })]),
           el("div", { class: "inline" }, [into, el("button", { text: "把勾選的合併成這個詞", onclick: function () {
             var froms = Object.keys(picked).filter(function (k) { return picked[k]; });
@@ -341,7 +341,7 @@ export const ADMIN_JS = String.raw`
     api("GET", "/v1/admin/staff").then(function (r) {
       var b = r.body, id = el("input", { type: "text", placeholder: "會員識別碼" }), box = m();
       var checks = b.roles.map(function (x) { var c = el("input", { type: "checkbox", value: x.role }); return [c, el("label", { text: x.label })]; });
-      pane.appendChild(card("管理人員", b.staff.map(function (s) { return el("div", { class: "row" }, [el("strong", { text: s.display_name || s.member_id }), el("div", { class: "help", text: s.roles.join("、") }), el("div", { class: "mono help", text: s.member_id })]); })
+      pane.appendChild(card("管理人員", b.staff.map(function (s) { return el("div", { class: "row" }, [el("strong", { text: s.display_name || s.member_id }), el("div", { class: "help", text: s.roles.map(function (r) { var f = b.roles.filter(function (x) { return x.role === r; })[0]; return f ? f.label : r; }).join("、") + (s.center ? "（中心：" + s.center + "）" : "") }), el("div", { class: "mono help", text: s.member_id })]); })
         .concat([el("div", { class: "inline" }, [id].concat([].concat.apply([], checks)).concat([el("button", { class: "primary", text: "設定角色", onclick: function () {
           var roles = checks.filter(function (c) { return c[0].checked; }).map(function (c) { return c[0].value; });
           api("PUT", "/v1/admin/staff/" + encodeURIComponent(id.value.trim()), { roles: roles }).then(function (res) {

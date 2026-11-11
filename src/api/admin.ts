@@ -8,7 +8,7 @@ import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { SESSION_COOKIE, readCookie } from "../auth/cookies";
 import { findActiveSessionByToken, getMember } from "../db/identity";
-import { listStaff, rolesOf, setRoles } from "../db/staff";
+import { centerNormOfMember, listStaff, rolesOf, setRoles } from "../db/staff";
 import { decideReview, listOptions, readAmwayFields, staffAdjust } from "../db/amway";
 import { readNumbers } from "../db/member-numbers";
 import { getActiveBinding, otherSide } from "../db/spouse";
@@ -48,6 +48,16 @@ function deny(c: C, p: Permission): Response | null {
   return c.json(errorBody("forbidden", "Not permitted for your role", c.get("requestId"), { required_permission: p }), 403);
 }
 
+async function centerTextOf(db: D1Database, memberId: string): Promise<string | null> {
+  const r = await db.prepare("SELECT value FROM amway_field_values WHERE member_id = ? AND field_key = 'education_center'").bind(memberId).first<{ value: string | null }>();
+  try {
+    const v = r?.value ? (JSON.parse(r.value) as unknown) : null;
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 async function displayName(db: D1Database, memberId: string): Promise<string | null> {
   const dn = await db.prepare("SELECT value FROM profile_field_values WHERE member_id = ? AND field_key = 'display_name'").bind(memberId).first<{ value: string }>();
   if (dn) {
@@ -69,6 +79,8 @@ const meRoute = createRoute({ method: "get", path: "/v1/admin/me", tags: ["admin
 const overviewRoute = createRoute({ method: "get", path: "/v1/admin/overview", tags: ["admin"], summary: "Back-office home: counts and traffic lights (any staff role)", security, responses: { 200: { description: "Overview", content: json(Any) }, ...common } });
 
 const reviewsRoute = createRoute({ method: "get", path: "/v1/admin/reviews", tags: ["admin"], summary: "Pending review requests (oldest first)", security, responses: { 200: { description: "Queue", content: json(Any) }, ...common } });
+
+const historyRoute = createRoute({ method: "get", path: "/v1/admin/reviews/history", tags: ["admin"], summary: "Decided review requests with the name of the person who decided (newest first; a reviewer sees only the own center)", security, responses: { 200: { description: "History", content: json(Any) }, ...common } });
 
 const decisionRoute = createRoute({
   method: "post",
@@ -189,7 +201,7 @@ const putStaffRoute = createRoute({
   tags: ["admin"],
   summary: "Set a member's roles (super admin; needs a sign-in within 10 minutes)",
   security,
-  request: { params: z.object({ member_id: z.string().max(64) }), body: { required: true, content: json(z.object({ roles: z.array(z.enum(ROLES)).max(3) })) } },
+  request: { params: z.object({ member_id: z.string().max(64) }), body: { required: true, content: json(z.object({ roles: z.array(z.enum(ROLES)).max(ROLES.length) })) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
 });
 
@@ -222,16 +234,35 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
 
   app.openapi(overviewRoute, async (c) => c.json(await loadOverview(c.env.DB, deps.now()), 200));
 
+  // Head-office secretaries and super admins see and decide every request; a reviewer only those of the own regional center.
+  const reviewScope = async (c: C) => {
+    const st = c.get("staff");
+    if (st.roles.includes("super_admin") || st.roles.includes("secretary")) return { all: true as const };
+    return { all: false as const, center: await centerNormOfMember(c.env.DB, st.memberId) };
+  };
+  const inScope = (sc: { all: true } | { all: false; center: string | null }, centerNorm: string | null) => sc.all || (sc.center !== null && centerNorm === sc.center);
+
+  /** The center a request is about, as text: the requested center, or the member's own center for a rank. */
+  const centerLabel = async (db: D1Database, memberId: string, fieldKey: string, requested: unknown) => {
+    if (fieldKey === "education_center") return typeof requested === "string" ? requested : null;
+    const row = (await readAmwayFields(db, memberId)).get("education_center");
+    const v = row?.value ?? row?.pending_value ?? null;
+    return typeof v === "string" ? v : null;
+  };
+
   app.openapi(reviewsRoute, async (c) => {
     const d = deny(c, "review");
     if (d) return d as never;
     const db = c.env.DB;
+    const scope = await reviewScope(c);
     const r = await db
-      .prepare("SELECT id, member_id, field_key, requested_value, created_at, app_id FROM amway_review_requests WHERE status = 'pending' ORDER BY created_at LIMIT 200")
-      .all<{ id: string; member_id: string; field_key: string; requested_value: string; created_at: string; app_id: string | null }>();
+      .prepare("SELECT id, member_id, field_key, requested_value, created_at, app_id, center_norm FROM amway_review_requests WHERE status = 'pending' ORDER BY created_at LIMIT 200")
+      .all<{ id: string; member_id: string; field_key: string; requested_value: string; created_at: string; app_id: string | null; center_norm: string | null }>();
     const items = [];
     for (const x of r.results ?? []) {
+      if (!inScope(scope, x.center_norm)) continue;
       const current = (await readAmwayFields(db, x.member_id)).get(x.field_key);
+      const requested = JSON.parse(x.requested_value) as unknown;
       items.push({
         id: x.id,
         member_id: x.member_id,
@@ -239,8 +270,9 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         member_number: (await readNumbers(db, x.member_id))[0] ?? null,
         field_key: x.field_key,
         field_label: getAmwayField(x.field_key)?.label ?? x.field_key,
+        center: await centerLabel(db, x.member_id, x.field_key, requested),
         current_value: current?.value ?? null,
-        requested_value: JSON.parse(x.requested_value) as unknown,
+        requested_value: requested,
         created_at: x.created_at,
         app_id: x.app_id,
       });
@@ -248,10 +280,43 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return c.json({ reviews: items }, 200);
   });
 
+  app.openapi(historyRoute, async (c) => {
+    const d = deny(c, "review");
+    if (d) return d as never;
+    const db = c.env.DB;
+    const scope = await reviewScope(c);
+    const r = await db
+      .prepare("SELECT id, member_id, field_key, requested_value, status, decided_at, decided_by, center_norm FROM amway_review_requests WHERE status IN ('approved', 'rejected') ORDER BY decided_at DESC LIMIT 200")
+      .all<{ id: string; member_id: string; field_key: string; requested_value: string; status: string; decided_at: string; decided_by: string | null; center_norm: string | null }>();
+    const items = [];
+    for (const x of r.results ?? []) {
+      if (!inScope(scope, x.center_norm)) continue;
+      if (items.length >= 50) break;
+      const requested = JSON.parse(x.requested_value) as unknown;
+      items.push({
+        id: x.id,
+        display_name: await displayName(db, x.member_id),
+        member_number: (await readNumbers(db, x.member_id))[0] ?? null,
+        field_key: x.field_key,
+        field_label: getAmwayField(x.field_key)?.label ?? x.field_key,
+        center: await centerLabel(db, x.member_id, x.field_key, requested),
+        requested_value: requested,
+        status: x.status,
+        decided_at: x.decided_at,
+        decided_by: x.decided_by ? await displayName(db, x.decided_by) : null,
+      });
+    }
+    return c.json({ history: items }, 200);
+  });
+
   app.openapi(decisionRoute, async (c) => {
     const d = deny(c, "review");
     if (d) return d as never;
-    const ok = await decideReview(c.env.DB, c.req.valid("param").id, c.req.valid("json").decision, c.get("staff").memberId, ctxOf(c, deps));
+    const { id } = c.req.valid("param");
+    const req = await c.env.DB.prepare("SELECT center_norm FROM amway_review_requests WHERE id = ? AND status = 'pending'").bind(id).first<{ center_norm: string | null }>();
+    if (!req) return c.json(errorBody("not_found", "No pending request", c.get("requestId")), 404);
+    if (!inScope(await reviewScope(c), req.center_norm)) return c.json(errorBody("forbidden", "這個申請不屬於您負責的中心", c.get("requestId"), { required_permission: "review" }), 403);
+    const ok = await decideReview(c.env.DB, id, c.req.valid("json").decision, c.get("staff").memberId, ctxOf(c, deps));
     if (!ok) return c.json(errorBody("not_found", "No pending request", c.get("requestId")), 404);
     return c.json({ decided: c.req.valid("json").decision }, 200);
   });
@@ -423,7 +488,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const d = deny(c, "staff.manage");
     if (d) return d as never;
     const list = await listStaff(c.env.DB);
-    return c.json({ staff: await Promise.all(list.map(async (s) => ({ ...s, display_name: await displayName(c.env.DB, s.member_id) }))), roles: ROLES.map((r) => ({ role: r, label: ROLE_LABELS[r] })) }, 200);
+    return c.json({ staff: await Promise.all(list.map(async (s) => ({ ...s, display_name: await displayName(c.env.DB, s.member_id), center: s.roles.includes("reviewer") ? await centerTextOf(c.env.DB, s.member_id) : null }))), roles: ROLES.map((r) => ({ role: r, label: ROLE_LABELS[r] })) }, 200);
   });
 
   app.openapi(putStaffRoute, async (c) => {
