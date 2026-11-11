@@ -160,7 +160,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .filters select{width:100%;min-height:44px}
 .member-row .linklike{border:0;background:transparent;padding:0;min-height:0;color:var(--green);font-weight:700;text-align:left;text-decoration:underline}
 /* life number chart (same drawing data as the starry.phd member center) */
-.ln-card{max-width:380px;margin-inline:auto;background:#f6f8f4;color:#0f172a;border:1px solid var(--line);border-radius:18px;padding:12px 14px}
+.ln-card{max-width:440px;margin-inline:auto;background:#f6f8f4;color:#0f172a;border:1px solid var(--line);border-radius:18px;padding:12px 14px}
 .ln-head{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;padding-bottom:10px;border-bottom:2px solid #e3e8df}
 .ln-item{display:flex;align-items:center;gap:4px;font-weight:400;font-size:.8rem;line-height:1.3;white-space:nowrap}
 .ln-item.z{color:#8b2fe0}.ln-item.b{color:#8a6500}.ln-item.t{color:#3d7a06}.ln-item.l{color:#e5303a}

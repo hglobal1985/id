@@ -3,13 +3,13 @@
 // moves anything — the circles just grow outward around the centre.
 import type { LifeChart, Rings } from "../profile/astro";
 
-const COLS = 3;
+const COLS = 4; // 1-9 in three columns, and 0 alone in a fourth column (bottom row, right of 9)
 const CW = 100;
 const CH = 80;
 const MAX_R = 37;
 const RING_COLOR: Record<string, string> = { black: "#0f172a", birthday: "#f5b400", zodiac: "#8b2fe0", talent: "#7ccf1b" };
 
-const centre = (n: number) => ({ x: CW / 2 + CW * Math.floor((n - 1) / 3), y: CH / 2 + CH * ((n - 1) % 3) });
+const centre = (n: number) => (n === 0 ? { x: CW / 2 + CW * 3, y: CH / 2 + CH * 2 } : { x: CW / 2 + CW * Math.floor((n - 1) / 3), y: CH / 2 + CH * ((n - 1) % 3) });
 
 function cell(n: number, r: Rings): string {
   const kinds: string[] = [
@@ -61,7 +61,7 @@ export function lifeTitle(name: string, birthday: string | null): string {
 export function chartHtml(c: LifeChart, legendOn = false): string {
   const item = (cls: string, label: string, value: string | number, badge: string) => `<div class="ln-item ${cls}"><span>${label}</span><span class="ln-badge ${badge}">${value}</span></div>`;
   const legend = (cls: string, text: string) => `<div><span class="ln-dot ${cls}"></span><span>${text}</span></div>`;
-  const grid = `<svg class="ln-svg" viewBox="0 0 ${CW * COLS} ${CH * 3}" role="img" aria-label="彩色九宮格">${lineLayer(c.lines, c.sub_lines)}${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => cell(n, c.rings[n] as Rings)).join("")}</svg>`;
+  const grid = `<svg class="ln-svg" viewBox="0 0 ${CW * COLS} ${CH * 3}" role="img" aria-label="彩色九宮格">${lineLayer(c.lines, c.sub_lines)}${[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => cell(n, c.rings[n] as Rings)).join("")}</svg>`;
   return `<div class="ln-card">
 <div class="ln-head">${item("z", `星座：${c.zodiac_name}`, c.zodiac_number, "ln-b-zodiac")}${item("b", "生日數：", c.birthday_number, "ln-b-birthday")}${item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent")}${item("l", "加總命數：", c.life_number, "ln-b-life")}</div>
 ${grid}

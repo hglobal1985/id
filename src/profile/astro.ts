@@ -65,9 +65,10 @@ export interface LifeChart {
   birthday_number: number;
   talent_numbers: number[];
   life_number: number;
+  /** Rings of the digits 0–9 (0 sits right of 9 on the bottom row; only the digits of the dates count for it). */
   rings: Record<number, Rings>;
-  /** 主線: the straight lines (row, column or diagonal of the 3x3 grid) whose three numbers are all marked (a circle, or the 加總命數 triangle). */
-  lines: [number, number, number][];
+  /** 主線: the straight lines (row, column or diagonal of the 3x3 grid) whose three numbers are all marked (a circle, or the 加總命數 triangle). The bottom row 3-6-9 reaches on to 0 (3-6-9-0) when 0 is marked too — 0 has only that one line. */
+  lines: number[][];
   /** 副線: the short diagonals around the centre (2-4, 4-8, 8-6, 6-2) whose two numbers are both marked (a circle, or the 加總命數 triangle; drawn dashed). */
   sub_lines: [number, number][];
 }
@@ -95,12 +96,12 @@ export function lifeChartOf(birthday: string): LifeChart | null {
   const zodiacNumber = toDigit(ZODIAC_ORDER.indexOf(sign) + 1);
   const birthdayNumber = toDigit(Number(birthday.slice(8, 10)));
   const rings: Record<number, Rings> = {};
-  for (let d = 1; d <= 9; d++) rings[d] = { black: 0, birthday: d === birthdayNumber, zodiac: d === zodiacNumber, talent: 0, life: d === sum };
-  for (const d of digits) if (d >= 1) (rings[d] as Rings).black += 1;
-  for (const t of talent) for (const ch of String(t)) if (Number(ch) >= 1) (rings[Number(ch)] as Rings).talent += 1;
+  for (let d = 0; d <= 9; d++) rings[d] = { black: 0, birthday: d === birthdayNumber, zodiac: d === zodiacNumber, talent: 0, life: d === sum };
+  for (const d of digits) (rings[d] as Rings).black += 1;
+  for (const t of talent) for (const ch of String(t)) (rings[Number(ch)] as Rings).talent += 1;
   // A number is marked when it has a circle OR it is the 加總命數 (its red triangle): a number that only carries the triangle still joins the lines.
   const marked = (n: number) => { const r = rings[n] as Rings; return r.black > 0 || r.birthday || r.zodiac || r.talent > 0 || r.life; };
-  const lines = GRID_LINES.filter((l) => l.every(marked)).map((l) => [...l] as [number, number, number]);
+  const lines = GRID_LINES.filter((l) => l.every(marked)).map((l) => (l[0] === 3 && l[2] === 9 && marked(0) ? [3, 6, 9, 0] : [...l]));
   const sub_lines = SUB_LINES.filter((l) => l.every(marked)).map((l) => [...l] as [number, number]);
   return { zodiac_name: sign, zodiac_number: zodiacNumber, birthday_number: birthdayNumber, talent_numbers: talent, life_number: sum, rings, lines, sub_lines };
 }
