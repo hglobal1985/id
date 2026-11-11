@@ -11,6 +11,8 @@ import { canonicalTerms, recordTerms, suggestTerms } from "../db/vocab";
 import { POOLS, isPool, poolOfField } from "../vocab/terms";
 import { randomMotto } from "../profile/mottos";
 import { AMWAY_KEYS } from "../amway/fields";
+import { loadLayout } from "../db/layout";
+import { applyOrder } from "../profile/layout";
 import {
   AVATAR_DEFINITION,
   MEMBER_NUMBER_DEFINITION,
@@ -112,7 +114,7 @@ const definitionsRoute = createRoute({
   method: "get",
   path: "/v1/profile/field-definitions",
   tags: ["profile"],
-  summary: "Profile field definitions (drives every app's profile page; cache up to 1 hour)",
+  summary: "Profile field definitions in the order the super admin set (drives every app's profile page; cache up to 5 minutes)",
   security,
   responses: { 200: { description: "Definitions", content: json(DefinitionsSchema) }, ...errors },
 });
@@ -234,15 +236,16 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
   app.use("/v1/profile/*", auth);
   app.use("/v1/vocab/*", auth);
 
-  app.openapi(definitionsRoute, (c) => {
+  app.openapi(definitionsRoute, async (c) => {
     const denied = missingScope(c, ["profile.read"]);
     if (denied) return denied as never;
-    c.header("cache-control", "private, max-age=3600");
+    const layout = await loadLayout(c.env.DB);
+    c.header("cache-control", "private, max-age=300");
     return c.json(
       {
         version: DEFINITIONS_VERSION,
         groups: GROUPS,
-        fields: [{ ...MEMBER_NUMBER_DEFINITION, options: memberNumberCountryOptions() }, ...fieldDefinitions()] as z.infer<typeof FieldDefinitionSchema>[],
+        fields: [{ ...MEMBER_NUMBER_DEFINITION, options: memberNumberCountryOptions() }, ...applyOrder(fieldDefinitions(), layout)] as z.infer<typeof FieldDefinitionSchema>[],
         info: INFO_BLOCKS.map((b) => ({ ...b })),
         avatar: AVATAR_DEFINITION as unknown as Record<string, unknown>,
       },

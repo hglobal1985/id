@@ -24,6 +24,7 @@ import { lifeChartOf } from "../profile/astro";
 import { AMWAY_FIELDS } from "../amway/fields";
 import { listOptions, readAmwayFields } from "../db/amway";
 import { readNumbers } from "../db/member-numbers";
+import { loadLayout } from "../db/layout";
 import { ADMIN_JS } from "./assets/admin";
 
 type C = Context<AppBindings>;
@@ -208,6 +209,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const pick = Math.min(Math.max(Number(c.req.query("m") ?? 0) || 0, 0), ids.length - 1);
     const viewer = await currentSession(c, deps);
     const options = await listOptions(db);
+    const layout = await loadLayout(db);
     const EDU = [
       { label: "大學", school: "university", dept: "university_dept" },
       { label: "碩士", school: "grad_school", dept: "grad_dept" },
@@ -218,7 +220,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       ids.map(async (id) => {
         const m = await getMember(db, id);
         const { values, visibility } = await readProfile(db, id);
-        const items = publicItems(values, visibility, m?.display_name ?? null);
+        const items = publicItems(values, visibility, m?.display_name ?? null, layout);
         const pub = (k: string, dflt: "public" | "private" = "private") => (visibility.get(k) ?? dflt) === "public";
         const str = (k: string) => (typeof values.get(k)?.value === "string" ? (values.get(k)?.value as string) : "");
         // Education: one line per level, shown when the school or the department is public.
@@ -227,7 +229,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         const amway: { label: string; text: string }[] = [];
         if (m?.amway_enabled === 1) {
           const rows = await readAmwayFields(db, id);
-          for (const f of AMWAY_FIELDS) {
+          for (const f of AMWAY_FIELDS.slice().sort((a, b) => (layout.get(a.key) ?? a.order) - (layout.get(b.key) ?? b.order))) {
             const row = rows.get(f.key);
             if (!pub(f.key) || !row || typeof row.value !== "string" || !(row.value_approved || row.status === "not_required")) continue;
             const label = f.type === "select" ? (options.get(f.key)?.find((o) => o.value === row.value)?.label ?? "") : row.value;

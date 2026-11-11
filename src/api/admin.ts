@@ -21,6 +21,8 @@ import { completeDeletion, openRequests } from "../db/deletion";
 import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
 import { POOLS, POOL_KEYS, isPool } from "../vocab/terms";
 import { loadOverview } from "../db/overview";
+import { loadLayout, saveLayout } from "../db/layout";
+import { LAYOUT_GROUPS, LAYOUT_GROUP_LABELS, defaultLayout, validateLayout } from "../profile/layout";
 
 type C = Context<AppBindings>;
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -135,6 +137,17 @@ const putOptionRoute = createRoute({
       ),
     },
   },
+  responses: { 200: { description: "Saved", content: json(Any) }, ...common, 422: err("invalid_field") },
+});
+
+const layoutGetRoute = createRoute({ method: "get", path: "/v1/admin/profile-layout", tags: ["admin"], summary: "Order of the profile fields on every member page, per group (super admin)", security, responses: { 200: { description: "Layout", content: json(Any) }, ...common } });
+const layoutPutRoute = createRoute({
+  method: "put",
+  path: "/v1/admin/profile-layout",
+  tags: ["admin"],
+  summary: "Save the order of the fields of every group (each group must list exactly its fields); null resets to the built-in order",
+  security,
+  request: { body: { required: true, content: json(z.object({ order: z.record(z.array(z.string().max(64))).nullable() })) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 422: err("invalid_field") },
 });
 
@@ -381,6 +394,35 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   const actor = (c: C) => ({ memberId: c.get("staff").memberId, requestId: c.get("requestId"), now: deps.now() });
   const poolOr404 = (c: C, pool: string) => (isPool(pool) ? pool : null);
   const noPool = (c: C) => c.json(errorBody("not_found", "沒有這個詞庫", c.get("requestId")), 404);
+
+  const layoutView = async (c: C) => {
+    const saved = await loadLayout(c.env.DB);
+    return {
+      groups: LAYOUT_GROUPS.map((g) => ({ group: g, label: LAYOUT_GROUP_LABELS[g], fields: defaultLayout(g).sort((a, b) => (saved.get(a.key) ?? 1e6) - (saved.get(b.key) ?? 1e6) || 0) })),
+      customized: saved.size > 0,
+    };
+  };
+
+  app.openapi(layoutGetRoute, async (c) => {
+    const d = deny(c, "layout.manage");
+    if (d) return d as never;
+    const v = await layoutView(c);
+    return c.json(v, 200);
+  });
+
+  app.openapi(layoutPutRoute, async (c) => {
+    const d = deny(c, "layout.manage");
+    if (d) return d as never;
+    const { order } = c.req.valid("json");
+    if (order === null) {
+      await saveLayout(c.env.DB, null, actor(c));
+      return c.json(await layoutView(c), 200);
+    }
+    const check = validateLayout(order);
+    if (!check.ok) return c.json(errorBody("invalid_field", check.message, c.get("requestId"), { field_key: "order", reason: "incomplete" }), 422);
+    await saveLayout(c.env.DB, check.value, actor(c));
+    return c.json(await layoutView(c), 200);
+  });
 
   app.openapi(vocabPoolsRoute, async (c) => {
     const d = deny(c, "vocab.manage");

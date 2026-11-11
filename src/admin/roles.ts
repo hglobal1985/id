@@ -14,6 +14,7 @@ export type Permission =
   | "adjust" // adjust the six reviewed fields for a member (treated as approved)
   | "members.read" // look up members
   | "options.manage" // maintain Amway option lists (ranks, systems, centers, uplines)
+  | "layout.manage" // order of the profile fields on every member page (super admin only)
   | "vocab.manage" // suggestion vocabularies: edit, merge, delete related words (super admin only)
   | "audit.read"
   | "staff.manage" // grant / revoke roles (needs recent sign-in)
@@ -22,7 +23,7 @@ export type Permission =
   | "apps.manage"; // register a new App, edit a registration (super admin only)
 
 const MATRIX: Record<Role, Permission[]> = {
-  super_admin: ["review", "adjust", "members.read", "options.manage", "vocab.manage", "audit.read", "staff.manage", "deletion.execute", "apps.operate", "apps.manage"],
+  super_admin: ["review", "adjust", "members.read", "options.manage", "vocab.manage", "layout.manage", "audit.read", "staff.manage", "deletion.execute", "apps.operate", "apps.manage"],
   secretary: ["review", "adjust", "members.read", "options.manage", "audit.read", "deletion.execute", "apps.operate"],
   reviewer: ["review", "adjust", "members.read"],
 };
