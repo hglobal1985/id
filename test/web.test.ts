@@ -69,18 +69,20 @@ describe("member site uses the APIs with its session cookie", () => {
 });
 
 describe("pages", () => {
-  it("/me and /admin need sign-in; /admin needs a staff role; pages use a strict CSP", async () => {
-    let res = await req(null, "GET", "/me");
+  it("/my and /admin need sign-in; /admin needs a staff role; pages use a strict CSP", async () => {
+    let res = await req(null, "GET", "/my");
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/login?return_to=%2Fme");
+    expect(res.headers.get("location")).toBe("/login?return_to=%2Fmy");
     const a = await person("a", "甲");
-    // /me opens the member's own public page; the edit page is /me/edit.
-    res = await req(a, "GET", "/me");
+    // /my opens the member's own page (/my/<id>); the edit page is /my/edit. The old /me address is gone.
+    res = await req(a, "GET", "/my");
     expect(res.status).toBe(302);
     const own = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
-    expect(res.headers.get("location")).toBe(`/${own}`);
-    expect((await req(null, "GET", "/me/edit")).headers.get("location")).toBe("/login?return_to=%2Fme%2Fedit");
-    res = await req(a, "GET", "/me/edit");
+    expect(res.headers.get("location")).toBe(`/my/${own}`);
+    expect((await req(a, "GET", "/me")).status).toBe(404);
+    expect((await req(null, "GET", "/my/edit")).headers.get("location")).toBe("/login?return_to=%2Fmy%2Fedit");
+    expect((await req(a, "GET", `/my/${own}/edit`)).status).toBe(200);
+    res = await req(a, "GET", "/my/edit");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
     // The page shrinks avatars and icons in a canvas first, which needs blob: images.
@@ -91,7 +93,7 @@ describe("pages", () => {
     expect((await req(a, "GET", "/admin")).status).toBe(403);
     const s = await person("s", "秘書", ["secretary"]);
     expect(await (await req(s, "GET", "/admin")).text()).toContain('src="/assets/admin.js"');
-    expect((await req(a, "GET", "/")).headers.get("location")).toBe("/me");
+    expect((await req(a, "GET", "/")).headers.get("location")).toBe("/my");
     for (const p of ["/assets/me.js", "/assets/admin.js", "/assets/site.css", "/assets/common.js", "/assets/notifications.js", "/assets/share.js"]) expect((await req(null, "GET", p)).status).toBe(200);
   });
 
@@ -123,7 +125,7 @@ describe("pages", () => {
 
   it("member-facing site pages never name the other system in Chinese", async () => {
     const a = await person("a", "甲");
-    for (const p of ["/", "/me/edit", "/assets/me.js", "/assets/admin.js", "/assets/common.js", "/assets/notifications.js"]) {
+    for (const p of ["/", "/my/edit", "/assets/me.js", "/assets/admin.js", "/assets/common.js", "/assets/notifications.js"]) {
       const t = await (await req(p === "/" ? null : a, "GET", p)).text();
       for (const banned of ["繁星", "安麗", "回聲"]) expect(t, p).not.toContain(banned);
     }
@@ -155,19 +157,26 @@ describe("public profile /<member number>", () => {
     await req(a, "PUT", "/v1/me/profile/fields/birthday", { value: "1990-07-23" });
     await req(a, "PUT", "/v1/me/profile/fields/motto", { value: "慢慢來" });
     let html = await (await req(null, "GET", `/${n}`)).text();
-    expect(html).toContain('id="share"');
-    expect(html).not.toContain('href="/me/edit"'); // not signed in
+    expect(html).not.toContain('id="share"'); // the public page is clean: no share button, no menu, no footer
+    expect(html).not.toContain("starnav");
+    expect(html).not.toContain('class="foot"');
+    expect(html).not.toContain('href="/my/edit"');
+    expect(html).toContain('content="noindex"'); // until the member agrees to search engines
     expect(html).not.toContain("政治大學"); // education starts hidden
     expect(html).toContain("彩色九宮格"); // 生命靈數 is always public once a birthday is set
     expect(html).toContain("慢慢來"); // the motto is public by default
-    expect(await (await req(o, "GET", `/${n}`)).text()).not.toContain('href="/me/edit"');
+    expect((await req(o, "GET", `/my/${n}`)).status).toBe(404); // someone else's /my page is not theirs to open
+    expect((await req(null, "GET", `/my/${n}`)).status).toBe(302);
     // The owner sees the edit button; making things public shows them.
     await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
     await req(a, "PUT", "/v1/me/amway/fields/upline_diamond", { value: "陳大華" });
     await req(a, "PUT", "/v1/me/amway/fields/upline_crown_ambassador", { value: "秘密皇冠" });
     await req(a, "PUT", "/v1/me/profile/visibility", { fields: { university: "public", university_dept: "public", occupation: "public" } });
+    const mine = await (await req(a, "GET", `/my/${n}`)).text();
+    expect(mine).toContain('id="share"');
+    expect(mine).toContain(`/my/${n}/edit`);
+    expect(mine).toContain("預覽公開頁");
     html = await (await req(a, "GET", `/${n}`)).text();
-    expect(html).toContain('href="/me/edit"');
     expect(html).toContain("大學");
     expect(html).toContain("政治大學　資訊管理學系");
     expect(html).toContain('<span class="chip">工程師</span>');
@@ -196,12 +205,12 @@ describe("public profile /<member number>", () => {
     expect(old.status).toBe(302);
     expect(old.headers.get("location")).toBe("/TW9475831");
     expect((await req(null, "GET", "/tw9475831")).status).toBe(200);
-    expect((await req(a, "GET", "/me")).headers.get("location")).toBe("/TW9475831");
+    expect((await req(a, "GET", "/my")).headers.get("location")).toBe("/my/TW9475831");
     // Numbers the system generated already carry the country code: no doubled prefix.
     const b = await person("b", "乙");
     const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(b.id)?.number as string;
     expect(n).toMatch(/^TW0\d{6}$/);
-    expect((await req(b, "GET", "/me")).headers.get("location")).toBe(`/${n}`);
+    expect((await req(b, "GET", "/my")).headers.get("location")).toBe(`/my/${n}`);
     const prof = (await (await req(b, "GET", "/v1/me/profile")).json()) as { fields: { member_number: { public_url: string } } };
     expect(prof.fields.member_number.public_url).toBe(`${ISSUER}/${n}`);
   });
@@ -270,7 +279,7 @@ describe("account deletion (immediate)", () => {
 describe("member center template (same layout as starry.phd)", () => {
   it("shows the main menu with name and App launcher when signed in, a brand bar when not", async () => {
     const a = await person("a", "王小明");
-    const me = await (await req(a, "GET", "/me/edit")).text();
+    const me = await (await req(a, "GET", "/my/edit")).text();
     expect(me).toContain("<title>會員中心</title>");
     expect(me).not.toMatch(/H-Global1985|hglobal|寰宇/i);
     expect(me).toContain('class="starnav"');
@@ -284,7 +293,7 @@ describe("member center template (same layout as starry.phd)", () => {
     expect(me).toContain('href="/apps"');
     expect(me).not.toContain('href="/logout"'); // 登出 lives first in the launcher page (the 9 dots)
     const apps = await (await req(a, "GET", "/apps")).text();
-    expect(apps.indexOf('href="/logout"')).toBeGreaterThan(apps.lastIndexOf('href="/me/edit"')); // 登出 is the last entry
+    expect(apps.indexOf('href="/logout"')).toBeGreaterThan(apps.lastIndexOf('href="/my/edit"')); // 登出 is the last entry
     expect(await (await req(null, "GET", "/apps")).text()).not.toContain('href="/logout"');
     const guest = await (await req(null, "GET", "/privacy")).text();
     expect(guest).toContain("guest-brand");
@@ -310,7 +319,7 @@ describe("member center template (same layout as starry.phd)", () => {
     const apps = await (await req(a, "GET", "/apps")).text();
     const rows = apps.split('class="lc-row"');
     expect(rows[1]).toContain("個人設定");
-    expect(rows[1]).toContain('href="/me/edit"');
+    expect(rows[1]).toContain('href="/my/edit"');
     expect(rows.at(-1)).toContain("登出");
     // 系統 / 中心 / 獎銜 boxes (only while the Amway switch is on and only what is filled)
     const n = db.raw.prepare("SELECT country, number FROM member_numbers WHERE member_id = ?").get(a.id) as { country: string; number: string };
@@ -376,7 +385,7 @@ describe("member center template (same layout as starry.phd)", () => {
     const html = await (await req(s, "GET", "/admin")).text();
     expect(html).toContain('class="topbar"');
     expect(html).toContain('<body class="admin">');
-    for (const p of ["/me/edit", "/notifications", "/admin", "/apps", "/privacy"]) expect(await (await req(s, "GET", p)).text(), p).not.toMatch(/ style="/);
+    for (const p of ["/my/edit", "/notifications", "/admin", "/apps", "/privacy"]) expect(await (await req(s, "GET", p)).text(), p).not.toMatch(/ style="/);
   });
 });
 
@@ -438,5 +447,20 @@ describe("back office overview", () => {
     expect(o.apps.total).toBeGreaterThanOrEqual(1);
     expect(o.lights.map((l) => l.key)).toEqual(["apps", "reviews", "invalid_apps"]);
     expect(o.lights.every((l) => l.color === "green")).toBe(true);
+  });
+});
+
+describe("search engine agreement", () => {
+  it("the public page is noindex until the member agrees; the setting is the member's own and reversible", async () => {
+    const a = await person("a", "甲");
+    const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
+    expect(await (await req(a, "GET", "/v1/me/search-indexing")).json()).toEqual({ allowed: false });
+    expect(await (await req(null, "GET", `/${n}`)).text()).toContain('content="noindex"');
+    expect((await req(null, "PUT", "/v1/me/search-indexing", { allowed: true })).status).toBe(401);
+    expect((await req(a, "PUT", "/v1/me/search-indexing", { allowed: true })).status).toBe(200);
+    expect(await (await req(null, "GET", `/${n}`)).text()).toContain('content="index,follow"');
+    expect(await (await req(a, "GET", `/my/${n}`)).text()).toContain('content="noindex"'); // the owner's page is never listed
+    await req(a, "PUT", "/v1/me/search-indexing", { allowed: false });
+    expect(await (await req(null, "GET", `/${n}`)).text()).toContain('content="noindex"');
   });
 });

@@ -122,7 +122,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.get("/assets/admin.js", (c) => asset(c, ADMIN_JS, "text/javascript; charset=utf-8"));
 
   app.get("/", async (c) => {
-    if (await currentSession(c, deps)) return c.redirect("/me", 302);
+    if (await currentSession(c, deps)) return c.redirect("/my", 302);
     return page(c, sitePage({ title: "會員中心", nav: { signedIn: false }, body: '<section class="card"><h1>會員中心</h1><p>登入後可以管理您的基本資料。</p><p><a class="button primary" href="/login">使用 Google 帳號登入</a></p></section>' }));
   });
 
@@ -141,19 +141,22 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return c.body(row.data, 200);
   });
 
-  // /me opens the member's own public page (the page visitors see); editing is on /me/edit.
-  app.get("/me", async (c) => {
+  // /my/<id>: the owner's own page (menu, share, edit); /my/<id>/edit: editing. The plain /<id> is the clean public page.
+  app.get("/my", async (c) => {
     const s = await currentSession(c, deps);
-    if (!s) return c.redirect("/login?return_to=%2Fme", 302);
+    if (!s) return c.redirect("/login?return_to=%2Fmy", 302);
     const first = (await readNumbers(c.env.DB, s.member_id))[0];
-    return c.redirect(first ? `/${encodeURIComponent(publicId(first))}` : "/me/edit", 302);
+    return c.redirect(first ? `/my/${encodeURIComponent(publicId(first))}` : "/my/edit", 302);
   });
 
-  app.get("/me/edit", async (c) => {
+  const editPage = async (c: C) => {
     const s = await currentSession(c, deps);
-    if (!s) return c.redirect("/login?return_to=%2Fme%2Fedit", 302);
-    return page(c, sitePage({ title: "編輯基本資料", nav: await navFor(c, deps, "/me"), body: '<div id="app"><p class="help">載入中…</p></div>', script: ["/assets/common.js", "/assets/me.js"] }));
-  });
+    if (!s) return c.redirect(`/login?return_to=${encodeURIComponent(new URL(c.req.url).pathname)}`, 302);
+    return page(c, sitePage({ title: "編輯基本資料", nav: await navFor(c, deps, "/my"), body: '<div id="app"><p class="help">載入中…</p></div>', script: ["/assets/common.js", "/assets/me.js"] }));
+  };
+  app.get("/my/edit", editPage);
+  app.get("/my/:number{[A-Za-z0-9][A-Za-z0-9-]{0,24}}/edit", editPage);
+  app.get("/my/:number{[A-Za-z0-9][A-Za-z0-9-]{0,24}}", (c) => profilePage(c, c.req.param("number").toUpperCase(), true));
 
   app.get(NOTIFICATIONS_PATH, async (c) => {
     const s = await currentSession(c, deps);
@@ -189,7 +192,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const nav = await navFor(c, deps, APPS_PATH);
     // 個人設定 comes first and 登出 last (only when someone is signed in).
     const settings = nav.signedIn
-      ? `<div class="lc-row"><a class="lc-main" href="/me/edit"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M4.5 20c.8-4 3.6-6 7.5-6s6.7 2 7.5 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span><span class="lc-text"><span class="lc-name">個人設定</span></span></a></div>`
+      ? `<div class="lc-row"><a class="lc-main" href="/my/edit"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M4.5 20c.8-4 3.6-6 7.5-6s6.7 2 7.5 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span><span class="lc-text"><span class="lc-name">個人設定</span></span></a></div>`
       : "";
     const out = nav.signedIn
       ? `<div class="lc-row"><a class="lc-main" href="/logout"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lc-text"><span class="lc-name">登出</span></span></a></div>`
@@ -233,8 +236,9 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   });
 
   // Public profile: /<default member number>. Bound spouses share one URL; visitors switch between them.
-  app.get("/:number{[A-Za-z0-9][A-Za-z0-9-]{0,24}}", async (c) => {
-    const number = c.req.param("number").toUpperCase();
+  app.get("/:number{[A-Za-z0-9][A-Za-z0-9-]{0,24}}", (c) => profilePage(c, c.req.param("number").toUpperCase(), false));
+
+  async function profilePage(c: C, number: string, owner: boolean) {
     const db = c.env.DB;
     const r = await db
       .prepare(
@@ -248,13 +252,16 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       const b = await getActiveBinding(db, ids[0] as string);
       if (b) ids = [b.initiator_id, otherSide(b, b.initiator_id)];
     }
-    const nav = await navFor(c, deps, "/");
-    if (!ids.length) return page(c, sitePage({ title: "找不到會員", nav, body: '<section class="card"><h2>找不到此會員</h2><p>網址可能已經變更。</p></section>' }), 404);
+    const viewer = await currentSession(c, deps);
+    const base = owner ? "/my" : "";
+    if (owner && !viewer) return c.redirect(`/login?return_to=${encodeURIComponent(`/my/${number}`)}`, 302);
+    const nav = owner ? await navFor(c, deps, "/my") : undefined;
+    const gone = sitePage({ title: "找不到會員", bare: !owner, nav, body: '<section class="card"><h2>找不到此會員</h2><p>網址可能已經變更。</p></section>' });
+    if (!ids.length || (owner && !ids.includes(viewer!.member_id))) return page(c, gone, 404);
     // One canonical address: country code + number (TW9475831). Older number-only addresses forward to it.
     const first = (await readNumbers(db, ids[0] as string))[0];
-    if (first && publicId(first) !== number) return c.redirect(`/${encodeURIComponent(publicId(first))}${new URL(c.req.url).search}`, 302);
+    if (first && publicId(first) !== number) return c.redirect(`${base}/${encodeURIComponent(publicId(first))}${new URL(c.req.url).search}`, 302);
     const pick = Math.min(Math.max(Number(c.req.query("m") ?? 0) || 0, 0), ids.length - 1);
-    const viewer = await currentSession(c, deps);
     const options = await listOptions(db);
     const layout = await loadLayout(db);
     const EDU = [
@@ -286,7 +293,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         const birthday = str("birthday");
         const chart = birthday && pub("derived") ? lifeChartOf(birthday) : null;
         const links = await listLinks(db, id);
-        return { m, id, items, edu, amway, chart, badges: await heroBadges(db, id, true), links };
+        return { m, id, indexable: m?.search_indexable === 1, items, edu, amway, chart, badges: await heroBadges(db, id, true), links };
       }),
     );
     const nameOf = (p: (typeof profiles)[number]) => {
@@ -295,7 +302,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     };
     const tabs =
       profiles.length > 1
-        ? `<div class="tabs">${profiles.map((p, i) => `<a href="/${encodeURIComponent(number)}?m=${i}"${i === pick ? ' class="on"' : ""}>${escapeHtml(nameOf(p))}</a>`).join("")}</div>`
+        ? `<div class="tabs">${profiles.map((p, i) => `<a href="${base}/${encodeURIComponent(number)}?m=${i}"${i === pick ? ' class="on"' : ""}>${escapeHtml(nameOf(p))}</a>`).join("")}</div>`
         : "";
     const p = profiles[pick] as (typeof profiles)[number];
     const avatar = p.m?.avatar_url ? `<img class="avatar lg" src="${escapeHtml(p.m.avatar_url)}" alt="">` : `<span class="avatar lg" aria-hidden="true">${escapeHtml(initialsOf(nameOf(p)))}</span>`;
@@ -333,11 +340,10 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           })
           .join("")}</div>`
       : "";
-    const mine = viewer?.member_id === p.id;
     const share = `<button type="button" class="small" id="share" data-label="分享" data-title="${escapeHtml(nameOf(p))}｜會員中心"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
-    const edit = mine ? `<a class="button small primary" href="/me/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>` : "";
+    const edit = `<a class="button small primary" href="/my/${encodeURIComponent(number)}/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>`;
     const body =
-      `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}</div></div>` +
+      (owner ? `${tabs}<div class="pagebar"><a class="button small" href="/${encodeURIComponent(number)}">預覽公開頁</a><div class="tools">${share}${edit}</div></div>` : tabs) +
       `<section class="card"><div class="hero">${avatar}<div class="hero-main"><div class="nameline"><h1 class="nm nm-${nameSize(nameOf(p))}">${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` + socials +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
       `${rows || '<p class="help">還沒有公開的資料。</p>'}</section>` +
@@ -348,6 +354,8 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         .sort((a, b) => place(a.block) - place(b.block))
         .map((b) => b.html)
         .join("");
-    return page(c, sitePage({ title: nameOf(p), nav, body, script: ["/assets/share.js", "/assets/social.js"] }));
-  });
+    // The public page is clean (no menu, no footer, no share); search engines may list it only when every member shown agreed.
+    const index = profiles.every((x) => x.indexable);
+    return page(c, sitePage({ title: nameOf(p), nav, body, bare: !owner, index: !owner && index, script: owner ? ["/assets/share.js", "/assets/social.js"] : ["/assets/social.js"] }));
+  }
 }
