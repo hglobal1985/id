@@ -165,4 +165,36 @@ describe("D1 migrations", () => {
     expect(db.prepare("SELECT term, hglobal, uses FROM vocab_terms WHERE pool = 'education_system'").all()).toEqual([{ term: "寰宇", hglobal: 1, uses: 4 }]);
     db.close();
   });
+
+  it("0021 sends values that skipped review (training system 寰宇 and the rank under it) to the standard review", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 21)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-11T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('boss','g1','active','${ts}','${ts}'), ('m2','g2','active','${ts}','${ts}')`);
+    db.exec(`INSERT INTO staff_roles (member_id, role, granted_at, granted_by) VALUES ('boss', 'super_admin', '${ts}', NULL)`);
+    const ins = db.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, ?, ?, NULL, ?, ?, ?)");
+    ins.run("boss", "education_system", JSON.stringify("寰宇"), "not_required", 0, ts); // never reviewed
+    ins.run("boss", "rank", JSON.stringify("r09"), "not_required", 0, ts); // never reviewed
+    ins.run("boss", "upline_crown_ambassador", JSON.stringify("某人"), "not_required", 0, ts); // needs no review
+    ins.run("m2", "education_system", JSON.stringify("寰宇"), "approved", 1, ts); // already reviewed
+    ins.run("m2", "rank", JSON.stringify("r09"), "approved", 1, ts);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0021"))), "utf8"));
+    const rows = db.prepare("SELECT member_id, field_key, value, pending_value, status FROM amway_field_values ORDER BY member_id, field_key").all();
+    expect(rows).toEqual([
+      { member_id: "boss", field_key: "education_system", value: null, pending_value: JSON.stringify("寰宇"), status: "pending" },
+      { member_id: "boss", field_key: "rank", value: null, pending_value: JSON.stringify("r09"), status: "pending" },
+      { member_id: "boss", field_key: "upline_crown_ambassador", value: JSON.stringify("某人"), pending_value: null, status: "not_required" },
+      { member_id: "m2", field_key: "education_system", value: JSON.stringify("寰宇"), pending_value: null, status: "approved" },
+      { member_id: "m2", field_key: "rank", value: JSON.stringify("r09"), pending_value: null, status: "approved" },
+    ]);
+    expect(db.prepare("SELECT member_id, field_key, status FROM amway_review_requests ORDER BY field_key").all()).toEqual([
+      { member_id: "boss", field_key: "education_system", status: "pending" },
+      { member_id: "boss", field_key: "rank", status: "pending" },
+    ]);
+    expect(db.prepare("SELECT member_id, kind FROM notifications").all()).toEqual([
+      { member_id: "boss", kind: "staff.review.requested" },
+      { member_id: "boss", kind: "staff.review.requested" },
+    ]);
+    db.close();
+  });
 });

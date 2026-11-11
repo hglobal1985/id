@@ -517,10 +517,20 @@ export const ME_JS = String.raw`
   function chartSvg(c) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"), html = "";
     s.setAttribute("class", "ln-svg"); s.setAttribute("viewBox", "0 0 300 240"); s.setAttribute("role", "img"); s.setAttribute("aria-label", "彩色九宮格");
-    (c.lines || []).forEach(function (l) { var a = centre(l[0]), b = centre(l[2]); html += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"/>'; });
+    function seg(l, extra) { var a = centre(l[0]), b = centre(l[l.length - 1]); return '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"' + extra + "/>"; }
+    (c.sub_lines || []).forEach(function (l) { html += seg(l, ' stroke-dasharray="7 6"'); });
+    (c.lines || []).forEach(function (l) { html += seg(l, ""); });
     for (var n = 1; n <= 9; n++) html += chartCell(n, c.rings[n]);
     s.innerHTML = html; return s;
   }
+  var BLUE = 'stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" fill="none"';
+  var LINE_LEGEND = [
+    { icon: '<circle cx="4" cy="12" r="2.6" ' + BLUE + '/><circle cx="20" cy="12" r="2.6" ' + BLUE + '/><line x1="6.6" y1="12" x2="17.4" y2="12" ' + BLUE + "/>", text: "主線：天賦、能力" },
+    { icon: '<circle cx="4" cy="12" r="2.6" ' + BLUE + '/><circle cx="20" cy="12" r="2.6" ' + BLUE + '/><line x1="6.6" y1="12" x2="17.4" y2="12" ' + BLUE + ' stroke-dasharray="2.4 2.4"/>', text: "副線：人際互動、處事態度" },
+    { icon: '<line x1="2" y1="12" x2="22" y2="12" ' + BLUE + "/>", text: "橫線：你如何與世界互動？" },
+    { icon: '<line x1="12" y1="2" x2="12" y2="22" ' + BLUE + "/>", text: "直線：你如何運用自己的能力？" },
+    { icon: '<line x1="3" y1="21" x2="21" y2="3" ' + BLUE + "/>", text: "斜線：你如何追求人生目標？" }
+  ];
   function svgIcon(cls, html) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     s.setAttribute("class", cls); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true"); s.innerHTML = html; return s;
@@ -538,7 +548,7 @@ export const ME_JS = String.raw`
         el("div", { class: "ln-legend" }, [
           legend("rg-black", "先天數生日數字"), legend("rg-birthday", "生日數"), legend("rg-zodiac", "星座數"), legend("rg-talent", "天賦數"),
           el("div", {}, [svgIcon("ln-dot-tri", '<polygon points="12,3 22,21 2,21" fill="#e5303a" stroke="#e5303a" stroke-width="2" stroke-linejoin="round"/>'), el("span", { text: "加總命數" })]),
-          el("div", {}, [svgIcon("ln-dot-tri", '<line x1="2" y1="12" x2="22" y2="12" stroke="#2563eb" stroke-width="3.7" stroke-linecap="round"/>'), el("span", { text: "特殊連線" })])])
+          ].concat(LINE_LEGEND.map(function (l) { return el("div", {}, [svgIcon("ln-dot-tri", l.icon), el("span", { text: l.text })]); })))
       ])
     ]);
   }
@@ -585,7 +595,15 @@ export const ME_JS = String.raw`
 
   function render() {
     root.textContent = "";
-    root.appendChild(el("div", { class: "pagebar" }, [el("a", { class: "button small", href: ownPage(), text: "← 回到我的頁面" }), el("div", { class: "tools" }, [el("a", { class: "button small", href: publicPath(), text: "預覽公開頁" })])]));
+    // Same three places as on the page itself: back (where 編輯 is there), 分享, 預覽公開頁.
+    var pubUrl = S.profile.fields.member_number.public_url;
+    var shareBtn = el("button", { type: "button", onclick: function () {
+      if (!pubUrl) return;
+      if (navigator.share) { navigator.share({ title: shownName() ? shownName() + "｜會員中心" : "會員中心", url: pubUrl }).catch(function () {}); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(pubUrl).then(function () { HG.toast("已複製連結"); }, function () { HG.toast("請手動複製網址"); });
+      else HG.toast("請手動複製網址");
+    } }, [HG.shareIcon(), "分享"]);
+    root.appendChild(el("div", { class: "pagebar" }, [el("a", { class: "button", href: ownPage(), text: "上一頁" }), shareBtn, el("a", { class: "button wide", href: publicPath(), text: "預覽公開頁" })]));
     function basicCard() { return card("基本資料", S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField)); }
     function contactCard() {
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });

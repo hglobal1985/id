@@ -71,10 +71,11 @@ export const SHARE_JS = String.raw`
     if (svg) svg.innerHTML = '<path d="M12 15V3.5M8 7l4-4 4 4M7.5 10H6a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18 10h-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
   }
   btn.addEventListener("click", function () {
-    var data = { title: btn.getAttribute("data-title") || document.title, url: location.href };
+    var link = btn.getAttribute("data-url") || location.href;
+    var data = { title: btn.getAttribute("data-title") || document.title, url: link };
     if (navigator.share) { navigator.share(data).catch(function () {}); return; }
     var done = function (t) { var old = btn.getAttribute("data-label") || ""; btn.lastChild.textContent = t; setTimeout(function () { btn.lastChild.textContent = old; }, 1800); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(function () { done("已複製連結"); }, function () { done("請手動複製網址"); });
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(function () { done("已複製連結"); }, function () { done("請手動複製網址"); });
     else done("請手動複製網址");
   });
 })();

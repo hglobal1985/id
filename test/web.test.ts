@@ -474,3 +474,33 @@ describe("search engine agreement", () => {
     expect(await (await req(null, "GET", `/${n}`)).text()).toContain('content="noindex"');
   });
 });
+
+describe("birthday and 生命靈數 share one block; the pages' top buttons", () => {
+  it("生日 sits in the same card as the 生命靈數 chart; the chart's explanations show only to a signed-in viewer", async () => {
+    const a = await person("a", "甲");
+    const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
+    await req(a, "PUT", "/v1/me/profile/fields/birthday", { value: "1990-04-15" });
+    await req(a, "PUT", "/v1/me/profile/visibility", { fields: { birthday: "public" } });
+    const guest = await (await req(null, "GET", `/${n}`)).text();
+    const card = guest.slice(guest.indexOf("<h2>生日與生命靈數</h2>"));
+    expect(card).toContain("<label>生日</label>");
+    expect(card).toContain("1990-04-15");
+    expect(card.indexOf("1990-04-15")).toBeLessThan(card.indexOf("彩色九宮格")); // the birthday comes first, in the same block
+    expect(guest).not.toContain("<h2>生命靈數</h2>");
+    expect(guest).not.toContain("ln-legend"); // clean public page: no explanations
+    const signedIn = await (await req(a, "GET", `/${n}`)).text();
+    expect(signedIn).toContain("ln-legend");
+    expect(signedIn).toContain("主線：天賦、能力");
+  });
+
+  it("/my page: 編輯, 分享, 預覽公開頁 in that order; 分享 shares the public address", async () => {
+    const a = await person("a", "甲");
+    const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
+    const html = await (await req(a, "GET", `/my/${n}`)).text();
+    const bar = html.slice(html.indexOf('<div class="pagebar">'));
+    expect(bar.indexOf("編輯")).toBeLessThan(bar.indexOf('id="share"'));
+    expect(bar.indexOf('id="share"')).toBeLessThan(bar.indexOf("預覽公開頁"));
+    expect(bar).toContain(`data-url="http://localhost/${n}"`);
+  });
+});
+
