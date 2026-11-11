@@ -142,17 +142,20 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   const stmts: D1PreparedStatement[] = [];
   let row: RowWrite;
   let review = false;
+  // A value that should have been reviewed but never was (entered before the rule covered it): sending it again starts the
+  // standard review, and it does not count as effective until approved — nobody, staff included, skips the review.
+  const unreviewed = !!current && current.value !== null && !current.value_approved && current.status === "not_required" && needsReview(def, current.value, educationSystem, hg);
 
   if (current && current.status !== "rejected" && sameValue(current.value, value) && current.pending_value !== null) {
     // Back to the effective value: cancel the pending change.
     row = { value: current.value, pending_value: null, status: current.value_approved ? "approved" : "not_required", value_approved: "keep" };
-  } else if (current && sameValue(current.value, value) && current.pending_value === null && current.status !== "rejected") {
+  } else if (current && sameValue(current.value, value) && current.pending_value === null && current.status !== "rejected" && !unreviewed) {
     return { ok: true, row: current }; // idempotent
   } else if (current && current.pending_value !== null && sameValue(current.pending_value, value)) {
     return { ok: true, row: current }; // same pending value re-sent
   } else if (needsReview(def, value, educationSystem, hg)) {
     review = true;
-    row = { value: current?.value ?? null, pending_value: value, status: "pending", value_approved: "keep" };
+    row = { value: unreviewed ? null : (current?.value ?? null), pending_value: value, status: "pending", value_approved: "keep" };
     const reviewId = uuidv7(ctx.now.getTime());
     stmts.push(
       db

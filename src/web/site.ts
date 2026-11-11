@@ -319,8 +319,9 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       { block: "basic", html: byGroup("basic") },
       { block: "education", html: p.edu.map((l) => row(l.label, escapeHtml(l.text))).join("") },
       { block: "contact", html: byGroup("contact") },
-      { block: "birthday", html: byGroup("birthday") },
     ];
+    // 生日 and 生命靈數 share one block (same as on the edit page).
+    const birthdayRows = byGroup("birthday");
     const rows = rowBlocks.sort((a, b) => place(a.block) - place(b.block)).map((b) => b.html).join("");
     const amwayRows = p.amway.map((a) => row(a.label, escapeHtml(a.text))).join("");
     // Social links: one icon per link under the name, centered, 5 per row (7 and smaller when there are more than two rows).
@@ -334,16 +335,22 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           })
           .join("")}</div>`
       : "";
-    const share = `<button type="button" class="small" id="share" data-label="分享" data-title="${escapeHtml(nameOf(p))}｜會員中心"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
-    const edit = `<a class="button small primary" href="/my/${encodeURIComponent(number)}/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>`;
+    const share = `<button type="button" id="share" data-label="分享" data-url="${escapeHtml(`${new URL(c.req.url).origin}/${encodeURIComponent(number)}`)}" data-title="${escapeHtml(nameOf(p))}｜會員中心"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
+    const edit = `<a class="button primary" href="/my/${encodeURIComponent(number)}/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>`;
     const body =
-      (owner ? `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}<a class="button small" href="/${encodeURIComponent(number)}">預覽公開頁</a></div></div>` : tabs) +
+      (owner ? `${tabs}<div class="pagebar">${edit}${share}<a class="button wide" href="/${encodeURIComponent(number)}">預覽公開頁</a></div>` : tabs) +
       `<section class="card"><div class="hero">${avatar}<div class="hero-main"><div class="nameline"><h1 class="nm nm-${nameSize(nameOf(p))}">${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="help">${escapeHtml(number)}</span></div></div></div>` + socials +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
-      `${rows || (amwayRows || p.chart || socials ? "" : '<p class="help">還沒有公開的資料。</p>')}</section>` +
+      `${rows || (amwayRows || birthdayRows || p.chart || socials ? "" : '<p class="help">還沒有公開的資料。</p>')}</section>` +
       [
         { block: "amway", html: amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "" },
-        { block: "birthday", html: p.chart ? `<section class="card"><h2>生命靈數</h2>${chartHtml(p.chart)}</section>` : "" },
+        {
+          block: "birthday",
+          html:
+            birthdayRows || p.chart
+              ? `<section class="card"><h2>生日與生命靈數</h2>${birthdayRows}${p.chart ? `<div class="row"><div class="row-head"><label>生命靈數</label></div>${chartHtml(p.chart, !!viewer)}</div>` : ""}</section>`
+              : "",
+        },
       ]
         .sort((a, b) => place(a.block) - place(b.block))
         .map((b) => b.html)

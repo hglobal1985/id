@@ -235,6 +235,16 @@ describe("fields and review", () => {
     expect(await pendingReviews(db)).toEqual([]);
   });
 
+  it("a value that skipped review earlier (staff included) goes through the standard review when it is sent again", async () => {
+    const m = await member("g-a", "甲");
+    await enable(m);
+    // legacy row: 寰宇 saved without review and never approved
+    db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_system', '\"寰宇\"', NULL, 'not_required', 0, '2026-11-11T10:00:00+08:00')").run(m.id);
+    const res = await put(m, "education_system", "寰宇");
+    expect(await res.json()).toMatchObject({ value: null, pending_value: "寰宇", status: "pending" });
+    expect((await pendingReviews(db)).map((r) => r.field_key)).toEqual(["education_system"]);
+  });
+
   it("re-sending the same value is idempotent; going back to the effective value cancels the pending change", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
