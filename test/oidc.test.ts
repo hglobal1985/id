@@ -136,13 +136,8 @@ async function signInAndGetCode(jar: Jar, extra: Record<string, string> = {}) {
   jar.take(res);
   let loc = res.headers.get("location") ?? "";
   if (loc.startsWith("/login")) {
-    res = await req(loc, {}, jar);
-    expect(res.status).toBe(200);
-    const page = await res.text();
-    expect(page).toContain("使用 Google 帳號登入");
-    expect(page).toContain("會員中心");
-    expect(page).not.toMatch(/H-Global1985|hglobal|寰宇/i);
-    const start = /href="([^"]+)"/.exec(page.slice(page.indexOf("<main>")))?.[1]?.replace(/&amp;/g, "&") ?? "";
+    // The member-site login page is gone: /oauth/authorize goes straight to Google.
+    const start = loc;
     res = await req(start, {}, jar);
     expect(res.status).toBe(302);
     const g = new URL(res.headers.get("location") ?? "");
@@ -219,9 +214,6 @@ describe("Google config", () => {
     let res = await req("/login", {}, jar);
     jar.take(res);
     res = await req(res.headers.get("location") ?? "", {}, jar);
-    const page = await res.text();
-    const start = /href="([^"]+)"/.exec(page.slice(page.indexOf("<main>")))?.[1]?.replace(/&amp;/g, "&") ?? "";
-    res = await req(start, {}, jar);
     expect(new URL(res.headers.get("location") ?? "").searchParams.get("client_id")).toBe("google-client");
   });
 });
@@ -355,9 +347,6 @@ describe("Google sign-in and the code flow", () => {
     let res = await req(url, {}, jar);
     jar.take(res);
     res = await req(res.headers.get("location") ?? "", {}, jar);
-    const page = await res.text();
-    const start = /href="([^"]+)"/.exec(page.slice(page.indexOf("<main>")))?.[1]?.replace(/&amp;/g, "&") ?? "";
-    res = await req(start, {}, jar);
     const g = new URL(res.headers.get("location") ?? "");
     google.lastNonce = g.searchParams.get("nonce") ?? "";
     res = await req(`/login/google/callback?code=google-code&state=${g.searchParams.get("state")}`, {}, new Jar());
@@ -372,9 +361,6 @@ describe("Google sign-in and the code flow", () => {
     let res = await req(url, {}, jar);
     jar.take(res);
     res = await req(res.headers.get("location") ?? "", {}, jar);
-    const page = await res.text();
-    const start = /href="([^"]+)"/.exec(page.slice(page.indexOf("<main>")))?.[1]?.replace(/&amp;/g, "&") ?? "";
-    res = await req(start, {}, jar);
     const g = new URL(res.headers.get("location") ?? "");
     google.lastNonce = "attacker-nonce";
     res = await req(`/login/google/callback?code=google-code&state=${g.searchParams.get("state")}`, {}, jar);
@@ -390,9 +376,6 @@ describe("Google sign-in and the code flow", () => {
     let res = await req(url, {}, jar);
     jar.take(res);
     res = await req(res.headers.get("location") ?? "", {}, jar);
-    const page = await res.text();
-    const start = /href="([^"]+)"/.exec(page.slice(page.indexOf("<main>")))?.[1]?.replace(/&amp;/g, "&") ?? "";
-    res = await req(start, {}, jar);
     const g = new URL(res.headers.get("location") ?? "");
     google.lastNonce = g.searchParams.get("nonce") ?? "";
     res = await req(`/login/google/callback?code=google-code&state=${g.searchParams.get("state")}`, {}, jar);

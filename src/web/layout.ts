@@ -76,7 +76,7 @@ function adminBar(nav: SiteNav): string {
 }
 
 /** `bare`: the public member page — no menu, no footer. `index`: the member agreed to be listed by search engines. */
-export function sitePage(opts: { title: string; body: string; script?: string | string[]; nav?: SiteNav; admin?: boolean; bare?: boolean; index?: boolean }): string {
+export function sitePage(opts: { title: string; body: string; script?: string | string[]; nav?: SiteNav; admin?: boolean; bare?: boolean; noFooter?: boolean; index?: boolean }): string {
   const nav: SiteNav = opts.nav ?? { signedIn: false };
   const header = opts.bare ? "" : opts.admin ? adminBar(nav) : memberNav(nav);
   return `<!doctype html>
@@ -91,7 +91,7 @@ export function sitePage(opts: { title: string; body: string; script?: string | 
 <body${opts.admin ? ' class="admin"' : ""}>
 ${header}
 <main class="wrap">${opts.body}</main>
-${opts.bare ? "" : '<footer class="foot"><a href="/privacy">隱私權政策</a><span class="credit">網站設計 杜杜龍</span></footer>'}
+${opts.bare || opts.noFooter ? "" : '<footer class="foot"><a href="/privacy">隱私權政策</a><span class="credit">網站設計 杜杜龍</span></footer>'}
 ${[opts.script ?? []].flat().map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("\n")}
 </body>
 </html>`;

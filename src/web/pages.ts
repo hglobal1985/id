@@ -31,13 +31,6 @@ a.btn:hover{filter:brightness(1.08)}
 </html>`;
 }
 
-export function loginPage(startHref: string): string {
-  return layout(
-    "登入",
-    `<h1>登入會員</h1><p>請使用 Google 帳號登入。</p><a class="btn" href="${escapeHtml(startHref)}">使用 Google 帳號登入</a>`,
-  );
-}
-
 export function messagePage(title: string, message: string, link?: { href: string; label: string }): string {
   return layout(
     title,

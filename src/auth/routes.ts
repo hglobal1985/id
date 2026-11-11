@@ -18,7 +18,7 @@ import { isSafeReturnPath } from "../oidc/uris";
 import { resolveIssuer, requireGoogleConfig } from "../oidc/config";
 import { completeGoogleSignIn, googleAuthorizeUrl, GoogleSignInError } from "./google";
 import { FLOW_COOKIE, SESSION_COOKIE, clearCookie, readCookie, writeCookie } from "./cookies";
-import { PAGE_CSP, loginPage, messagePage } from "../web/pages";
+import { PAGE_CSP, messagePage } from "../web/pages";
 import { isRelayState, relayCallback } from "../api/app-auth";
 
 type C = Context<AppBindings>;
@@ -38,7 +38,7 @@ export async function redirectToLogin(c: C, deps: Deps, returnTo: string) {
   const { flowId, browserToken } = await createLoginFlow(c.env.DB, returnTo, deps.now());
   writeCookie(c, FLOW_COOKIE, browserToken, LIFETIME.loginFlow);
   c.header("cache-control", "no-store");
-  return c.redirect(`/login?flow=${encodeURIComponent(flowId)}`, 302);
+  return c.redirect(`/login/google?flow=${encodeURIComponent(flowId)}`, 302);
 }
 
 async function flowBelongsToBrowser(c: C, browserHash: string): Promise<boolean> {
@@ -52,7 +52,7 @@ export function registerAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (flowId) {
       const flow = await getOpenLoginFlow(c.env.DB, flowId, deps.now());
       if (flow && (await flowBelongsToBrowser(c, flow.browser_hash))) {
-        return html(c, loginPage(`/login/google?flow=${encodeURIComponent(flowId)}`));
+        return c.redirect(`/login/google?flow=${encodeURIComponent(flowId)}`, 302);
       }
     }
     const rt = c.req.query("return_to");
