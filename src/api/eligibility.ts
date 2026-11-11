@@ -7,6 +7,10 @@ import { ErrorBodySchema } from "../errors";
 import { bearerAuth, missingScope } from "./auth";
 import { evaluate, type Rule } from "../eligibility/rules";
 import { loadLadder, loadMemberEligibility } from "../db/eligibility";
+import { readAmwayFields } from "../db/amway";
+import { rolesOf } from "../db/staff";
+import { ROLE_LABELS } from "../admin/roles";
+import { normTerm } from "../vocab/terms";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const security = [{ bearer: [] }];
@@ -53,6 +57,33 @@ const batchRoute = createRoute({
   },
 });
 
+const contextRoute = createRoute({
+  method: "get",
+  path: "/v1/eligibility/context",
+  tags: ["eligibility"],
+  summary: "The signed-in member's own standing for an App: staff roles, whether 寰宇 is verified, and the approved regional center. Treat any non-200 as no roles / not verified.",
+  description:
+    "For Apps that route work by regional center or by position (for example course registrations reviewed by the member's own center). Only ever describes the caller. `center.key` is the normalized form to compare centers with; `center.label` is what the member typed. An App may keep the center label on a record it creates for the member (owner decision 2026-11-12); everything else stays uncached beyond a short in-memory cache.",
+  security,
+  responses: {
+    200: {
+      description: "Context",
+      content: json(
+        z
+          .object({
+            member_id: z.string(),
+            roles: z.array(z.object({ role: z.string(), label: z.string() })),
+            hglobal_verified: z.boolean(),
+            center: z.object({ key: z.string(), label: z.string() }).nullable(),
+          })
+          .openapi("EligibilityContext"),
+      ),
+    },
+    401: err("unauthenticated"),
+    403: err("forbidden"),
+  },
+});
+
 export function registerEligibilityRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.use("/v1/eligibility/*", bearerAuth(deps));
 
@@ -61,6 +92,27 @@ export function registerEligibilityRoutes(app: OpenAPIHono<AppBindings>, deps: D
     if (denied) return denied as never;
     const [m, ladder] = await Promise.all([loadMemberEligibility(c.env.DB, c.get("auth").memberId), loadLadder(c.env.DB)]);
     return c.json(evaluate(c.req.valid("json").rule, m, ladder), 200);
+  });
+
+  app.openapi(contextRoute, async (c) => {
+    const denied = missingScope(c, ["amway.read"]);
+    if (denied) return denied as never;
+    const memberId = c.get("auth").memberId;
+    const [m, roles, fields] = await Promise.all([loadMemberEligibility(c.env.DB, memberId), rolesOf(c.env.DB, memberId), readAmwayFields(c.env.DB, memberId)]);
+    const verified = !!m && m.amwayActive && m.hglobalVerified;
+    // The center counts only when 寰宇 is verified and the center itself was approved by its reviewer.
+    const row = fields.get("education_center");
+    const label = verified && row && row.value_approved && typeof row.value === "string" ? row.value.trim() : "";
+    c.header("cache-control", "no-store");
+    return c.json(
+      {
+        member_id: memberId,
+        roles: m ? roles.map((r) => ({ role: r, label: ROLE_LABELS[r] })) : [],
+        hglobal_verified: verified,
+        center: label ? { key: normTerm(label), label } : null,
+      },
+      200,
+    );
   });
 
   app.openapi(batchRoute, async (c) => {

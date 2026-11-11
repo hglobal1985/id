@@ -966,6 +966,59 @@
         ],
         "additionalProperties": false
       },
+      "EligibilityContext": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "label"
+              ]
+            }
+          },
+          "hglobal_verified": {
+            "type": "boolean"
+          },
+          "center": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ]
+          }
+        },
+        "required": [
+          "member_id",
+          "roles",
+          "hglobal_verified",
+          "center"
+        ]
+      },
       "SocialPlatform": {
         "type": "object",
         "properties": {
@@ -3356,6 +3409,52 @@
           },
           "422": {
             "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/eligibility/context": {
+      "get": {
+        "tags": [
+          "eligibility"
+        ],
+        "summary": "The signed-in member's own standing for an App: staff roles, whether 寰宇 is verified, and the approved regional center. Treat any non-200 as no roles / not verified.",
+        "description": "For Apps that route work by regional center or by position (for example course registrations reviewed by the member's own center). Only ever describes the caller. `center.key` is the normalized form to compare centers with; `center.label` is what the member typed. An App may keep the center label on a record it creates for the member (owner decision 2026-11-12); everything else stays uncached beyond a short in-memory cache.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EligibilityContext"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
             "content": {
               "application/json": {
                 "schema": {

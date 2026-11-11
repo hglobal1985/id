@@ -197,3 +197,36 @@ describe("rules (unit)", () => {
     expect(evaluate({ audience: "hglobal_verified", min_rank: "a" }, { amwayActive: true, hglobalVerified: true, approvedRank: "b" }, ladder)).toEqual({ allowed: true, reason: "ok" });
   });
 });
+
+describe("GET /v1/eligibility/context", () => {
+  const context = async (m: M) => {
+    const r = await app.request("/v1/eligibility/context", { headers: { authorization: `Bearer ${m.token}` } }, env);
+    return { status: r.status, body: (await r.json()) as { member_id: string; roles: { role: string; label: string }[]; hglobal_verified: boolean; center: { key: string; label: string } | null } };
+  };
+
+  it("describes only the caller: roles, 寰宇 verification and the approved center", async () => {
+    const plain = await member("ctx-plain");
+    expect((await context(plain)).body).toEqual({ member_id: plain.id, roles: [], hglobal_verified: false, center: null });
+
+    const m = await member("ctx-a");
+    await put(m, "/v1/me/amway/enabled", { enabled: true });
+    await put(m, "/v1/me/amway/fields/education_system", { value: "寰宇" });
+    expect((await context(m)).body).toMatchObject({ hglobal_verified: true, center: null }); // 寰宇 alone, no center
+    await put(m, "/v1/me/amway/fields/education_center", { value: "台北中心" });
+    expect((await context(m)).body).toMatchObject({ hglobal_verified: false, center: null }); // center pending review
+    for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff", ctx());
+    const ok = (await context(m)).body;
+    expect(ok.hglobal_verified).toBe(true);
+    expect(ok.center?.label).toBe("台北中心");
+    expect(ok.center?.key).toBeTruthy();
+
+    db.raw.prepare("INSERT INTO staff_roles (member_id, role, granted_at) VALUES (?, 'president', 'x')").run(m.id);
+    expect((await context(m)).body.roles).toEqual([{ role: "president", label: "會長" }]);
+  });
+
+  it("needs amway.read and a sign-in", async () => {
+    const m = await member("ctx-noscope", "openid profile.read");
+    expect((await context(m)).status).toBe(403);
+    expect((await app.request("/v1/eligibility/context", {}, env)).status).toBe(401);
+  });
+});
