@@ -174,12 +174,12 @@ describe("options and vocabularies", () => {
     const b = await amwayMember("b", "乙");
     // The owner's list is seeded in his order; 無 first.
     const terms = (await (await admin(sa, "GET", "/v1/admin/vocab/education_center")).json()) as { terms: { term: string }[] };
-    expect(terms.terms.slice(0, 4).map((t) => t.term)).toEqual(["無", "飛登", "南京", "自強"]);
-    expect(terms.terms.map((t) => t.term)).toEqual(expect.arrayContaining(["員林", "馬來西亞", "越南"]));
-    expect(terms.terms).toHaveLength(29);
+    expect(terms.terms.map((t) => t.term)).toEqual(["飛登 013", "飛登蓁分享", "南京 062", "自強 061", "民權 018", "明星 339", "中山 288", "桃園 321", "新竹 122", "台中 136", "彰化 151", "員林 153", "嘉義 166", "台南 187", "高雄 195", "屏東 221"]);
     const sug = async (m: P, q: string) => ((await (await member(m, "GET", `/v1/vocab/suggestions?pool=education_center&q=${encodeURIComponent(q)}`)).json()) as { suggestions: string[] }).suggestions;
-    expect(await sug(a, "中")).toEqual(expect.arrayContaining(["中山", "台中", "中國"]));
-    expect((await sug(a, "中"))[0]).toBe("中山"); // list order, not alphabetical or by use
+    expect(await sug(a, "中")).toEqual(["中山 288", "台中 136"]);
+    expect((await sug(a, "")).length).toBe(16); // opening the field shows the whole list
+    // The "whole list on open" rule is only for the regional center: other vocabularies need a typed character.
+    expect(((await (await member(a, "GET", "/v1/vocab/suggestions?pool=occupation&q=")).json()) as { suggestions: string[] }).suggestions).toEqual([]);
     // Anyone may type any text; only H-Global1985 members add to the vocabulary.
     expect((await member(a, "PUT", "/v1/me/amway/fields/education_center", { value: "我的自訂中心" })).status).toBe(200);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'education_center' AND term = '我的自訂中心'").get()?.n).toBe(0);
@@ -194,7 +194,7 @@ describe("options and vocabularies", () => {
     expect(((await (await member(b, "GET", "/v1/me/amway")).json()) as { fields: { education_center: { value: string } } }).fields.education_center.value).toBe("新北");
     await admin(sa, "POST", "/v1/admin/vocab/education_center/add", { term: "新加坡" });
     const after = (await (await admin(sa, "GET", "/v1/admin/vocab/education_center")).json()) as { terms: { term: string }[] };
-    expect(after.terms[29]?.term).toBe("新加坡"); // admin-ordered terms first, then what members typed
+    expect(after.terms[16]?.term).toBe("新加坡"); // admin-ordered terms first, then what members typed
     expect(after.terms.at(-1)?.term).toBe("新北");
   });
 
@@ -259,7 +259,7 @@ describe("profile field order", () => {
     expect(v.groups[3]!.fields[0]).toMatchObject({ key: "member_number", label: "會員編號" });
     expect(v.customized).toBe(false);
     const basic = v.groups[1]!.fields.map((f) => f.key);
-    expect(basic.slice(0, 3)).toEqual(["display_name", "nickname", "motto"]);
+    expect(basic.slice(0, 3)).toEqual(["display_name", "motto", "bio"]);
 
     // Must list every field of every group exactly once.
     const order = Object.fromEntries(v.groups.map((g) => [g.group, g.fields.map((f) => f.key)])) as Record<string, string[]>;

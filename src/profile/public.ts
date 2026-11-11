@@ -2,6 +2,7 @@
 // public; every other field follows the member's visibility choice or the field's default.
 import { fieldDefinitions, type FieldValue, type Visibility } from "./definitions";
 import { applyOrder } from "./layout";
+import { visibilityOf } from "./visibility";
 
 export interface PublicItem {
   key: string;
@@ -15,7 +16,7 @@ export function publicItems(values: Map<string, { value: FieldValue }>, visibili
   const rank: Record<string, number> = { basic: 0, education: 1, contact: 2, birthday: 3 };
   const defs = applyOrder(fieldDefinitions(), layout).sort((a, b) => (rank[a.group] ?? 9) - (rank[b.group] ?? 9) || a.order - b.order);
   for (const def of defs) {
-    if ((visibility.get(def.key) ?? def.visibility.default) !== "public") continue;
+    if (visibilityOf(def.key, visibility.get(def.key), def.visibility.default) !== "public") continue;
     let v = values.get(def.key)?.value ?? null;
     if (def.key === "display_name" && v === null) v = fallbackName;
     if (v === null || (Array.isArray(v) && !v.length)) continue;

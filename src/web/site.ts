@@ -27,6 +27,8 @@ import { rankBadge } from "./nav-text";
 import { readNumbers } from "../db/member-numbers";
 import { publicId } from "../profile/member-number";
 import { loadLayout } from "../db/layout";
+import { visibilityOf } from "../profile/visibility";
+import { heroBadges } from "../db/badges";
 import { BLOCKS, BLOCK_PREFIX } from "../profile/layout";
 import { fieldDefinitions } from "../profile/definitions";
 import { ADMIN_JS } from "./assets/admin";
@@ -156,11 +158,14 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       })
       .join("");
     const nav = await navFor(c, deps, APPS_PATH);
-    // The first entry of the launcher is 登出 (only when someone is signed in).
+    // 個人設定 comes first and 登出 last (only when someone is signed in).
+    const settings = nav.signedIn
+      ? `<div class="lc-row"><a class="lc-main" href="/me/edit"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M4.5 20c.8-4 3.6-6 7.5-6s6.7 2 7.5 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span><span class="lc-text"><span class="lc-name">個人設定</span></span></a></div>`
+      : "";
     const out = nav.signedIn
       ? `<div class="lc-row"><a class="lc-main" href="/logout"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lc-text"><span class="lc-name">登出</span></span></a></div>`
       : "";
-    const body = `<h1>Apps</h1><div class="card lc-list">${out}${rows || '<p class="help">目前沒有可使用的 App。</p>'}</div>`;
+    const body = `<h1>Apps</h1><div class="card lc-list">${settings}${rows}${out}${!rows && !nav.signedIn ? '<p class="help">目前沒有可使用的 App。</p>' : ""}</div>`;
     return page(c, sitePage({ title: "Apps", nav, body }));
   });
 
@@ -234,7 +239,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         const m = await getMember(db, id);
         const { values, visibility } = await readProfile(db, id);
         const items = publicItems(values, visibility, m?.display_name ?? null, layout);
-        const pub = (k: string, dflt: "public" | "private" = "private") => (visibility.get(k) ?? dflt) === "public";
+        const pub = (k: string, dflt: "public" | "private" = "private") => visibilityOf(k, visibility.get(k), dflt) === "public";
         const str = (k: string) => (typeof values.get(k)?.value === "string" ? (values.get(k)?.value as string) : "");
         // Education: one line per level, shown when the school or the department is public.
         const edu = EDU.map((l) => ({ label: l.label, text: [pub(l.school) ? str(l.school) : "", pub(l.dept) ? str(l.dept) : ""].filter(Boolean).join("　") })).filter((l) => l.text);
@@ -251,7 +256,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         }
         const birthday = str("birthday");
         const chart = birthday && pub("derived") ? lifeChartOf(birthday) : null;
-        return { m, id, items, edu, amway, chart };
+        return { m, id, items, edu, amway, chart, badges: await heroBadges(db, id) };
       }),
     );
     const nameOf = (p: (typeof profiles)[number]) => {
@@ -292,7 +297,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const edit = mine ? `<a class="button small primary" href="/me/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>` : "";
     const body =
       `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}</div></div>` +
-      `<section class="card"><div class="hero">${avatar}<div><h1>${escapeHtml(nameOf(p))}</h1><div class="sub"><span class="help">會員</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` +
+      `<section class="card"><div class="hero">${avatar}<div><div class="nameline"><h1>${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
       `${rows || '<p class="help">還沒有公開的資料。</p>'}</section>` +
       [

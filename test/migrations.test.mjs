@@ -113,4 +113,22 @@ describe("D1 migrations", () => {
     expect(db.prepare("SELECT hglobal, uses FROM vocab_terms WHERE pool = 'education_system' AND norm = '寰宇'").get()).toEqual({ hglobal: 1, uses: 3 });
     db.close();
   });
+
+  it("0017 deletes nicknames, flags members who changed their number, and replaces the center list", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 17)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-11T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('m1','g1','active','${ts}','${ts}'), ('m2','g2','active','${ts}','${ts}')`);
+    db.exec(`INSERT INTO profile_field_values (member_id, field_key, value, updated_at) VALUES ('m1','nickname','"阿明"','${ts}'), ('m1','bio','"hi"','${ts}')`);
+    db.exec(`INSERT INTO member_numbers (member_id, position, country, number, updated_at) VALUES ('m1', 0, 'TW', '9475831', '${ts}'), ('m2', 0, 'TW', 'TW0112342', '${ts}')`);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0017"))), "utf8"));
+    expect(db.prepare("SELECT COUNT(*) AS n FROM profile_field_values WHERE field_key = 'nickname'").get().n).toBe(0);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM profile_field_values WHERE field_key = 'bio'").get().n).toBe(1);
+    expect(db.prepare("SELECT id, number_customized AS c FROM members ORDER BY id").all()).toEqual([{ id: "m1", c: 1 }, { id: "m2", c: 0 }]);
+    const centers = db.prepare("SELECT term FROM vocab_terms WHERE pool = 'education_center' ORDER BY sort_order").all().map((r) => r.term);
+    expect(centers).toHaveLength(16);
+    expect(centers.slice(0, 3)).toEqual(["飛登 013", "飛登蓁分享", "南京 062"]);
+    expect(centers.at(-1)).toBe("屏東 221");
+    db.close();
+  });
 });

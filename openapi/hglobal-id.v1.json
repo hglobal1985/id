@@ -571,6 +571,34 @@
             ],
             "description": "Visibility of the zodiac and life number chart (key `derived` in PUT /v1/me/profile/visibility)."
           },
+          "badges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "center",
+                    "rank"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "size": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "text",
+                "size"
+              ]
+            },
+            "description": "Boxes shown beside the name (training system, regional center, reviewed rank); only while 我是Amway會員 is on and only when filled."
+          },
           "life_chart": {
             "type": [
               "object",
@@ -586,6 +614,7 @@
           "avatar",
           "info",
           "derived",
+          "badges",
           "life_chart"
         ]
       },
@@ -2007,7 +2036,7 @@
         "tags": [
           "profile"
         ],
-        "summary": "Related words while typing: terms of the pool that contain any typed character (any order), best matches first",
+        "summary": "Related words while typing: terms of the pool that contain any typed character (any order), best matches first. The regional center pool (education_center) returns its whole list for an empty q.",
         "security": [
           {
             "bearer": []
@@ -2677,7 +2706,7 @@
         "tags": [
           "amway"
         ],
-        "summary": "Turn 「我是Amway會員」 on or off at once, no confirmation step (off keeps the data and pauses eligibility)",
+        "summary": "Turn 「我是Amway會員」 on or off at once, no confirmation step (off keeps the data, pauses eligibility and gives the member a new random member number)",
         "security": [
           {
             "bearer": []
@@ -2711,6 +2740,25 @@
                   "properties": {
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "member_number": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "country": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "country",
+                          "number"
+                        ]
+                      },
+                      "description": "Present when turned off: the new random member number (only Amway members keep a number of their own choosing; a bound spouse is unbound first)."
                     }
                   },
                   "required": [

@@ -7,11 +7,13 @@ import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { getMember } from "../db/identity";
 import { AVATAR_MAX_BYTES, readProfile, removeAvatar, saveAvatarUpload, sniffImage, useGoogleAvatar, writeField, writeVisibility } from "../db/profile";
-import { canonicalTerms, recordTerms, suggestTerms } from "../db/vocab";
+import { allTerms, canonicalTerms, recordTerms, suggestTerms } from "../db/vocab";
 import { POOLS, isPool, poolOfField } from "../vocab/terms";
 import { randomMotto } from "../profile/mottos";
 import { AMWAY_KEYS } from "../amway/fields";
 import { loadLayout } from "../db/layout";
+import { isForcedPublic, visibilityOf } from "../profile/visibility";
+import { heroBadges } from "../db/badges";
 import { BLOCKS, BLOCK_PREFIX, applyOrder } from "../profile/layout";
 import {
   AVATAR_DEFINITION,
@@ -108,6 +110,7 @@ const ProfileSchema = z
       talent_number: z.string().nullable().openapi({ description: "Talent numbers of the life number chart, joined with 、" }),
     }),
     derived: z.object({ visibility: z.enum(["public", "private"]) }).openapi({ description: "Visibility of the zodiac and life number chart (key `derived` in PUT /v1/me/profile/visibility)." }),
+    badges: z.array(z.object({ kind: z.enum(["system", "center", "rank"]), text: z.string(), size: z.number().int() })).openapi({ description: "Boxes shown beside the name (training system, regional center, reviewed rank); only while 我是Amway會員 is on and only when filled." }),
     life_chart: z.record(z.unknown()).nullable().openapi({ description: "Life number chart data (zodiac, birthday, talent and life numbers; rings per digit 1-9) when a birthday is set." }),
   })
   .openapi("Profile");
@@ -202,7 +205,7 @@ const vocabRoute = createRoute({
   method: "get",
   path: "/v1/vocab/suggestions",
   tags: ["profile"],
-  summary: "Related words while typing: terms of the pool that contain any typed character (any order), best matches first",
+  summary: "Related words while typing: terms of the pool that contain any typed character (any order), best matches first. The regional center pool (education_center) returns its whole list for an empty q.",
   security,
   request: { query: z.object({ pool: z.string().max(40), q: z.string().max(60).default("") }) },
   responses: { 200: { description: "Suggestions", content: json(z.object({ pool: z.string(), suggestions: z.array(z.string()) })) }, ...errors, 422: { description: "invalid_field (unknown pool)", content: json(ErrorBodySchema) } },
@@ -269,7 +272,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       let value = stored?.value ?? null;
       // Until the member sets a display name, show the name from sign-up.
       if (def.key === "display_name" && value === null) value = member.display_name;
-      fields[def.key] = { value, visibility: visibility.get(def.key) ?? def.visibility.default, updated_at: stored?.updated_at ?? null };
+      fields[def.key] = { value, visibility: visibilityOf(def.key, visibility.get(def.key), def.visibility.default), updated_at: stored?.updated_at ?? null };
     }
     const numbers = await ensureMemberNumber(c.env.DB, member.id, member.registration_country, deps.now(), c.get("requestId"));
     const amway = member.amway_enabled === 1;
@@ -279,7 +282,8 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       visibility: "public" as const,
       updated_at: null,
       label: amway ? MEMBER_NUMBER_DEFINITION.label_when_amway : MEMBER_NUMBER_DEFINITION.label,
-      note: amway ? MEMBER_NUMBER_DEFINITION.help_when_amway : MEMBER_NUMBER_DEFINITION.help_when_not_amway,
+      // The "recommended to change" reminder is gone for good once the member has changed the number once.
+      ...(amway ? (member.number_customized === 1 ? {} : { note: MEMBER_NUMBER_DEFINITION.help_when_amway }) : { note: MEMBER_NUMBER_DEFINITION.help_when_not_amway }),
       max_items: amway ? MEMBER_NUMBER_DEFINITION.max_items_when_amway : MEMBER_NUMBER_DEFINITION.max_items,
       public_url: numbers[0] ? `${issuer}/${encodeURIComponent(publicId(numbers[0]))}` : null,
     };
@@ -298,8 +302,9 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
           life_path_number: chart?.life_number ?? null,
           talent_number: chart && chart.talent_numbers.length ? chart.talent_numbers.join("、") : null,
         },
-        derived: { visibility: visibility.get("derived") ?? ("private" as const) },
+        derived: { visibility: "public" as const },
         life_chart: chart as unknown as Record<string, unknown> | null,
+        badges: await heroBadges(c.env.DB, memberId),
       },
       200,
     );
@@ -339,6 +344,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     for (const [key] of entries) {
       if (key === "member_number") return invalid(c, key, "always_public", "會員編號永遠公開，無法隱藏");
       if (key === "avatar") return invalid(c, key, "always_public", "頭像永遠公開，無法隱藏");
+      if (isForcedPublic(key)) return invalid(c, key, "always_public", "這個欄位一律公開，無法隱藏");
       if (!getFieldDefinition(key) && key !== "derived" && !AMWAY_KEYS.includes(key)) return invalid(c, key, "unknown_field", "沒有這個欄位");
     }
     const { memberId, clientId } = c.get("auth");
@@ -373,7 +379,8 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     if (denied) return denied as never;
     const { pool, q } = c.req.valid("query");
     if (!isPool(pool)) return invalid(c, "pool", "unknown_pool", `沒有這個詞庫（可用：${Object.keys(POOLS).join("、")}）`) as never;
-    const suggestions = q.trim() ? await suggestTerms(c.env.DB, pool, q) : [];
+    // The regional center list shows in full when the field is opened (empty query); other vocabularies need a typed character.
+    const suggestions = q.trim() ? await suggestTerms(c.env.DB, pool, q) : pool === "education_center" ? await allTerms(c.env.DB, pool, 60) : [];
     return c.json({ pool, suggestions }, 200);
   });
 

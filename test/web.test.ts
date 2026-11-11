@@ -61,9 +61,9 @@ describe("member site uses the APIs with its session cookie", () => {
   it("reads and writes as the site itself; cross-site writes are refused", async () => {
     const a = await person("a", "甲");
     expect((await req(a, "GET", "/v1/me/profile")).status).toBe(200);
-    expect((await req(a, "PUT", "/v1/me/profile/fields/nickname", { value: "阿甲" })).status).toBe(200);
+    expect((await req(a, "PUT", "/v1/me/profile/fields/motto", { value: "阿甲" })).status).toBe(200);
     expect(db.raw.prepare("SELECT app_id FROM audit_log WHERE action = 'profile.field.update'").get()?.app_id).toBe("central");
-    expect((await req(a, "PUT", "/v1/me/profile/fields/nickname", { value: "x" }, { origin: "https://evil.example" })).status).toBe(403);
+    expect((await req(a, "PUT", "/v1/me/profile/fields/motto", { value: "x" }, { origin: "https://evil.example" })).status).toBe(403);
     expect((await req(null, "GET", "/v1/me/profile")).status).toBe(401);
   });
 });
@@ -156,14 +156,14 @@ describe("public profile /<member number>", () => {
     expect(html).toContain('id="share"');
     expect(html).not.toContain('href="/me/edit"'); // not signed in
     expect(html).not.toContain("政治大學"); // education starts hidden
-    expect(html).not.toContain("九宮格");
+    expect(html).toContain("彩色九宮格"); // 生命靈數 is always public once a birthday is set
     expect(html).toContain("慢慢來"); // the motto is public by default
     expect(await (await req(o, "GET", `/${n}`)).text()).not.toContain('href="/me/edit"');
     // The owner sees the edit button; making things public shows them.
     await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
     await req(a, "PUT", "/v1/me/amway/fields/upline_diamond", { value: "陳大華" });
-    await req(a, "PUT", "/v1/me/amway/fields/referrer", { value: "秘密推薦人" });
-    await req(a, "PUT", "/v1/me/profile/visibility", { fields: { university: "public", university_dept: "public", occupation: "public", derived: "public", upline_diamond: "public" } });
+    await req(a, "PUT", "/v1/me/amway/fields/upline_crown_ambassador", { value: "秘密皇冠" });
+    await req(a, "PUT", "/v1/me/profile/visibility", { fields: { university: "public", university_dept: "public", occupation: "public" } });
     html = await (await req(a, "GET", `/${n}`)).text();
     expect(html).toContain('href="/me/edit"');
     expect(html).toContain("大學");
@@ -171,7 +171,8 @@ describe("public profile /<member number>", () => {
     expect(html).toContain('<span class="chip">工程師</span>');
     expect(html).toContain("上手鑽石");
     expect(html).toContain("陳大華");
-    expect(html).not.toContain("秘密推薦人"); // Amway fields are hidden until the member makes them public
+    expect(html).toContain("星座：獅子座");
+    expect(html).not.toContain("秘密皇冠"); // fields with a switch stay hidden until the member makes them public
     expect(html).toContain("彩色九宮格");
     expect(html).toContain("星座：獅子座");
     expect(html).not.toMatch(/ style="/);
@@ -281,8 +282,7 @@ describe("member center template (same layout as starry.phd)", () => {
     expect(me).toContain('href="/apps"');
     expect(me).not.toContain('href="/logout"'); // 登出 lives first in the launcher page (the 9 dots)
     const apps = await (await req(a, "GET", "/apps")).text();
-    expect(apps.indexOf('href="/logout"')).toBeGreaterThan(-1);
-    expect(apps.indexOf('href="/logout"')).toBeLessThan(apps.indexOf("lc-row", apps.indexOf('href="/logout"') + 10));
+    expect(apps.indexOf('href="/logout"')).toBeGreaterThan(apps.lastIndexOf('href="/me/edit"')); // 登出 is the last entry
     expect(await (await req(null, "GET", "/apps")).text()).not.toContain('href="/logout"');
     const guest = await (await req(null, "GET", "/privacy")).text();
     expect(guest).toContain("guest-brand");
@@ -301,6 +301,34 @@ describe("member center template (same layout as starry.phd)", () => {
     expect(html).toContain('<span class="nm">王大明明…</span>');
     expect(html).toMatch(/<span class="rank rk2" title="F執行專才鑽石">F執行專才鑽石<\/span>/);
     expect(html).not.toContain("創辦人");
+  });
+
+  it("the 9-dot page lists 個人設定 first and 登出 last; the name, 系統, 中心 and 獎銜 boxes sit beside the name on the page", async () => {
+    const a = await person("a", "王小明");
+    const apps = await (await req(a, "GET", "/apps")).text();
+    const rows = apps.split('class="lc-row"');
+    expect(rows[1]).toContain("個人設定");
+    expect(rows[1]).toContain('href="/me/edit"');
+    expect(rows.at(-1)).toContain("登出");
+    // 系統 / 中心 / 獎銜 boxes (only while the Amway switch is on and only what is filled)
+    const n = db.raw.prepare("SELECT country, number FROM member_numbers WHERE member_id = ?").get(a.id) as { country: string; number: string };
+    expect(await (await req(null, "GET", `/${n.number}`)).text()).not.toContain('class="badges"');
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
+    await req(a, "PUT", "/v1/me/amway/fields/education_system", { value: "某系統" });
+    await req(a, "PUT", "/v1/me/amway/fields/education_center", { value: "南京 062" });
+    let html = await (await req(null, "GET", `/${n.number}`)).text();
+    expect(html).toContain("會員編號");
+    expect(html).toMatch(/<span class="rank k-system rk0" title="系統：某系統">某系統<\/span>/);
+    expect(html).toMatch(/<span class="rank k-center rk0" title="中心：南京 062">南京 062<\/span>/);
+    expect(html).not.toContain("k-rank"); // no reviewed rank yet
+    // Always-public fields show without any switch; referrer and uplines too.
+    await req(a, "PUT", "/v1/me/amway/fields/referrer", { value: "推薦人甲" });
+    await req(a, "PUT", "/v1/me/profile/fields/country", { value: "日本" });
+    html = await (await req(null, "GET", `/${n.number}`)).text();
+    expect(html).toContain("推薦人甲");
+    expect(html).toContain("日本");
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: false });
+    expect(await (await req(null, "GET", "/")).text()).not.toContain("推薦人甲");
   });
 
   it("/apps lists registered Apps with their web link; paused ones have no link and stopped ones are hidden", async () => {
@@ -360,14 +388,14 @@ describe("signed-in devices, sign out everywhere, download my data", () => {
 
   it("downloads only my own data, without any token or secret, and audits it", async () => {
     const a = await person("a", "甲");
-    await req(a, "PUT", "/v1/me/profile/fields/nickname", { value: "阿甲" });
+    await req(a, "PUT", "/v1/me/profile/fields/motto", { value: "阿甲" });
     const res = await req(a, "GET", "/v1/me/export");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-disposition")).toContain("attachment");
     const text = await res.text();
     const data = JSON.parse(text) as { member: { id: string }; profile: Record<string, { value: unknown }>; member_numbers: unknown[] };
     expect(data.member.id).toBe(a.id);
-    expect(data.profile.nickname?.value).toBe("阿甲");
+    expect(data.profile.motto?.value).toBe("阿甲");
     expect(data.member_numbers.length).toBe(1);
     for (const secret of ["token_hash", "refresh_hash", "google_sub", a.cookie]) expect(text).not.toContain(secret);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'member.export'").get()?.n).toBe(1);

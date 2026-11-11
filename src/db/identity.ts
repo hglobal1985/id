@@ -28,6 +28,8 @@ export interface MemberRow {
   avatar_url: string | null;
   avatar_source: "none" | "google" | "upload";
   amway_enabled: number;
+  /** 1 once the member has changed the member number themselves. */
+  number_customized: number;
 }
 
 /** The picture URL when it is an https address (Google serves profile pictures from googleusercontent.com). */

@@ -75,7 +75,7 @@ export const ME_JS = String.raw`
       edit.disabled = true;
       Promise.resolve(cfg.save(ed.get())).then(function (res) {
         edit.disabled = false;
-        if (res && res.status === 200) { HG.toast("已儲存"); if (cfg.reload) load(); else { stop(); } }
+        if (res && res.status === 200) { HG.toast("已儲存"); if (cfg.after) cfg.after(); else if (cfg.reload) load(); else { stop(); } }
         else say(m, false, res ? errText(res) : "儲存失敗");
       });
     });
@@ -83,7 +83,7 @@ export const ME_JS = String.raw`
     row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), tools]));
     if (cfg.note) row.appendChild(el("div", {}, [el("span", { class: "note", text: cfg.note })]));
     if (cfg.help) row.appendChild(el("div", { class: "help", text: cfg.help }));
-    if (cfg.fixed) tools.appendChild(el("span", { class: "fixed", text: cfg.fixed }));
+    if (cfg.forced) tools.appendChild(lockedPill());
     else if (cfg.keys) tools.appendChild(eyeButton(cfg.keys, cfg.vis));
     if (!cfg.noEdit) { tools.appendChild(cancel); tools.appendChild(edit); }
     row.appendChild(valueBox); row.appendChild(m);
@@ -92,6 +92,9 @@ export const ME_JS = String.raw`
     return row;
   }
 
+  function pid(e) { return e.number.indexOf(e.country) === 0 ? e.number : e.country + e.number; }
+  // Fields that are always public look like the others (rounded box, eye, 公開) but have no switch.
+  function lockedPill() { var b = el("span", { class: "eye pub locked", title: "這個欄位一律公開" }); b.appendChild(HG.icon("eye")); b.appendChild(document.createTextNode("公開")); return b; }
   function valueText(t) { return el("p", { class: "value" + (t ? "" : " empty"), text: t || "（未設定）" }); }
   function chipList(list) {
     if (!list || !list.length) return valueText("");
@@ -153,7 +156,7 @@ export const ME_JS = String.raw`
         return r;
       });
     }
-    return makeRow({ label: def.label, help: def.help, keys: [def.key], vis: st.visibility, display: display, editor: editor, save: save, reload: def.key === "birthday" });
+    return makeRow({ label: def.label, help: def.help, keys: [def.key], vis: st.visibility, forced: def.visibility.configurable === false, display: display, editor: editor, save: save, reload: def.key === "birthday" });
   }
 
   // ---- education: one line per level (school + department) ----
@@ -230,9 +233,11 @@ export const ME_JS = String.raw`
         api("POST", "/v1/me/profile/avatar", undefined, { type: "image/jpeg", data: blob }).then(function (r) { if (r.status === 200) load(); else say(m, false, errText(r)); });
       });
     });
-    var nums = numbers(), first = nums[0] ? nums[0].number : "";
+    var nums = numbers(), first = nums[0] ? pid(nums[0]) : "";
+    var KIND = { system: "系統", center: "中心", rank: "獎銜" };
+    var badges = (p.badges || []).length ? el("span", { class: "badges" }, p.badges.map(function (b) { return el("span", { class: "rank k-" + b.kind + " rk" + b.size, title: KIND[b.kind] + "：" + b.text, text: b.text }); })) : null;
     return el("section", { class: "card" }, [
-      el("div", { class: "hero" }, [HG.bubble("lg", p.avatar.url, shownName()), el("div", {}, [el("h1", { text: shownName() || "我的帳號" }), el("div", { class: "sub" }, [el("span", { class: "help", text: "會員" }), first ? el("span", { class: "badge num", text: first }) : null])])]),
+      el("div", { class: "hero" }, [HG.bubble("lg", p.avatar.url, shownName()), el("div", {}, [el("div", { class: "nameline" }, [el("h1", { text: shownName() || "我的帳號" }), badges]), el("div", { class: "sub" }, [el("span", { class: "help", text: "會員編號" }), first ? el("span", { class: "badge num", text: first }) : null])])]),
       el("div", { class: "actions" }, [
         el("button", { type: "button", class: "small", text: "上傳圖片", onclick: function () { file.click(); } }),
         el("button", { type: "button", class: "small", text: "使用 Google 頭像", onclick: act("POST", "/v1/me/profile/avatar/google") }),
@@ -245,10 +250,11 @@ export const ME_JS = String.raw`
   // ---- member number (same logic as starry.phd: random, <country><0 + 6 digits>; Amway members may change it) ----
   function numberRow() {
     var f = S.profile.fields.member_number, def = S.def.member_number, canEdit = isAmway();
-    var note = canEdit ? def.help_when_amway : def.help_when_not_amway;
+    // The note comes from the server: it also knows whether the "recommended to change" reminder is already done for good.
+    var note = canEdit ? f.note : (f.note || def.help_when_not_amway);
     function display() {
       var list = numbers();
-      return el("div", {}, [el("div", { class: "chips" }, list.map(function (e, i) { return el("span", { class: "badge num", text: e.country + " " + e.number + (i === 0 ? "（預設）" : "") }); })),
+      return el("div", {}, [el("div", { class: "chips" }, list.map(function (e, i) { return el("span", { class: "badge num", text: pid(e) + (i === 0 ? "（預設）" : "") }); })),
         f.public_url ? el("div", { class: "help" }, ["公開網址：", el("a", { href: f.public_url, text: f.public_url })]) : null]);
     }
     var cands = el("div");
@@ -282,7 +288,7 @@ export const ME_JS = String.raw`
         return r;
       });
     }
-    var row = makeRow({ label: f.label, note: note, fixed: "一律公開", display: display, editor: editor, save: save, noEdit: !canEdit, reload: true });
+    var row = makeRow({ label: f.label, note: note, forced: true, display: display, editor: editor, save: save, noEdit: !canEdit, reload: true });
     row.appendChild(cands);
     return row;
   }
@@ -308,15 +314,33 @@ export const ME_JS = String.raw`
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
       // The regional center offers its own related words only while the training system means H-Global1985.
       var useSuggest = d.suggest && (!d.suggest_when_hglobal || S.amway.hglobal);
-      return { node: useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest)) : input, get: function () { return input.value.trim() || null; } };
+      return { node: useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest), undefined, { openOnFocus: d.key === "education_center" }) : input, get: function () { return input.value.trim() || null; } };
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
-    return makeRow({ label: d.label, keys: [d.key], vis: st.visibility, display: display, editor: editor, save: save, reload: true });
+    return makeRow({ label: d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), display: display, editor: editor, save: save, after: refreshAmway });
   }
+  // Replace one block in place (no page reload): used after the Amway switch and Amway field saves.
+  var NODES = {}, MAKERS = {};
+  function swap(key) {
+    var old = NODES[key], make = MAKERS[key]; if (!old || !make) return;
+    var neu = make(); if (!neu) return;
+    old.replaceWith(neu); NODES[key] = neu;
+  }
+  function refreshAmway() {
+    return Promise.all([api("GET", "/v1/me/amway"), api("GET", "/v1/me/profile")]).then(function (r) {
+      if (r[0].status === 200 && r[1].status === 200) { S.amway = r[0].body; S.profile = r[1].body; swap("avatar"); swap("amway"); }
+    });
+  }
+
   function amwayCard() {
     var m = msg();
+    // The switch takes effect on screen at once; the server call runs in the background and the page is corrected if it fails.
     var box = HG.checkbox("我是Amway會員", isAmway(), function (on) {
-      api("PUT", "/v1/me/amway/enabled", { enabled: on }).then(function (r) { if (r.status === 200) load(); else { say(m, false, errText(r)); box.setChecked(!on); } });
+      S.amway.enabled = on; swap("amway");
+      api("PUT", "/v1/me/amway/enabled", { enabled: on }).then(function (r) {
+        if (r.status === 200) { if (r.body.member_number) S.profile.fields.member_number.value = r.body.member_number; refreshAmway(); }
+        else { S.amway.enabled = !on; swap("amway"); HG.toast(errText(r)); }
+      });
     });
     var kids = [box, m];
     // The member number and the Amway fields in the order the administrator set; the number is always there.
@@ -351,13 +375,13 @@ export const ME_JS = String.raw`
     function legend(cls, text) { return el("div", {}, [el("span", { class: "ln-dot " + cls }), el("span", { text: text })]); }
     var rows = CHART_ROWS.map(function (row) { return el("tr", {}, row.map(function (n) { return cell(n, c.rings[n]); })); });
     return el("section", { class: "card" }, [
-      el("div", { class: "row-head" }, [el("h2", { text: "生命靈數" }), el("div", { class: "row-tools" }, [eyeButton(["derived"], S.profile.derived.visibility)])]),
+      el("div", { class: "row-head" }, [el("h2", { text: "生命靈數" }), el("div", { class: "row-tools" }, [lockedPill()])]),
       el("div", { class: "ln-card" }, [
         el("div", { class: "ln-head" }, [item("z", "星座：" + c.zodiac_name, c.zodiac_number, "ln-b-zodiac"), item("b", "生日數：", c.birthday_number, "ln-b-birthday"), item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent"), item("l", "加總命數：", c.life_number, "ln-b-life")]),
         el("table", { class: "ln-grid", "aria-label": "彩色九宮格" }, rows),
         el("div", { class: "ln-legend" }, [
           legend("rg-black", "先天數生日數字（黑色線圈，出現幾次畫幾圈）"), legend("rg-birthday", "生日數（黃色圈線，出生日期相加至個位數）"), legend("rg-zodiac", "星座數（紫色圈線）"), legend("rg-talent", "天賦數（亮綠圈線）"),
-          el("div", {}, [el("span", { class: "ln-dot-tri", text: "▲" }), el("span", { text: "加總命數（紅色三角形包圍數字）" })])])
+          el("div", {}, [HG.icon("tri", "ln-dot-tri"), el("span", { text: "加總命數（紅色三角形包圍數字）" })])])
       ])
     ]);
   }
@@ -410,9 +434,9 @@ export const ME_JS = String.raw`
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
       return card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField)));
     }
-    var makers = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { return card("生日", [profileField(S.def.birthday)]); }, life: chartCard };
+    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { return card("生日", [profileField(S.def.birthday)]); }, life: chartCard };
     (S.defs.blocks || []).slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (blk) {
-      var make = makers[blk.key], node = make ? make() : null; if (node) root.appendChild(node);
+      var make = makers[blk.key], node = make ? make() : null; if (node) { root.appendChild(node); NODES[blk.key] = node; }
     });
     var sp = spouseCard(); if (sp) root.appendChild(sp);
     root.appendChild(devicesCard());

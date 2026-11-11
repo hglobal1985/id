@@ -32,7 +32,7 @@ describe("rate limits", () => {
     const m = await signedIn(env);
     const h = { cookie: m.cookie, origin: ISSUER, "content-type": "application/json" };
     expect((await app.request("/v1/me/profile", { headers: h }, env)).status).toBe(200);
-    expect((await app.request("/v1/me/profile/fields/nickname", { method: "PUT", headers: h, body: JSON.stringify({ value: "x" }) }, env)).status).toBe(200);
+    expect((await app.request("/v1/me/profile/fields/motto", { method: "PUT", headers: h, body: JSON.stringify({ value: "x" }) }, env)).status).toBe(200);
     expect(keys).toEqual([`r:${m.id}`, `w:${m.id}`]);
     allow = false;
     const res = await app.request("/v1/me/profile", { headers: h }, env);

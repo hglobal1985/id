@@ -34,11 +34,15 @@ export interface RankBadge {
   size: 0 | 1 | 2 | 3;
 }
 
+/** Text for a fixed 5-character box: the font size step that makes it fit. */
+export function fitBadge(text: string): RankBadge {
+  const units = textUnits(text);
+  return { text, size: units <= 5 ? 0 : units <= 6 ? 1 : units <= 7.5 ? 2 : 3 };
+}
+
 /** The rank for the main menu: 「創辦人」 becomes the letter F; null when there is nothing to show. */
 export function rankBadge(label: string | null | undefined): RankBadge | null {
   const text = (label ?? "").trim().replaceAll("創辦人", "F");
   if (!text || text === "無") return null;
-  const units = textUnits(text);
-  const size = units <= 5 ? 0 : units <= 6 ? 1 : units <= 7.5 ? 2 : 3;
-  return { text, size };
+  return fitBadge(text);
 }

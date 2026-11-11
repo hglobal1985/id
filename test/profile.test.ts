@@ -122,6 +122,11 @@ describe("GET /v1/me/profile", () => {
 });
 
 describe("PUT /v1/me/profile/fields/{field_key}", () => {
+  it("the nickname field is gone for good", async () => {
+    const t = await token();
+    expect((await call("PUT", "/v1/me/profile/fields/nickname", { token: t, body: { value: "x" } })).status).toBe(404);
+  });
+
   it("the legal-name field is gone for good", async () => {
     const t = await token();
     expect((await call("PUT", "/v1/me/profile/fields/primary_name", { token: t, body: { value: "x" } })).status).toBe(404);
@@ -146,7 +151,7 @@ describe("PUT /v1/me/profile/fields/{field_key}", () => {
 
   it("needs the scope of that field", async () => {
     const t = await token("openid profile.read profile.basic.write");
-    expect((await call("PUT", "/v1/me/profile/fields/nickname", { token: t, body: { value: "小明" } })).status).toBe(200);
+    expect((await call("PUT", "/v1/me/profile/fields/motto", { token: t, body: { value: "小明" } })).status).toBe(200);
     const res = await call("PUT", "/v1/me/profile/fields/phone", { token: t, body: { value: "+886912345678" } });
     expect(res.status).toBe(403);
     expect(((await res.json()) as { error: { details: { required_scopes: string[] } } }).error.details.required_scopes).toEqual(["profile.contact.write"]);
@@ -165,8 +170,8 @@ describe("PUT /v1/me/profile/fields/{field_key}", () => {
       ["birthday", "1990-02-30", "format"],
       ["country", "ZZ", "not_an_option"],
       ["display_name", "", "required"],
-      ["nickname", "x".repeat(31), "too_long"],
-      ["nickname", "a\u0000b", "invalid_characters"],
+      ["motto", "x".repeat(101), "too_long"],
+      ["motto", "a\u0000b", "invalid_characters"],
       ["interests", Array.from({ length: 31 }, (_, i) => `s${i}`), "too_many"],
       ["interests", "not-a-list", "type"],
     ] as [string, unknown, string][]) {
@@ -176,10 +181,10 @@ describe("PUT /v1/me/profile/fields/{field_key}", () => {
       expect(e.error.code).toBe("invalid_field");
       expect(e.error.details).toMatchObject({ field_key: key, reason });
     }
-    res = await call("PUT", "/v1/me/profile/fields/nickname", { token: t, body: "{not json" });
+    res = await call("PUT", "/v1/me/profile/fields/motto", { token: t, body: "{not json" });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);
-    res = await call("PUT", "/v1/me/profile/fields/nickname", { token: t, body: { wrong: 1 } });
+    res = await call("PUT", "/v1/me/profile/fields/motto", { token: t, body: { wrong: 1 } });
     expect(res.status).toBe(422);
   });
 
@@ -321,11 +326,11 @@ describe("field rules (unit)", () => {
     expect(validateFieldValue(def("birthday"), "2026-11-10", today).ok).toBe(true);
     expect(validateFieldValue(def("birthday"), "2026-11-11", today).ok).toBe(false);
     expect(validateFieldValue(def("birthday"), "1899-12-31", today).ok).toBe(false);
-    expect(validateFieldValue(def("nickname"), "😀".repeat(30), today).ok).toBe(true);
+    expect(validateFieldValue(def("motto"), "😀".repeat(30), today).ok).toBe(true);
   });
   it("every definition has a write scope and the documented field keys", () => {
     expect(FIELD_KEYS).toEqual([
-      "display_name", "nickname", "motto", "bio", "occupation", "organization", "website", "languages", "interests",
+      "display_name", "motto", "bio", "occupation", "organization", "website", "languages", "interests",
       "university", "university_dept", "grad_school", "grad_dept", "phd_school", "phd_dept", "locale", "contact_email", "phone", "country", "region", "city", "birthday",
     ]);
     for (const f of fieldDefinitions()) expect(f.scope).toMatch(/^profile\.(basic|contact|birthday)\.write$/);

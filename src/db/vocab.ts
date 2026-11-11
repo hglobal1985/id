@@ -35,6 +35,11 @@ export async function suggestTerms(db: D1Database, pool: PoolKey, query: string,
   return rankTerms(r.results ?? [], query, limit, ORDERED_POOLS.includes(pool)).map((t) => t.term);
 }
 
+/** The whole list of an ordered pool, in the administrator's order. */
+export async function allTerms(db: D1Database, pool: PoolKey, limit: number): Promise<string[]> {
+  return (await listTerms(db, pool)).slice(0, limit).map((t) => t.term);
+}
+
 /** Spellings already in the pool win: "TAIPEI university" is saved as the existing "Taipei University". */
 export async function canonicalTerms(db: D1Database, pool: PoolKey, terms: string[]): Promise<string[]> {
   if (!terms.length) return terms;

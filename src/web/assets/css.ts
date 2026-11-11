@@ -15,11 +15,11 @@ p{margin:0 0 10px}
 .foot{max-width:680px;margin:0 auto;padding:4px 14px 40px;color:var(--muted);font-size:14px}
 .foot a{margin-right:16px;color:var(--muted)}
 /* main menu */
-.starnav{position:sticky;top:0;z-index:30;display:flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:2px;padding:4px 6px;background:#fff;border-top:4px solid transparent;border-image:var(--grad) 1;border-bottom:1px solid var(--line)}
+.starnav{position:sticky;top:0;z-index:30;display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-start;gap:2px;padding:4px 6px;background:#fff;border-top:4px solid transparent;border-image:var(--grad) 1;border-bottom:1px solid var(--line)}
 .starnav a{position:relative;color:var(--fg);text-decoration:none;padding:6px 10px;min-height:40px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;white-space:nowrap}
 .starnav a:hover{background:var(--green-soft)}
 .starnav a.on{background:var(--green);color:#fff;font-weight:700}
-.starnav .me{font-weight:600}
+.starnav .me{font-weight:600;margin-right:auto}
 .starnav .me .nm{overflow:hidden;text-overflow:ellipsis}
 /* rank box beside the name: fixed width of 5 Chinese characters, smaller than the name, text shrinks to fit */
 .rank{display:inline-flex;align-items:center;justify-content:center;flex:none;width:3.9rem;height:1.45rem;padding:0 2px;border-radius:7px;border:1px solid #e6c48c;background:var(--orange-soft);color:var(--orange);font-weight:700;line-height:1;overflow:hidden;white-space:nowrap}
@@ -71,6 +71,7 @@ button[disabled]{opacity:.5;cursor:default}
 .eye{min-height:34px;padding:3px 10px;font-size:.92rem;border-radius:999px}
 .eye.pub{background:var(--green-soft);border-color:#bcd8c6;color:var(--green-d)}
 .eye.priv{color:var(--muted)}
+.eye.locked{cursor:default;display:inline-flex;align-items:center;gap:6px;border:1.5px solid #bcd8c6;padding:3px 10px;border-radius:999px}
 .fixed{color:var(--muted);font-size:.9rem}
 /* custom checkbox: as big as the text, never the native control */
 .chk{display:inline-flex;align-items:center;gap:.5em;min-height:44px;padding:0;border:0;background:transparent;font:inherit;font-weight:600;color:var(--fg);text-align:left;cursor:pointer}
@@ -103,7 +104,10 @@ button[disabled]{opacity:.5;cursor:default}
 /* avatar bubble: photo or two initials; sizes are classes (no inline styles) */
 .avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;object-fit:cover;background:linear-gradient(135deg,#0c603c,#486c48);color:#fff;font-weight:700;flex:0 0 auto;width:96px;height:96px;font-size:38px;overflow:hidden}
 .avatar.sm{width:32px;height:32px;font-size:13px}.avatar.md{width:64px;height:64px;font-size:25px}.avatar.lg{width:80px;height:80px;font-size:32px}
-.hero{display:flex;align-items:center;gap:14px;margin:4px 0 14px}.hero h1{margin:0 0 4px;word-break:break-word}.hero .sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.hero{display:flex;align-items:center;gap:14px;margin:4px 0 14px}
+.nameline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}.nameline h1{margin:0}
+.badges{display:inline-flex;flex-wrap:wrap;gap:4px}
+.rank.k-system{background:var(--green-soft);color:var(--green-d);border-color:#bcd8c6}.rank.k-center{background:#f4f1dc;color:#6b5b12;border-color:#ddd4a0}.hero h1{margin:0 0 4px;word-break:break-word}.hero .sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pagebar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
 .pagebar .tools{display:flex;gap:8px}
 .motto{margin:0 0 12px;color:var(--olive);font-style:italic}
@@ -133,15 +137,15 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 /* life number chart (same drawing data as the starry.phd member center) */
 .ln-card{background:#f6f8f4;color:#0f172a;border:1px solid var(--line);border-radius:18px;padding:12px 14px}
 .ln-head{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;padding-bottom:10px;border-bottom:2px solid #e3e8df}
-.ln-item{display:flex;align-items:center;gap:8px;font-weight:800;font-size:1rem;white-space:nowrap}
+.ln-item{display:flex;align-items:center;gap:4px;font-weight:400;font-size:.8rem;line-height:1.3;white-space:nowrap}
 .ln-item.z{color:#8b2fe0}.ln-item.b{color:#b98600}.ln-item.t{color:#4f9a0b}.ln-item.l{color:#e5303a}
-.ln-badge{display:inline-block;min-width:1.9em;text-align:center;padding:0 7px;border-radius:9px;font-weight:800;border:2px solid;line-height:1.5}
-.ln-b-zodiac{background:#f3e8ff;border-color:#d8b4fe}.ln-b-birthday{background:#fef3c7;border-color:#fcd34d}.ln-b-talent{background:#ecfccb;border-color:#bef264}.ln-b-life{background:#fee2e2;border-color:#fca5a5}
+.ln-badge{display:inline;font-weight:inherit}
 .ln-grid{width:100%;border-collapse:collapse;margin:4px 0 0;table-layout:fixed}
 .ln-grid td{padding:5px 0;border:0}
 .ln-cell{text-align:center;vertical-align:middle}
 .ln-empty .ln-n{color:#c3cbbf}
 .ln-ring{display:inline-flex;align-items:center;justify-content:center;padding:2px;border:2.5px solid;border-radius:50%;background:#fff}
+.ln-dot{flex:none;width:16px;height:16px;border-radius:50%;border:2.5px solid;box-sizing:border-box}
 .rg-black{border-color:#0f172a}.rg-birthday{border-color:#f5b400}.rg-zodiac{border-color:#8b2fe0}.rg-talent{border-color:#7ccf1b}
 .ln-n{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;font-size:1.3rem;font-weight:800;color:#0f172a;line-height:1}
 .ln-red{color:#e5303a}
@@ -150,8 +154,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .ln-tri>*{position:relative}
 .ln-legend{border-top:2px solid #e3e8df;margin-top:4px;padding-top:8px;display:grid;grid-template-columns:1fr;gap:4px;font-size:.8rem;color:#1e293b;line-height:1.3}
 .ln-legend>div{display:flex;align-items:center;gap:8px}
-.ln-dot{flex:none;width:16px;height:16px;border-radius:50%;border:2.5px solid;box-sizing:border-box}
-.ln-dot-tri{flex:none;width:16px;text-align:center;color:#e5303a;font-size:.95rem;line-height:1}
+.ln-dot-tri{flex:none;width:16px;height:16px}
 /* App launcher page */
 .lc-list{display:flex;flex-direction:column;gap:2px;padding:8px}
 .lc-row{display:flex;flex-direction:column;gap:4px;padding:8px 6px;border-radius:12px}

@@ -30,6 +30,6 @@ export function chartHtml(c: LifeChart): string {
   return `<div class="ln-card">
 <div class="ln-head">${item("z", `星座：${c.zodiac_name}`, c.zodiac_number, "ln-b-zodiac")}${item("b", "生日數：", c.birthday_number, "ln-b-birthday")}${item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent")}${item("l", "加總命數：", c.life_number, "ln-b-life")}</div>
 <table class="ln-grid" aria-label="彩色九宮格">${ROWS.map((row) => `<tr>${row.map((n) => cell(n, c.rings[n] as Rings)).join("")}</tr>`).join("")}</table>
-<div class="ln-legend">${legend("rg-black", "先天數生日數字（黑色線圈，出現幾次畫幾圈）")}${legend("rg-birthday", "生日數（黃色圈線，出生日期相加至個位數）")}${legend("rg-zodiac", "星座數（紫色圈線）")}${legend("rg-talent", "天賦數（亮綠圈線）")}<div><span class="ln-dot-tri">▲</span><span>加總命數（紅色三角形包圍數字）</span></div></div>
+<div class="ln-legend">${legend("rg-black", "先天數生日數字（黑色線圈，出現幾次畫幾圈）")}${legend("rg-birthday", "生日數（黃色圈線，出生日期相加至個位數）")}${legend("rg-zodiac", "星座數（紫色圈線）")}${legend("rg-talent", "天賦數（亮綠圈線）")}<div><svg class="ln-dot-tri" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12,3 22,21 2,21" fill="none" stroke="#e5303a" stroke-width="2.6" stroke-linejoin="round"/></svg><span>加總命數（紅色三角形包圍數字）</span></div></div>
 </div>`;
 }

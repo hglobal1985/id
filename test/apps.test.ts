@@ -158,7 +158,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-11.2", digest: "c6d16c9ff66e0474" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-11.3", digest: "bcf2bc7bfceaf52a" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -166,7 +166,7 @@ describe("handoff text", () => {
 
   it("has the H-Global1985 rules and no secrets or other-system brand names", () => {
     const text = buildHandoff(definitionFromForm({ app_id: "learn", name: "寰宇行動大學" }, { defaults: true }), "https://id.hglobal1985.com");
-    for (const must of ["只補差異", "/v1/eligibility/check", "check-batch", "amway.read", "/v1/amway/field-definitions", "最多快取 1 日", "Fail closed", "Amway 資料不得被 App 保存", "starry.phd、Amway 這兩個寫法", "https://id.hglobal1985.com/auth/google/start?app_id=learn", "learn://auth/google", "/v1/auth/sso/exchange", "com.hglobal1985.shared", "登出所有 App", "/v1/vocab/suggestions", "新增碩士學歷", "原生的下拉選單", "原生勾選框", "不要有二次確認", "隨機提案", "磁碟片圖示＋儲存", "隨機產生，不可修改", "TW9475831", "地區教育中心", "suggest_when_hglobal", "網頁標題統一寫「會員中心」"]) {
+    for (const must of ["只補差異", "/v1/eligibility/check", "check-batch", "amway.read", "/v1/amway/field-definitions", "最多快取 1 日", "Fail closed", "Amway 資料不得被 App 保存", "starry.phd、Amway 這兩個寫法", "https://id.hglobal1985.com/auth/google/start?app_id=learn", "learn://auth/google", "/v1/auth/sso/exchange", "com.hglobal1985.shared", "登出所有 App", "/v1/vocab/suggestions", "新增碩士學歷", "原生的下拉選單", "原生勾選框", "不要有二次確認", "隨機提案", "磁碟片圖示＋儲存", "隨機產生，不可修改", "always_public", "電腦版的 Enter 鍵", "點進欄位不用打字就直接列出整份清單", "名字旁的方框", "TW9475831", "地區教育中心", "suggest_when_hglobal", "網頁標題統一寫「會員中心」"]) {
       expect(text).toContain(must);
     }
     for (const never of ["繁星", "安麗", "Battery", "電池", "Passkey", "Apple 登入"]) expect(text).not.toContain(never);

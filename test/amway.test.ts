@@ -109,14 +109,68 @@ describe("enable switch", () => {
     expect((await put(m, "referrer", "改")).status).toBe(403);
   });
 
-  it("every Amway field has a public/private switch, private by default", async () => {
+  it("some fields are always public (no switch, shown when filled); the others have a switch, private by default", async () => {
     const m = await member("g-a", "甲", `${ALL} profile.visibility.write`);
     await enable(m);
-    expect((await me(m)).fields.rank?.visibility).toBe("private");
-    expect((await call(m, "PUT", "/v1/me/profile/visibility", { fields: { rank: "public", upline_diamond: "public", derived: "public" } })).status).toBe(200);
     const s = await me(m);
-    expect(s.fields.rank?.visibility).toBe("public");
-    expect(s.fields.referrer?.visibility).toBe("private");
+    for (const k of ["education_system", "education_center", "rank", "referrer", "upline_platinum", "upline_diamond"]) expect(s.fields[k]?.visibility, k).toBe("public");
+    expect(s.fields.upline_crown_ambassador?.visibility).toBe("private");
+    for (const k of ["rank", "referrer", "display_name", "country", "derived", "upline_diamond"]) {
+      const res = await call(m, "PUT", "/v1/me/profile/visibility", { fields: { [k]: "private" } });
+      expect(res.status, k).toBe(422);
+      expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("always_public");
+    }
+    expect((await call(m, "PUT", "/v1/me/profile/visibility", { fields: { upline_crown_ambassador: "public" } })).status).toBe(200);
+    expect((await me(m)).fields.upline_crown_ambassador?.visibility).toBe("public");
+    const defs = (await (await call(m, "GET", "/v1/amway/field-definitions")).json()) as { fields: { key: string; visibility: { configurable: boolean } }[] };
+    expect(defs.fields.find((f) => f.key === "rank")?.visibility.configurable).toBe(false);
+    expect(defs.fields.find((f) => f.key === "upline_crown_ambassador")?.visibility.configurable).toBe(true);
+    const pdefs = (await (await call(m, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; visibility: { configurable: boolean } }[] };
+    expect(pdefs.fields.find((f) => f.key === "display_name")?.visibility.configurable).toBe(false);
+    expect(pdefs.fields.find((f) => f.key === "country")?.visibility.configurable).toBe(false);
+    expect(pdefs.fields.find((f) => f.key === "region")?.visibility.configurable).toBe(true);
+    const p = (await (await call(m, "GET", "/v1/me/profile")).json()) as { derived: { visibility: string }; fields: { display_name: { visibility: string } } };
+    expect(p.derived.visibility).toBe("public");
+    expect(p.fields.display_name.visibility).toBe("public");
+  });
+
+  it("turning the switch off gives a fresh random number (country + 0 + digits); the 'recommended to change' note ends once the member changed it", async () => {
+    const m = await member("g-a", "甲");
+    const prof = async () => ((await (await call(m, "GET", "/v1/me/profile")).json()) as { fields: { member_number: { value: { country: string; number: string }[]; note?: string } } }).fields.member_number;
+    expect((await prof()).note).toBe("隨機產生，不可修改");
+    await enable(m);
+    expect((await prof()).note).toBe("建議修改會員編號");
+    // Changing it once ends the reminder for good, even after the switch goes off and on again.
+    expect((await call(m, "PUT", "/v1/me/profile/fields/member_number", { value: [{ country: "TW", number: "9475831" }] })).status).toBe(200);
+    expect((await prof()).note).toBeUndefined();
+    const off = await call(m, "PUT", "/v1/me/amway/enabled", { enabled: false });
+    const body = (await off.json()) as { enabled: boolean; member_number: { country: string; number: string }[] };
+    expect(body.member_number).toHaveLength(1);
+    expect(body.member_number[0]?.number).toMatch(/^TW0\d{6,9}$/);
+    expect((await prof()).value).toEqual(body.member_number);
+    expect((await prof()).note).toBe("隨機產生，不可修改");
+    await enable(m);
+    expect((await prof()).note).toBeUndefined();
+    // Every time it is turned off the number is drawn again.
+    const again = (await (await call(m, "PUT", "/v1/me/amway/enabled", { enabled: false })).json()) as { member_number: { number: string }[] };
+    expect(again.member_number[0]?.number).not.toBe(body.member_number[0]?.number);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'member_number.reset'").get()?.n).toBe(2);
+  });
+
+  it("a couple bound by an Amway number is unbound when one turns the switch off", async () => {
+    const a = await member("g-a", "甲");
+    const b = await member("g-b", "乙");
+    await enable(a);
+    await enable(b);
+    const bNumber = db.raw.prepare("SELECT country, number FROM member_numbers WHERE member_id = ?").get(b.id);
+    const dup = (await (await call(a, "PUT", "/v1/me/profile/fields/member_number", { value: [bNumber] })).json()) as { duplicate_candidates: { candidate_id: string }[] };
+    expect((await call(a, "POST", "/v1/me/spouse", { candidate_id: dup.duplicate_candidates[0]?.candidate_id })).status).toBe(200);
+    expect((await call(a, "PUT", "/v1/me/amway/enabled", { enabled: false })).status).toBe(200);
+    expect(((await (await call(a, "GET", "/v1/me/spouse")).json()) as { spouse: unknown }).spouse).toBeNull();
+    const na = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
+    const nb = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(b.id)?.number as string;
+    expect(na).not.toBe(nb);
+    expect(na).toMatch(/^TW0\d{6,9}$/);
   });
 });
 
