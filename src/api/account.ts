@@ -10,6 +10,7 @@ import { exportMemberData, listDevices } from "../db/account";
 import { getApp, revokeAppSession, revokeEverything } from "../db/apps";
 import { revokeSession } from "../db/identity";
 import { auditStatement } from "../db/audit";
+import { taipeiIso } from "../lib/time";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
@@ -62,6 +63,25 @@ const exportRoute = createRoute({
   responses: { 200: { description: "My data", content: json(z.record(z.unknown())) }, ...common },
 });
 
+const IndexingSchema = z.object({ allowed: z.boolean() }).openapi("SearchIndexing");
+const getIndexingRoute = createRoute({
+  method: "get",
+  path: "/v1/me/search-indexing",
+  tags: ["account"],
+  summary: "Do I agree that search engines may list my public page? (member site only)",
+  security,
+  responses: { 200: { description: "Setting", content: json(IndexingSchema) }, ...common },
+});
+const putIndexingRoute = createRoute({
+  method: "put",
+  path: "/v1/me/search-indexing",
+  tags: ["account"],
+  summary: "Agree or withdraw: search engines may list my public page (member site only)",
+  security,
+  request: { body: { required: true, content: json(IndexingSchema) } },
+  responses: { 200: { description: "Saved", content: json(IndexingSchema) }, ...common },
+});
+
 export function registerAccountRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   // Sign-in is checked by the shared /v1/me/* middleware (api/profile.ts); centralOnly keeps Apps out.
   app.openapi(listRoute, async (c) => {
@@ -87,6 +107,25 @@ export function registerAccountRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       },
       200,
     );
+  });
+
+  app.openapi(getIndexingRoute, async (c) => {
+    const d = centralOnly(c);
+    if (d) return d as never;
+    const row = await c.env.DB.prepare("SELECT search_indexable FROM members WHERE id = ?").bind(c.get("auth").memberId).first<{ search_indexable: number }>();
+    return c.json({ allowed: row?.search_indexable === 1 }, 200);
+  });
+
+  app.openapi(putIndexingRoute, async (c) => {
+    const d = centralOnly(c);
+    if (d) return d as never;
+    const auth = c.get("auth");
+    const { allowed } = c.req.valid("json");
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE members SET search_indexable = ?, updated_at = ? WHERE id = ?").bind(allowed ? 1 : 0, taipeiIso(deps.now()), auth.memberId),
+      auditStatement(c.env.DB, { actorType: "member", actorId: auth.memberId, action: "member.search_indexing", targetType: "member", targetId: auth.memberId, appId: null, result: "success", requestId: c.get("requestId") }, deps.now()),
+    ]);
+    return c.json({ allowed }, 200);
   });
 
   app.openapi(revokeRoute, async (c) => {

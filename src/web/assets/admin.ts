@@ -65,7 +65,7 @@ export const ADMIN_JS = String.raw`
       (PRIMARY.indexOf(t[1]) >= 0 ? menu : more).appendChild(b);
     });
     if (more.children.length) menu.appendChild(el("details", { class: "more" }, [el("summary", { text: "更多 ▾" }), more]));
-    menu.appendChild(el("a", { href: "/me", text: "會員中心" }));
+    menu.appendChild(el("a", { href: "/my", text: "會員中心" }));
     menu.appendChild(el("a", { href: "/logout", text: "登出" }));
   }
   function overview() {

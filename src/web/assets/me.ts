@@ -1,4 +1,4 @@
-// /assets/me.js — the member's edit page (/me/edit). Built from the field definition APIs (no hard-coded fields,
+// /assets/me.js — the member's edit page (/my/edit). Built from the field definition APIs (no hard-coded fields,
 // labels or options beyond the education rows). textContent only; member input never becomes HTML.
 // Every field has a public/hidden switch and an edit button that turns into 「儲存」 while editing.
 // Written without template literals so it can live in String.raw. Needs /assets/common.js (window.HG).
@@ -17,10 +17,10 @@ export const ME_JS = String.raw`
     return Promise.all([
       api("GET", "/v1/profile/field-definitions"), api("GET", "/v1/me/profile"),
       api("GET", "/v1/amway/field-definitions"), api("GET", "/v1/me/amway"),
-      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/sessions"), api("GET", "/v1/me/social-links"), api("GET", "/v1/social/platforms")
+      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/sessions"), api("GET", "/v1/me/social-links"), api("GET", "/v1/social/platforms"), api("GET", "/v1/me/search-indexing")
     ]).then(function (r) {
-      if (r[1].status === 401) { location.href = "/login?return_to=%2Fme%2Fedit"; return; }
-      S = { defs: r[0].body, profile: r[1].body, adefs: r[2].body, amway: r[3].body, spouse: r[4].body, devices: (r[5].body && r[5].body.sessions) || [], social: (r[6].body && r[6].body.links) || [], platforms: (r[7].body && r[7].body.platforms) || [] };
+      if (r[1].status === 401) { location.href = "/login?return_to=%2Fmy%2Fedit"; return; }
+      S = { defs: r[0].body, profile: r[1].body, adefs: r[2].body, amway: r[3].body, spouse: r[4].body, devices: (r[5].body && r[5].body.sessions) || [], social: (r[6].body && r[6].body.links) || [], platforms: (r[7].body && r[7].body.platforms) || [], indexing: !!(r[8].body && r[8].body.allowed) };
       S.def = {}; S.defs.fields.forEach(function (d) { S.def[d.key] = d; });
       render();
     });
@@ -30,7 +30,7 @@ export const ME_JS = String.raw`
   function shownName() { var f = S.profile.fields.display_name; return (f && f.value) || ""; }
   function numbers() { return S.profile.fields.member_number.value || []; }
   function isAmway() { return !!S.amway.enabled; }
-  function ownPage() { var u = S.profile.fields.member_number.public_url; try { return u ? new URL(u).pathname : "/me"; } catch (e) { return "/me"; } }
+  function ownPage() { var u = S.profile.fields.member_number.public_url; try { return u ? "/my" + new URL(u).pathname : "/my"; } catch (e) { return "/my"; } }
 
   // Public / hidden switch for one or more visibility keys; saves at once.
   function eyeButton(keys, current) {
@@ -438,6 +438,18 @@ export const ME_JS = String.raw`
     return el("section", { class: "card" }, kids);
   }
 
+  function searchCard() {
+    var m = msg();
+    var box = HG.checkbox("是否同意公開給搜尋引擎？", S.indexing, function (on) {
+      S.indexing = on;
+      api("PUT", "/v1/me/search-indexing", { allowed: on }).then(function (r) {
+        if (r.status !== 200) { S.indexing = !on; swap("search"); HG.toast(errText(r)); }
+      });
+    });
+    return el("section", { class: "card" }, [el("h2", { text: "搜尋引擎" }), box,
+      el("p", { class: "help", text: "勾選後，Google 等搜尋引擎可以收錄您的公開頁（只有您設為公開的資料）。不勾選則不會被收錄。" }), m]);
+  }
+
   // ---- life number chart (same drawing data as the starry.phd member center) ----
   var CHART_ROWS = [[1, 4, 7], [2, 5, 8], [3, 6, 9]];
   function cell(n, r) {
@@ -527,6 +539,7 @@ export const ME_JS = String.raw`
     (S.defs.blocks || []).slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (blk) {
       var make = makers[blk.key], node = make ? make() : null; if (node) { root.appendChild(node); NODES[blk.key] = node; }
     });
+    var se = searchCard(); root.appendChild(se); NODES.search = se; MAKERS.search = searchCard;
     var sp = spouseCard(); if (sp) root.appendChild(sp);
     root.appendChild(devicesCard());
     root.appendChild(deletionCard());

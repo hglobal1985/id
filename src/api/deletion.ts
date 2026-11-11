@@ -32,7 +32,7 @@ export function registerDeletionRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     if (d) return d as never;
     const auth = c.get("auth");
     if (epochSeconds(deps.now()) - auth.authTime > REAUTH_MAX_AGE) {
-      return c.json(errorBody("reauth_required", "為了確認是您本人，請重新登入後再刪除帳號", c.get("requestId"), { login_url: "/login?return_to=%2Fme%2Fedit" }), 401);
+      return c.json(errorBody("reauth_required", "為了確認是您本人，請重新登入後再刪除帳號", c.get("requestId"), { login_url: "/login?return_to=%2Fmy%2Fedit" }), 401);
     }
     const r = await deleteAccount(c.env.DB, auth.memberId, deps.now(), c.get("requestId"));
     if (r === "last_super_admin") return c.json(errorBody("last_super_admin", "系統至少要保留一位超級管理員，請先把角色交給其他人。", c.get("requestId")), 409);

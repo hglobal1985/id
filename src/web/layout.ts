@@ -58,7 +58,7 @@ function memberNav(nav: SiteNav): string {
   const on = (href: string) => (path === href || path.startsWith(`${href}/`) ? ' class="on" aria-current="page"' : "");
   const u = nav.user ?? { name: "我", initials: "H", avatar_url: null };
   return `<nav class="starnav" aria-label="主選單">
-  <a class="me${path === "/me" ? " on" : ""}" href="/me" title="${escapeHtml(u.name)}">${avatarBubble(u, "sm", u.name)}<span class="nm">${escapeHtml(clipName(u.name, 4))}</span>${u.rank ? `<span class="rank rk${u.rank.size}" title="${escapeHtml(u.rank.text)}">${escapeHtml(u.rank.text)}</span>` : ""}</a>
+  <a class="me${path === "/my" ? " on" : ""}" href="/my" title="${escapeHtml(u.name)}">${avatarBubble(u, "sm", u.name)}<span class="nm">${escapeHtml(clipName(u.name, 4))}</span>${u.rank ? `<span class="rank rk${u.rank.size}" title="${escapeHtml(u.rank.text)}">${escapeHtml(u.rank.text)}</span>` : ""}</a>
   ${nav.staff ? `<a href="/admin"${on("/admin")}>後台</a>` : ""}
   ${bellLink(nav.unread ?? 0, path === NOTIFICATIONS_PATH)}
   ${appLauncher(path === APPS_PATH)}
@@ -75,22 +75,23 @@ function adminBar(nav: SiteNav): string {
 </header>`;
 }
 
-export function sitePage(opts: { title: string; body: string; script?: string | string[]; nav?: SiteNav; admin?: boolean }): string {
+/** `bare`: the public member page — no menu, no footer. `index`: the member agreed to be listed by search engines. */
+export function sitePage(opts: { title: string; body: string; script?: string | string[]; nav?: SiteNav; admin?: boolean; bare?: boolean; index?: boolean }): string {
   const nav: SiteNav = opts.nav ?? { signedIn: false };
-  const header = opts.admin ? adminBar(nav) : memberNav(nav);
+  const header = opts.bare ? "" : opts.admin ? adminBar(nav) : memberNav(nav);
   return `<!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
+<meta name="robots" content="${opts.index ? "index,follow" : "noindex"}">
 <title>會員中心</title>
 <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body${opts.admin ? ' class="admin"' : ""}>
 ${header}
 <main class="wrap">${opts.body}</main>
-<footer class="foot"><a href="/privacy">隱私權政策</a><a href="/privacy/amway">完整隱私說明</a></footer>
+${opts.bare ? "" : '<footer class="foot"><a href="/privacy">隱私權政策</a><a href="/privacy/amway">完整隱私說明</a></footer>'}
 ${[opts.script ?? []].flat().map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("\n")}
 </body>
 </html>`;
