@@ -83,6 +83,8 @@ describe("pages", () => {
     res = await req(a, "GET", "/me/edit");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
+    // The page shrinks avatars and icons in a canvas first, which needs blob: images.
+    expect(res.headers.get("content-security-policy")).toContain("img-src 'self' https: data: blob:");
     const editHtml = await res.text();
     expect(editHtml).toContain('src="/assets/common.js"');
     expect(editHtml).toContain('src="/assets/me.js"');

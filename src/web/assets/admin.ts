@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["members.read", "會員", members],
-    ["vocab.manage", "詞庫", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
+    ["vocab.manage", "詞庫", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["social.manage", "社群平台", socialAdmin], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -198,6 +198,63 @@ export const ADMIN_JS = String.raw`
           if (!confirm("恢復成系統預設的順序？")) return;
           api("PUT", "/v1/admin/profile-layout", { order: null }).then(function (res) { if (res.status === 200) { pane.textContent = ""; layoutTab(); } else say(box, false, errText(res)); });
         } }), box
+      ]));
+    });
+  }
+
+  // 社群平台: the platforms a member can pick for a social link (name, order, icon). Icons are shrunk in the page first.
+  function socialAdmin() {
+    api("GET", "/v1/admin/social-platforms").then(function (r) {
+      if (r.status !== 200) { pane.appendChild(card("社群平台", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      var list = r.body.platforms, box = m();
+      function reload() { pane.textContent = ""; socialAdmin(); }
+      function done(res) { if (res.status === 200) reload(); else say(box, false, errText(res)); }
+      function shrink(file, size, cb) {
+        var img = new Image(), url = URL.createObjectURL(file);
+        img.onload = function () {
+          var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement("canvas"); c.width = size; c.height = size;
+          c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+          URL.revokeObjectURL(url);
+          var tries = [["image/png", undefined], ["image/webp", 0.8], ["image/jpeg", 0.7]];
+          (function next(i) { c.toBlob(function (b) { if (b && (b.size <= 32 * 1024 || i === tries.length - 1)) cb(b); else next(i + 1); }, tries[i][0], tries[i][1]); })(0);
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+        img.src = url;
+      }
+      pane.appendChild(el("h1", { text: "社群平台" }));
+      pane.appendChild(el("p", { class: "help", text: "會員在名片上新增社群連結時可以選的平台。按 ▲ ▼ 調整順序後按「儲存順序」；可以改名稱、換圖示（會自動縮小）、刪除（已建立的連結會保留，改顯示通用連結圖示）。「自定義」讓會員自己上傳小圖示，不能刪除。" }));
+      var add = el("input", { type: "text", maxlength: 30, placeholder: "新增一個平台（名稱）", "aria-label": "新平台名稱" });
+      var card1 = el("section", { class: "card" }, [el("h2", { text: "平台（" + list.length + "）" })]);
+      function repaint() {
+        card1.textContent = ""; card1.appendChild(el("h2", { text: "平台（" + list.length + "）" }));
+        list.forEach(function (p, i) { card1.appendChild(buildRow(p, i)); });
+      }
+      function buildRow(p, i) {
+        var file = el("input", { type: "file", accept: "image/*", hidden: true, "aria-label": "選擇圖示" });
+        file.addEventListener("change", function () {
+          var f = file.files && file.files[0]; if (!f) return;
+          shrink(f, 96, function (b) {
+            if (!b) { say(box, false, "這個檔案無法讀取"); return; }
+            fetch("/v1/admin/social-platforms/" + encodeURIComponent(p.key) + "/icon", { method: "PUT", credentials: "same-origin", headers: { "content-type": b.type }, body: b }).then(function (x) { return x.text().then(function (t) { done({ status: x.status, body: t ? JSON.parse(t) : null }); }); });
+          });
+        });
+        function swapWith(j) { var t = list[j]; list[j] = list[i]; list[i] = t; repaint(); }
+        var tools = [
+          el("button", { type: "button", class: "small", text: "▲", "aria-label": "上移 " + p.name, disabled: i === 0, onclick: function () { swapWith(i - 1); } }),
+          el("button", { type: "button", class: "small", text: "▼", "aria-label": "下移 " + p.name, disabled: i === list.length - 1, onclick: function () { swapWith(i + 1); } }),
+          el("button", { type: "button", class: "small", text: "改名", onclick: function () { var n = prompt("平台名稱：", p.name); if (n === null || !n.trim() || n.trim() === p.name) return; api("PUT", "/v1/admin/social-platforms/" + encodeURIComponent(p.key), { name: n.trim() }).then(done); } }),
+          el("button", { type: "button", class: "small", text: "換圖示", onclick: function () { file.click(); } }),
+          p.uploaded_icon ? el("button", { type: "button", class: "small", text: "還原預設圖示", onclick: function () { api("DELETE", "/v1/admin/social-platforms/" + encodeURIComponent(p.key) + "/icon").then(done); } }) : null,
+          p.custom ? null : el("button", { type: "button", class: "small danger", text: "刪除", onclick: function () { if (!confirm("刪除「" + p.name + "」？（已建立的 " + p.links + " 個連結會保留）")) return; api("DELETE", "/v1/admin/social-platforms/" + encodeURIComponent(p.key)).then(done); } }),
+          file
+        ];
+        return el("div", { class: "row" }, [el("div", { class: "inline" }, [el("img", { class: "adm-ico", src: p.icon_url, alt: "" }), el("strong", { text: p.name }), el("span", { class: "help", text: p.links + " 個連結" + (p.custom ? "（會員自己上傳圖示）" : "") })]), el("div", { class: "inline" }, tools)]);
+      }
+      repaint();
+      pane.appendChild(card1);
+      pane.appendChild(el("div", { class: "actions" }, [
+        el("button", { type: "button", class: "primary", text: "儲存順序", onclick: function () { api("POST", "/v1/admin/social-platforms/reorder", { keys: list.map(function (p) { return p.key; }) }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已儲存順序" : errText(res)); }); } }),
+        add, el("button", { type: "button", text: "新增平台", onclick: function () { api("POST", "/v1/admin/social-platforms", { name: add.value }).then(done); } }), box
       ]));
     });
   }

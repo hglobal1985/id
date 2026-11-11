@@ -36,7 +36,7 @@ const parse = (v: string | null): unknown => {
 
 /** Everything the system holds about the member, as one JSON document (the member's own data). */
 export async function exportMemberData(db: D1Database, memberId: string, now: Date): Promise<Record<string, unknown>> {
-  const [member, fields, visibility, numbers, amway, consents, apps] = await Promise.all([
+  const [member, fields, visibility, numbers, amway, consents, apps, links] = await Promise.all([
     db
       .prepare("SELECT id, google_email, google_email_verified, display_name, registration_country, status, created_at, last_login_at FROM members WHERE id = ?")
       .bind(memberId)
@@ -50,6 +50,7 @@ export async function exportMemberData(db: D1Database, memberId: string, now: Da
       .all<{ field_key: string; value: string | null; pending_value: string | null; status: string; updated_at: string }>(),
     db.prepare("SELECT document, version, action, occurred_at FROM consent_records WHERE member_id = ? ORDER BY occurred_at").bind(memberId).all<Record<string, unknown>>(),
     db.prepare("SELECT app_id, first_seen_at, last_seen_at FROM member_apps WHERE member_id = ? ORDER BY app_id").bind(memberId).all<Record<string, unknown>>(),
+    db.prepare("SELECT platform_key, url, label, created_at FROM social_links WHERE member_id = ? ORDER BY sort_order").bind(memberId).all<Record<string, unknown>>(),
   ]);
   return {
     exported_at: taipeiIso(now),
@@ -60,5 +61,6 @@ export async function exportMemberData(db: D1Database, memberId: string, now: Da
     amway: (amway.results ?? []).map((a) => ({ field_key: a.field_key, value: parse(a.value), pending_value: parse(a.pending_value), status: a.status, updated_at: a.updated_at })),
     consents: consents.results ?? [],
     apps: apps.results ?? [],
+    social_links: links.results ?? [],
   };
 }

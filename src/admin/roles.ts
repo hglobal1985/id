@@ -13,6 +13,7 @@ export type Permission =
   | "review" // approve / reject review requests, view the queue
   | "adjust" // adjust the six reviewed fields for a member (treated as approved)
   | "members.read" // look up members
+  | "social.manage" // social platforms: names, order, icons (super admin only)
   | "layout.manage" // order of the profile fields on every member page (super admin only)
   | "vocab.manage" // suggestion vocabularies: edit, merge, delete related words (super admin only)
   | "audit.read"
@@ -21,7 +22,7 @@ export type Permission =
   | "apps.manage"; // register a new App, edit a registration (super admin only)
 
 const MATRIX: Record<Role, Permission[]> = {
-  super_admin: ["review", "adjust", "members.read", "vocab.manage", "layout.manage", "audit.read", "staff.manage", "apps.operate", "apps.manage"],
+  super_admin: ["review", "adjust", "members.read", "vocab.manage", "layout.manage", "social.manage", "audit.read", "staff.manage", "apps.operate", "apps.manage"],
   secretary: ["review", "adjust", "members.read", "audit.read", "apps.operate"],
   reviewer: ["review", "adjust", "members.read"],
 };
