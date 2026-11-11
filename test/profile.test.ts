@@ -74,7 +74,7 @@ describe("field definitions API", () => {
   it("describes every field the API accepts, with groups, scopes, options and info blocks", async () => {
     const res = await call("GET", "/v1/profile/field-definitions", { token: await token() });
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("private, max-age=3600");
+    expect(res.headers.get("cache-control")).toBe("private, max-age=300");
     const d = (await res.json()) as { fields: { key: string; scope: string; options?: { value: string; label: string }[] }[]; info: { key: string; collapsed: boolean }[] };
     expect(d.fields.map((f) => f.key)).toEqual(["member_number", ...FIELD_KEYS]);
     expect(d.fields.find((f) => f.key === "contact_email")?.scope).toBe("profile.contact.write");

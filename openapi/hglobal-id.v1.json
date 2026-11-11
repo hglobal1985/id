@@ -1505,7 +1505,7 @@
         "tags": [
           "profile"
         ],
-        "summary": "Profile field definitions (drives every app's profile page; cache up to 1 hour)",
+        "summary": "Profile field definitions in the order the super admin set (drives every app's profile page; cache up to 5 minutes)",
         "security": [
           {
             "bearer": []
@@ -2606,7 +2606,7 @@
         "tags": [
           "amway"
         ],
-        "summary": "Amway field definitions and option lists (cache up to 1 hour). Rank options are in ladder order.",
+        "summary": "Amway field definitions and option lists in the order the super admin set (cache up to 5 minutes). Rank options are in ladder order.",
         "security": [
           {
             "bearer": []
@@ -3828,6 +3828,134 @@
                   "label",
                   "sort_order",
                   "active"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/profile-layout": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Order of the profile fields on every member page, per group (super admin)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Layout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Save the order of the fields of every group (each group must list exactly its fields); null resets to the built-in order",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "order": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "order"
                 ]
               }
             }

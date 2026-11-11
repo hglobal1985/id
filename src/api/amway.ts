@@ -8,6 +8,7 @@ import { listOptions, readAmwayFields, setAmwayEnabled, writeAmwayField } from "
 import { canonicalTerms, hglobalNorms, recordTerms } from "../db/vocab";
 import { readProfile } from "../db/profile";
 import { isPool } from "../vocab/terms";
+import { loadLayout } from "../db/layout";
 import { AMWAY_FIELDS, HGLOBAL, getAmwayField, systemKey, validateAmwayValue, type AmwayValue } from "../amway/fields";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
@@ -27,7 +28,7 @@ const definitionsRoute = createRoute({
   method: "get",
   path: "/v1/amway/field-definitions",
   tags: ["amway"],
-  summary: "Amway field definitions and option lists (cache up to 1 hour). Rank options are in ladder order.",
+  summary: "Amway field definitions and option lists in the order the super admin set (cache up to 5 minutes). Rank options are in ladder order.",
   security,
   responses: { 200: { description: "Definitions", content: json(z.record(z.unknown()).openapi("AmwayFieldDefinitions")) }, ...common },
 });
@@ -109,13 +110,14 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const denied = missingScope(c, ["amway.read"]);
     if (denied) return denied as never;
     const options = await listOptions(c.env.DB);
-    c.header("cache-control", "private, max-age=3600");
+    const layout = await loadLayout(c.env.DB);
+    c.header("cache-control", "private, max-age=300");
     return c.json(
       {
         enabled_label: "我是Amway會員",
         fields: AMWAY_FIELDS.map((f) => ({
           key: f.key,
-          order: f.order,
+          order: layout.get(f.key) ?? f.order,
           label: f.label,
           ...(f.help ? { help: f.help } : {}),
           type: f.type,

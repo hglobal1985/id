@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["review", "審核", reviews], ["members.read", "會員", members], ["options.manage", "選項", options],
-    ["vocab.manage", "詞庫", function () { vocab(); }], ["deletion.execute", "刪除申請", deletions], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
+    ["vocab.manage", "詞庫", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["deletion.execute", "刪除申請", deletions], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -197,6 +197,40 @@ export const ADMIN_JS = String.raw`
           box
         ].concat(rows.length ? rows : [el("p", { class: "help", text: "這個詞庫還沒有詞。" })])));
       });
+    });
+  }
+
+  // 基本資料設定: the order of the fields on every member's page (per group), set once for everyone.
+  function layoutTab() {
+    api("GET", "/v1/admin/profile-layout").then(function (r) {
+      if (r.status !== 200) { pane.appendChild(card("基本資料設定", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      var groups = r.body.groups, box = m();
+      pane.appendChild(el("h1", { text: "基本資料設定" }));
+      pane.appendChild(el("p", { class: "help", text: "設定「基本資料」「聯絡與地區」「Amway 專區」每個欄位由上到下的順序，全體會員的資料頁、公開頁和 App 都會照這個順序顯示。按 ▲ ▼ 調整，最後按「儲存順序」。學歷、生日、會員編號的位置固定。" }));
+      groups.forEach(function (g) {
+        var list = el("div");
+        function paint() {
+          list.textContent = "";
+          g.fields.forEach(function (f, i) {
+            list.appendChild(el("div", { class: "row" }, [el("div", { class: "row-head" }, [el("strong", { text: (i + 1) + ". " + f.label }), el("div", { class: "row-tools" }, [
+              el("button", { type: "button", class: "small", text: "▲", "aria-label": "上移 " + f.label, disabled: i === 0, onclick: function () { var t = g.fields[i - 1]; g.fields[i - 1] = f; g.fields[i] = t; paint(); } }),
+              el("button", { type: "button", class: "small", text: "▼", "aria-label": "下移 " + f.label, disabled: i === g.fields.length - 1, onclick: function () { var t = g.fields[i + 1]; g.fields[i + 1] = f; g.fields[i] = t; paint(); } })
+            ])])]));
+          });
+        }
+        paint();
+        pane.appendChild(card(g.label, [list]));
+      });
+      pane.appendChild(el("div", { class: "actions" }, [
+        el("button", { type: "button", class: "primary", text: "儲存順序", onclick: function () {
+          var order = {}; groups.forEach(function (g) { order[g.group] = g.fields.map(function (f) { return f.key; }); });
+          api("PUT", "/v1/admin/profile-layout", { order: order }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已儲存，全體會員立即套用" : errText(res)); });
+        } }),
+        el("button", { type: "button", text: "恢復預設順序", onclick: function () {
+          if (!confirm("恢復成系統預設的順序？")) return;
+          api("PUT", "/v1/admin/profile-layout", { order: null }).then(function (res) { if (res.status === 200) { pane.textContent = ""; layoutTab(); } else say(box, false, errText(res)); });
+        } }), box
+      ]));
     });
   }
 

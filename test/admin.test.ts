@@ -216,6 +216,47 @@ describe("options and vocabularies", () => {
   });
 });
 
+describe("profile field order", () => {
+  it("the super admin orders the fields of each group; members, the public page and Apps follow", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const sec = await person("sec", "秘書", ["secretary"]);
+    const m = await amwayMember("m", "小美");
+    expect((await admin(sec, "GET", "/v1/admin/profile-layout")).status).toBe(403);
+    const v = (await (await admin(sa, "GET", "/v1/admin/profile-layout")).json()) as { groups: { group: string; fields: { key: string }[] }[]; customized: boolean };
+    expect(v.groups.map((g) => g.group)).toEqual(["basic", "contact", "amway"]);
+    expect(v.customized).toBe(false);
+    const basic = v.groups[0]!.fields.map((f) => f.key);
+    expect(basic.slice(0, 3)).toEqual(["display_name", "nickname", "motto"]);
+
+    // Must list every field of every group exactly once.
+    const order = Object.fromEntries(v.groups.map((g) => [g.group, g.fields.map((f) => f.key)])) as Record<string, string[]>;
+    expect((await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, basic: order.basic!.slice(1) } })).status).toBe(422);
+    expect((await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, contact: [...order.contact!.slice(1), "bogus"] } })).status).toBe(422);
+    expect((await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, basic: [...order.basic!.slice(0, 2), ...order.basic!.slice(2).reverse()] } })).status).toBe(200);
+    await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, basic: ["interests", ...order.basic!.filter((k) => k !== "interests")], amway: [...order.amway!].reverse() } });
+
+    const defs = (await (await member(m, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; group: string; order: number }[] };
+    const byOrder = defs.fields.filter((f) => f.group === "basic").sort((a, b) => a.order - b.order).map((f) => f.key);
+    expect(byOrder[0]).toBe("interests");
+    const adef = (await (await member(m, "GET", "/v1/amway/field-definitions")).json()) as { fields: { key: string; order: number }[] };
+    expect(adef.fields.slice().sort((a, b) => a.order - b.order)[0]?.key).toBe("upline_platinum");
+
+    // Public page follows the order too.
+    await member(m, "PUT", "/v1/me/profile/fields/interests", { value: ["閱讀"] });
+    await member(m, "PUT", "/v1/me/profile/fields/bio", { value: "簡介文字" });
+    await member(m, "PUT", "/v1/me/profile/visibility", { fields: { interests: "public", bio: "public" } });
+    const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(m.id)?.number as string;
+    const html = await (await app.request(`/${n}`, {}, env)).text();
+    expect(html.indexOf("興趣與專長")).toBeGreaterThan(-1);
+    expect(html.indexOf("興趣與專長")).toBeLessThan(html.indexOf("自我介紹"));
+
+    const reset = await admin(sa, "PUT", "/v1/admin/profile-layout", { order: null });
+    expect(((await reset.json()) as { customized: boolean }).customized).toBe(false);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM profile_layout").get()).toEqual({ n: 0 });
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action IN ('layout.save','layout.reset')").get()?.n).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe("staff management and audit", () => {
   it("super admins set roles after a recent sign-in; the last super admin cannot be removed", async () => {
     const sa = await person("sa", "超管", ["super_admin"]);
