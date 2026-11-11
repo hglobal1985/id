@@ -15,6 +15,7 @@ import {
   selfChangesLastDay,
 } from "../db/member-numbers";
 import { auditStatement } from "../db/audit";
+import { rolesOf } from "../db/staff";
 import { getActiveBinding, otherSide } from "../db/spouse";
 import { publicId, sameList, validateMemberNumbers, type MemberNumberEntry } from "../profile/member-number";
 import { taipeiIso } from "../lib/time";
@@ -47,7 +48,9 @@ export async function putMemberNumbers(c: C, deps: Deps): Promise<Response> {
   }
 
   const { count, oldest } = await selfChangesLastDay(db, memberId, now);
-  if (count >= SELF_CHANGES_PER_DAY) {
+  // The daily limit is for ordinary members; a super administrator (who also tests the system) is not held to it.
+  const unlimited = (await rolesOf(db, memberId)).includes("super_admin");
+  if (!unlimited && count >= SELF_CHANGES_PER_DAY) {
     const retry = retryAfterSeconds(oldest, now);
     c.header("retry-after", String(retry));
     return c.json(errorBody("rate_limited", "24 小時內最多修改 3 次會員編號", c.get("requestId"), { field_key: "member_number", retry_after: retry }), 429);
