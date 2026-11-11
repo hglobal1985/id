@@ -10,6 +10,18 @@ describe("life number chart: 主線 and 副線", () => {
     expect(c.sub_lines).toEqual([[2, 4], [6, 2]]);
   });
 
+  it("a number that only carries the 加總命數 triangle still joins the lines (1985-07-03: 6 is the life number)", () => {
+    const c = lifeChartOf("1985-07-03")!;
+    expect(c.life_number).toBe(6);
+    expect(c.rings[6]).toMatchObject({ black: 0, birthday: false, zodiac: false, talent: 0, life: true }); // a triangle and no circle
+    // marked: 1 3 4 5 7 8 9 (circles) and 6 (triangle)
+    expect(c.lines).toEqual([[4, 5, 6], [7, 8, 9], [1, 4, 7], [3, 6, 9], [1, 5, 9], [3, 5, 7]]);
+    expect(c.sub_lines).toEqual([[4, 8], [8, 6]]);
+    // and they are drawn: 3-6-9 and 8-6
+    const svg = chartHtml(c);
+    expect((svg.match(/<line /g) ?? []).length).toBe(8);
+  });
+
   it("is one fixed-geometry SVG: 主線 solid and 副線 dashed as wide as the circles, a solid triangle behind a white number", () => {
     const html = chartHtml(lifeChartOf("1990-04-15")!);
     expect(html).toContain('<svg class="ln-svg" viewBox="0 0 300 240"');
