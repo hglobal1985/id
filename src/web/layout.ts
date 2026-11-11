@@ -33,15 +33,16 @@ const DOTS = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"
 
 /** The 9-dot button: a plain link to the Apps page. */
 export function appLauncher(on = false): string {
-  return `<a class="launcher${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${APPS_PATH}" aria-label="Apps" title="Apps">${DOTS}</a>`;
+  // Pressing it again while Apps is open closes the screen (back to the member's own page).
+  return `<a class="launcher${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${on ? "/my" : APPS_PATH}" aria-label="${on ? "關閉 Apps" : "Apps"}" title="${on ? "關閉" : "Apps"}">${DOTS}</a>`;
 }
 
 const BELL = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15L6 17z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 21h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 
 /** The bell: a plain link to the notifications page, with the number of unread ones. */
 export function bellLink(unread: number, on = false): string {
-  const label = unread > 0 ? `站內通知（${unread} 則未讀）` : "站內通知";
-  return `<a class="bell${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${NOTIFICATIONS_PATH}" aria-label="${label}" title="${label}">${BELL}${unread > 0 ? `<span class="dot">${unread > 99 ? "99+" : unread}</span>` : ""}</a>`;
+  const label = on ? "關閉站內通知" : unread > 0 ? `站內通知（${unread} 則未讀）` : "站內通知";
+  return `<a class="bell${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${on ? "/my" : NOTIFICATIONS_PATH}" aria-label="${label}" title="${label}">${BELL}${unread > 0 ? `<span class="dot">${unread > 99 ? "99+" : unread}</span>` : ""}</a>`;
 }
 
 /** The round picture: the member's photo, or two initials. `size` is a class (sm, md, lg or empty), never an inline style. */
@@ -55,11 +56,9 @@ export function avatarBubble(user: { initials: string; avatar_url: string | null
 function memberNav(nav: SiteNav): string {
   if (!nav.signedIn) return `<a class="guest-brand" href="/">會員中心</a>`;
   const path = nav.path ?? "";
-  const on = (href: string) => (path === href || path.startsWith(`${href}/`) ? ' class="on" aria-current="page"' : "");
   const u = nav.user ?? { name: "我", initials: "H", avatar_url: null };
   return `<nav class="starnav" aria-label="主選單">
   <a class="me${path === "/my" ? " on" : ""}" href="/my" title="${escapeHtml(u.name)}">${avatarBubble(u, "sm", u.name)}<span class="nm">${escapeHtml(clipName(u.name, 4))}</span>${u.rank ? `<span class="rank rk${u.rank.size}" title="${escapeHtml(u.rank.text)}">${escapeHtml(u.rank.text)}</span>` : ""}</a>
-  ${nav.staff ? `<a href="/admin"${on("/admin")}>後台</a>` : ""}
   ${bellLink(nav.unread ?? 0, path === NOTIFICATIONS_PATH)}
   ${appLauncher(path === APPS_PATH)}
 </nav>`;

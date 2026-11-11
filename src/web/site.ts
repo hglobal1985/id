@@ -191,14 +191,17 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       })
       .join("");
     const nav = await navFor(c, deps, APPS_PATH);
-    // 個人設定 comes first and 登出 last (only when someone is signed in).
+    // 管理員後台 (staff only) comes first, then 個人設定, and 登出 last (only when someone is signed in).
+    const admin = nav.signedIn && nav.staff
+      ? `<div class="lc-row"><a class="lc-main" href="/admin"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span><span class="lc-text"><span class="lc-name">管理員後台</span></span></a></div>`
+      : "";
     const settings = nav.signedIn
       ? `<div class="lc-row"><a class="lc-main" href="/my/edit"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M4.5 20c.8-4 3.6-6 7.5-6s6.7 2 7.5 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span><span class="lc-text"><span class="lc-name">個人設定</span></span></a></div>`
       : "";
     const out = nav.signedIn
       ? `<div class="lc-row"><a class="lc-main" href="/logout"><span class="lc-ico out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lc-text"><span class="lc-name">登出</span></span></a></div>`
       : "";
-    const body = `<h1>Apps</h1><div class="card lc-list">${settings}${rows}${out}${!rows && !nav.signedIn ? '<p class="help">目前沒有可使用的 App。</p>' : ""}</div>`;
+    const body = `<h1>Apps</h1><div class="card lc-list">${admin}${settings}${rows}${out}${!rows && !nav.signedIn ? '<p class="help">目前沒有可使用的 App。</p>' : ""}</div>`;
     return page(c, sitePage({ title: "Apps", nav, body }));
   });
 
