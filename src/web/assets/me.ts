@@ -283,26 +283,53 @@ export const ME_JS = String.raw`
   function refreshSocial() { return api("GET", "/v1/me/social-links").then(function (r) { if (r.status === 200) { S.social = r.body.links; swap("avatar"); } }); }
 
   // ---- avatar ----
-  function squareJpeg(file, done) {
-    var img = new Image(), url = URL.createObjectURL(file);
+  // After a picture is chosen the member frames it: drag to move, slide (or wheel) to zoom; the circle is what is kept.
+  function cropDialog(file, done) {
+    var V = 300, img = new Image(), url = URL.createObjectURL(file);
+    img.onerror = function () { URL.revokeObjectURL(url); done(null, "這個檔案瀏覽器無法讀取（例如 HEIC 格式），請改選 JPEG、PNG 或 WebP 圖片"); };
     img.onload = function () {
-      var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement("canvas"); c.width = 256; c.height = 256;
-      c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 256, 256);
-      URL.revokeObjectURL(url);
-      var q = 0.88;
-      (function attempt() { c.toBlob(function (b) { if (b && b.size > 120 * 1024 && q > 0.4) { q -= 0.12; attempt(); } else done(b); }, "image/jpeg", q); })();
+      var w = img.naturalWidth, h = img.naturalHeight, base = V / Math.min(w, h), zoom = 1, cx = w / 2, cy = h / 2;
+      var cv = el("canvas", { class: "crop-cv", width: V, height: V }), ctx = cv.getContext("2d");
+      var range = el("input", { type: "range", class: "crop-zoom", min: "1", max: "4", step: "0.01", value: "1", "aria-label": "縮放" });
+      function scale() { return base * zoom; }
+      function clamp() { var half = V / scale() / 2; cx = Math.min(Math.max(cx, half), w - half); cy = Math.min(Math.max(cy, half), h - half); }
+      function paint(c, size) { var sw = V / scale(); c.drawImage(img, cx - sw / 2, cy - sw / 2, sw, sw, 0, 0, size, size); }
+      function draw() {
+        clamp(); ctx.clearRect(0, 0, V, V); paint(ctx, V);
+        ctx.save(); ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.beginPath(); ctx.rect(0, 0, V, V); ctx.arc(V / 2, V / 2, V / 2 - 3, 0, Math.PI * 2, true); ctx.fill("evenodd"); ctx.restore();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(V / 2, V / 2, V / 2 - 3, 0, Math.PI * 2); ctx.stroke();
+      }
+      var drag = null;
+      cv.addEventListener("pointerdown", function (e) { drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); });
+      cv.addEventListener("pointermove", function (e) {
+        if (!drag) return; var r = cv.getBoundingClientRect(), f = V / r.width;
+        cx -= (e.clientX - drag.x) * f / scale(); cy -= (e.clientY - drag.y) * f / scale(); drag = { x: e.clientX, y: e.clientY }; draw();
+      });
+      function end() { drag = null; }
+      cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+      cv.addEventListener("wheel", function (e) { e.preventDefault(); zoom = Math.min(4, Math.max(1, zoom - e.deltaY / 400)); range.value = String(zoom); draw(); }, { passive: false });
+      range.addEventListener("input", function () { zoom = Number(range.value); draw(); });
+      function close(blob, err) { URL.revokeObjectURL(url); back.remove(); done(blob, err); }
+      var ok = el("button", { type: "button", class: "primary", text: "使用這張", onclick: function () {
+        var out = document.createElement("canvas"); out.width = 256; out.height = 256; paint(out.getContext("2d"), 256);
+        var q = 0.88; (function attempt() { out.toBlob(function (b) { if (b && b.size > 120 * 1024 && q > 0.4) { q -= 0.12; attempt(); } else close(b, b ? null : "圖片處理失敗，請換一張"); }, "image/jpeg", q); })();
+      } });
+      var back = el("div", { class: "crop-back", role: "dialog", "aria-modal": "true" }, [el("div", { class: "crop-box" }, [
+        el("h2", { text: "調整頭像" }), cv, range, el("p", { class: "help", text: "拖曳移動位置，滑桿縮放；圓圈內是會顯示的範圍。" }),
+        el("div", { class: "actions" }, [ok, el("button", { type: "button", text: "取消", onclick: function () { close(null, null); } })])
+      ])]);
+      document.body.appendChild(back); draw();
     };
-    img.onerror = function () { URL.revokeObjectURL(url); done(null); };
     img.src = url;
   }
   function avatarBlock() {
     var p = S.profile, m = msg(), file = el("input", { type: "file", accept: "image/*", hidden: true, "aria-label": "選擇圖片" });
     function act(method, path) { return function () { api(method, path).then(function (r) { if (r.status === 200) load(); else say(m, false, errText(r)); }); }; }
     file.addEventListener("change", function () {
-      var f = file.files && file.files[0]; if (!f) return;
-      say(m, true, "上傳中…");
-      squareJpeg(f, function (blob) {
-        if (!blob) { say(m, false, "這個檔案無法讀取，請換一張圖片"); return; }
+      var f = file.files && file.files[0]; file.value = ""; if (!f) return;
+      cropDialog(f, function (blob, err) {
+        if (!blob) { if (err) say(m, false, err); return; }
+        say(m, true, "上傳中…");
         api("POST", "/v1/me/profile/avatar", undefined, { type: "image/jpeg", data: blob }).then(function (r) { if (r.status === 200) load(); else say(m, false, errText(r)); });
       });
     });
