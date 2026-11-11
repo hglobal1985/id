@@ -10,6 +10,7 @@ import { ConfigError } from "./oidc/config";
 import { registerProfileRoutes } from "./api/profile";
 import { registerSpouseRoutes } from "./api/spouse";
 import { registerAccountRoutes } from "./api/account";
+import { registerSocialRoutes } from "./api/social";
 import { registerAmwayRoutes } from "./api/amway";
 import { registerEligibilityRoutes } from "./api/eligibility";
 import { registerAdminRoutes } from "./api/admin";
@@ -87,6 +88,7 @@ export function createApp(overrides: Partial<Deps> = {}) {
   registerAmwayRoutes(app, deps);
   registerEligibilityRoutes(app, deps);
   registerAdminRoutes(app, deps);
+  registerSocialRoutes(app, deps);
   registerDeletionRoutes(app, deps);
   registerAppAuthRoutes(app, deps);
   registerAppSsoRoutes(app, deps);

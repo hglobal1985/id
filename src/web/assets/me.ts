@@ -17,10 +17,10 @@ export const ME_JS = String.raw`
     return Promise.all([
       api("GET", "/v1/profile/field-definitions"), api("GET", "/v1/me/profile"),
       api("GET", "/v1/amway/field-definitions"), api("GET", "/v1/me/amway"),
-      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/deletion-requests"), api("GET", "/v1/me/sessions")
+      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/sessions"), api("GET", "/v1/me/social-links"), api("GET", "/v1/social/platforms")
     ]).then(function (r) {
       if (r[1].status === 401) { location.href = "/login?return_to=%2Fme%2Fedit"; return; }
-      S = { defs: r[0].body, profile: r[1].body, adefs: r[2].body, amway: r[3].body, spouse: r[4].body, del: r[5].body, devices: (r[6].body && r[6].body.sessions) || [] };
+      S = { defs: r[0].body, profile: r[1].body, adefs: r[2].body, amway: r[3].body, spouse: r[4].body, devices: (r[5].body && r[5].body.sessions) || [], social: (r[6].body && r[6].body.links) || [], platforms: (r[7].body && r[7].body.platforms) || [] };
       S.def = {}; S.defs.fields.forEach(function (d) { S.def[d.key] = d; });
       render();
     });
@@ -209,6 +209,79 @@ export const ME_JS = String.raw`
     return card("學歷", kids);
   }
 
+  // ---- social links: icons under the name; the + adds one (LINE, IG, Facebook ... or a custom one) ----
+  function smallImage(file, size, limit, done) {
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function () {
+      var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement("canvas"); c.width = size; c.height = size;
+      c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      var tries = [["image/png", undefined], ["image/webp", 0.8], ["image/jpeg", 0.7]];
+      (function next(i) { c.toBlob(function (b) { if (b && (b.size <= limit || i === tries.length - 1)) done(b); else next(i + 1); }, tries[i][0], tries[i][1]); })(0);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); done(null); };
+    img.src = url;
+  }
+  function socialBlock() {
+    var box = el("div"), links = S.social, panel = null;
+    var total = links.length + 1, dense = total > 10;
+    var row = el("div", { class: "socials" + (dense ? " dense" : "") });
+    links.forEach(function (l) {
+      var name = l.label || l.platform_name || "連結";
+      var copy = el("button", { type: "button", class: "soc-copy", text: "複製", onclick: function () {
+        function done(t) { copy.textContent = t; setTimeout(function () { copy.textContent = "複製"; }, 1500); }
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(l.url).then(function () { done("已複製"); }, function () { done("請手動複製"); }); else done("請手動複製");
+      } });
+      row.appendChild(el("div", { class: "soc" }, [
+        el("a", { class: "soc-link", href: l.url, target: "_blank", rel: "noopener noreferrer nofollow", title: name }, [el("img", { class: "soc-ico", src: l.icon_url, alt: name })]), copy,
+        el("button", { type: "button", class: "soc-x", "aria-label": "移除 " + name, text: "×", onclick: function () {
+          if (!confirm("移除「" + name + "」？")) return;
+          api("DELETE", "/v1/me/social-links/" + encodeURIComponent(l.id)).then(function (r) { if (r.status === 200) refreshSocial(); else HG.toast(errText(r)); });
+        } })]));
+    });
+    row.appendChild(el("div", { class: "soc" }, [el("button", { type: "button", class: "soc-plus", "aria-label": "新增社群", onclick: function () { if (panel) { panel.remove(); panel = null; } else { panel = addPanel(function () { panel = null; }); box.appendChild(panel); } } }, [HG.icon("plus")]), el("span", { class: "soc-tag", text: "新增社群" })]));
+    box.appendChild(row);
+    return box;
+  }
+  function addPanel(onClose) {
+    var m = msg(), key = S.platforms.length ? S.platforms[0].key : "", iconBlob = null;
+    var dd = HG.dropdown({ options: S.platforms.map(function (p) { return { value: p.key, label: p.name }; }), value: key, block: true, searchable: true, onchange: function (v) { key = v; paintCustom(); } });
+    var url = el("input", { type: "url", placeholder: "貼上你的個人頁網址（https://…）", "aria-label": "網址" });
+    var label = el("input", { type: "text", maxlength: 30, placeholder: "名稱（選填）", "aria-label": "名稱" });
+    var file = el("input", { type: "file", accept: "image/*", hidden: true, "aria-label": "選擇圖示" });
+    var preview = el("img", { class: "soc-preview", alt: "", hidden: true });
+    var custom = el("div");
+    function isCustom() { return S.platforms.filter(function (p) { return p.key === key; }).map(function (p) { return p.custom; })[0] === true; }
+    function paintCustom() {
+      custom.textContent = "";
+      if (!isCustom()) { iconBlob = null; return; }
+      custom.appendChild(el("div", { class: "gap" })); custom.appendChild(label);
+      custom.appendChild(el("div", { class: "inline" }, [el("button", { type: "button", class: "small", text: "上傳圖示（選填）", onclick: function () { file.click(); } }), preview, file]));
+    }
+    file.addEventListener("change", function () {
+      var f = file.files && file.files[0]; if (!f) return;
+      smallImage(f, 64, 16 * 1024, function (b) { if (!b) { say(m, false, "這個檔案無法讀取"); return; } iconBlob = b;
+        // A data: address (the page's CSP allows images from data:, not from blob:).
+        var reader = new FileReader(); reader.onload = function () { preview.src = reader.result; preview.hidden = false; }; reader.readAsDataURL(b);
+      });
+    });
+    paintCustom();
+    var panel = el("div", { class: "soc-panel" }, [
+      el("label", { text: "選擇社群" }), dd.el, el("div", { class: "gap" }), url, custom, el("div", { class: "actions" }, [
+        el("button", { type: "button", class: "primary", text: "新增", onclick: function () {
+          var body = { platform_key: key, url: url.value.trim() }; if (isCustom() && label.value.trim()) body.label = label.value.trim();
+          api("POST", "/v1/me/social-links", body).then(function (r) {
+            if (r.status !== 200) { say(m, false, errText(r)); return; }
+            if (iconBlob && isCustom()) api("PUT", "/v1/me/social-links/" + encodeURIComponent(r.body.id) + "/icon", undefined, { type: iconBlob.type, data: iconBlob }).then(function () { refreshSocial(); });
+            else refreshSocial();
+          });
+        } }),
+        el("button", { type: "button", text: "取消", onclick: function () { panel.remove(); onClose(); } }), m])
+    ]);
+    return panel;
+  }
+  function refreshSocial() { return api("GET", "/v1/me/social-links").then(function (r) { if (r.status === 200) { S.social = r.body.links; swap("avatar"); } }); }
+
   // ---- avatar ----
   function squareJpeg(file, done) {
     var img = new Image(), url = URL.createObjectURL(file);
@@ -238,6 +311,7 @@ export const ME_JS = String.raw`
     var badges = (p.badges || []).length ? el("span", { class: "badges" }, p.badges.map(function (b) { return el("span", { class: "rank k-" + b.kind + " rk" + b.size, title: KIND[b.kind] + "：" + b.text, text: b.text }); })) : null;
     return el("section", { class: "card" }, [
       el("div", { class: "hero" }, [HG.bubble("lg", p.avatar.url, shownName()), el("div", {}, [el("div", { class: "nameline" }, [el("h1", { text: shownName() || "我的帳號" }), badges]), el("div", { class: "sub" }, [el("span", { class: "help", text: "會員編號" }), first ? el("span", { class: "badge num", text: first }) : null])])]),
+      socialBlock(),
       el("div", { class: "actions" }, [
         el("button", { type: "button", class: "small", text: "上傳圖片", onclick: function () { file.click(); } }),
         el("button", { type: "button", class: "small", text: "使用 Google 頭像", onclick: act("POST", "/v1/me/profile/avatar/google") }),

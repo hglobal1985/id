@@ -131,4 +131,22 @@ describe("D1 migrations", () => {
     expect(centers.at(-1)).toBe("屏東 221");
     db.close();
   });
+
+  it("0018 turns the old 社群連結 (website) values into custom links and seeds the 18 platforms", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 18)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-11T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('m1','g1','active','${ts}','${ts}')`);
+    db.exec(`INSERT INTO profile_field_values (member_id, field_key, value, updated_at) VALUES ('m1','website','"https://me.example.com/"','${ts}')`);
+    db.exec(`INSERT INTO profile_visibility (member_id, field_key, visibility, updated_at) VALUES ('m1','website','public','${ts}')`);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0018"))), "utf8"));
+    expect(db.prepare("SELECT platform_key, url FROM social_links").all()).toEqual([{ platform_key: "custom", url: "https://me.example.com/" }]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM profile_field_values WHERE field_key = 'website'").get().n).toBe(0);
+    const names = db.prepare("SELECT name FROM social_platforms ORDER BY sort_order").all().map((r) => r.name);
+    expect(names).toHaveLength(18);
+    expect(names[0]).toBe("安麗分享購");
+    expect(names.at(-1)).toBe("自定義");
+    expect(db.prepare("SELECT custom FROM social_platforms WHERE key = 'custom'").get().custom).toBe(1);
+    db.close();
+  });
 });

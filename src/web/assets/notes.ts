@@ -73,3 +73,18 @@ export const SHARE_JS = String.raw`
   });
 })();
 `;
+
+// /assets/social.js — the 複製 tag under each social icon on the public page: copies the link.
+export const SOCIAL_JS = String.raw`
+(function () {
+  "use strict";
+  Array.prototype.forEach.call(document.querySelectorAll(".soc-copy"), function (b) {
+    b.addEventListener("click", function () {
+      var url = b.getAttribute("data-url") || "";
+      function done(t) { var old = b.textContent; b.textContent = t; setTimeout(function () { b.textContent = old; }, 1500); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { done("已複製"); }, function () { done("請手動複製"); });
+      else done("請手動複製");
+    });
+  });
+})();
+`;

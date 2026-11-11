@@ -86,7 +86,7 @@ describe("field definitions API", () => {
     const byKey = Object.fromEntries((d.fields as unknown as { key: string; label: string; suggest?: string; ui?: string; row?: { key: string; label: string }; options?: { value: string; label: string }[] }[]).map((f) => [f.key, f]));
     expect(byKey.occupation).toMatchObject({ type: "tags", suggest: "occupation" });
     expect(byKey.interests).toMatchObject({ label: "興趣與專長", type: "tags", suggest: "interests" });
-    expect(byKey.website?.label).toBe("社群連結");
+    expect(Object.keys(byKey)).not.toContain("website"); // replaced by social links
     expect(byKey.university).toMatchObject({ label: "大學校名", suggest: "school", row: { key: "university", label: "大學" } });
     expect(byKey.grad_dept).toMatchObject({ label: "碩士系名", suggest: "dept", row: { key: "master", label: "碩士" } });
     expect(byKey.phd_school).toMatchObject({ label: "博士校名", row: { key: "doctor", label: "博士" } });
@@ -165,7 +165,6 @@ describe("PUT /v1/me/profile/fields/{field_key}", () => {
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe("not_found");
     for (const [key, value, reason] of [
       ["contact_email", "not-an-email", "format"],
-      ["website", "http://example.com", "format"],
       ["birthday", "2999-01-01", "format"],
       ["birthday", "1990-02-30", "format"],
       ["country", "ZZ", "not_an_option"],
@@ -321,7 +320,6 @@ describe("field rules (unit)", () => {
     expect(validateFieldValue(def("country"), "台灣", today)).toEqual({ ok: true, value: "TW" });
     expect(validateFieldValue(def("country"), "japan", today)).toEqual({ ok: true, value: "JP" });
     expect(validateFieldValue(def("country"), "火星", today).ok).toBe(false);
-    expect(validateFieldValue(def("website"), "https://example.com", today)).toEqual({ ok: true, value: "https://example.com/" });
     expect(validateFieldValue(def("phone"), "+886 912-345-678", today).ok).toBe(true);
     expect(validateFieldValue(def("birthday"), "2026-11-10", today).ok).toBe(true);
     expect(validateFieldValue(def("birthday"), "2026-11-11", today).ok).toBe(false);
@@ -330,7 +328,7 @@ describe("field rules (unit)", () => {
   });
   it("every definition has a write scope and the documented field keys", () => {
     expect(FIELD_KEYS).toEqual([
-      "display_name", "motto", "bio", "occupation", "organization", "website", "languages", "interests",
+      "display_name", "motto", "bio", "occupation", "organization", "languages", "interests",
       "university", "university_dept", "grad_school", "grad_dept", "phd_school", "phd_dept", "locale", "contact_email", "phone", "country", "region", "city", "birthday",
     ]);
     for (const f of fieldDefinitions()) expect(f.scope).toMatch(/^profile\.(basic|contact|birthday)\.write$/);

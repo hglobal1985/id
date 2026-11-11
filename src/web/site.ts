@@ -18,7 +18,7 @@ import { POLICY_SECTIONS, POLICY_TITLE, POLICY_UPDATED } from "./privacy-policy"
 import { SITE_CSS } from "./assets/css";
 import { ME_JS } from "./assets/me";
 import { COMMON_JS } from "./assets/common";
-import { NOTES_JS, SHARE_JS } from "./assets/notes";
+import { NOTES_JS, SHARE_JS, SOCIAL_JS } from "./assets/notes";
 import { chartHtml } from "./chart";
 import { lifeChartOf } from "../profile/astro";
 import { AMWAY_FIELDS } from "../amway/fields";
@@ -28,6 +28,9 @@ import { readNumbers } from "../db/member-numbers";
 import { publicId } from "../profile/member-number";
 import { loadLayout } from "../db/layout";
 import { visibilityOf } from "../profile/visibility";
+import { linkIcon, listLinks, listPlatforms, platformIcon } from "../db/social";
+import { builtinIcon } from "../social/icons";
+import { iconsPerRow } from "../social/rules";
 import { heroBadges } from "../db/badges";
 import { BLOCKS, BLOCK_PREFIX } from "../profile/layout";
 import { fieldDefinitions } from "../profile/definitions";
@@ -90,6 +93,32 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.get("/assets/common.js", (c) => asset(c, COMMON_JS, "text/javascript; charset=utf-8"));
   app.get("/assets/notifications.js", (c) => asset(c, NOTES_JS, "text/javascript; charset=utf-8"));
   app.get("/assets/share.js", (c) => asset(c, SHARE_JS, "text/javascript; charset=utf-8"));
+  app.get("/assets/social.js", (c) => asset(c, SOCIAL_JS, "text/javascript; charset=utf-8"));
+
+  // Social icons: a platform's icon (uploaded, else the built-in drawing) and a member's own icon for a custom link.
+  // Always served as an image only (sandboxed), never as a page.
+  const iconHeaders = (c: C, mime: string) => {
+    c.header("content-type", mime);
+    c.header("cache-control", "public, max-age=86400");
+    c.header("x-content-type-options", "nosniff");
+    c.header("content-security-policy", "default-src 'none'; sandbox");
+  };
+  app.get("/icons/social/platform/:key", async (c) => {
+    const row = await platformIcon(c.env.DB, c.req.param("key"));
+    if (row?.data && row.mime) {
+      iconHeaders(c, row.mime);
+      return c.body(row.data, 200);
+    }
+    const icon = builtinIcon(row?.builtin ?? null);
+    iconHeaders(c, icon.mime);
+    return c.body(icon.base64 ? Uint8Array.from(atob(icon.data), (ch) => ch.charCodeAt(0)) : icon.data, 200);
+  });
+  app.get("/icons/social/link/:id", async (c) => {
+    const row = await linkIcon(c.env.DB, c.req.param("id"));
+    if (!row) return c.body("Not found", 404);
+    iconHeaders(c, row.mime);
+    return c.body(row.data, 200);
+  });
   app.get("/assets/admin.js", (c) => asset(c, ADMIN_JS, "text/javascript; charset=utf-8"));
 
   app.get("/", async (c) => {
@@ -256,7 +285,8 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         }
         const birthday = str("birthday");
         const chart = birthday && pub("derived") ? lifeChartOf(birthday) : null;
-        return { m, id, items, edu, amway, chart, badges: await heroBadges(db, id) };
+        const links = await listLinks(db, id);
+        return { m, id, items, edu, amway, chart, badges: await heroBadges(db, id), links };
       }),
     );
     const nameOf = (p: (typeof profiles)[number]) => {
@@ -292,12 +322,23 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     ];
     const rows = rowBlocks.sort((a, b) => place(a.block) - place(b.block)).map((b) => b.html).join("");
     const amwayRows = p.amway.map((a) => row(a.label, escapeHtml(a.text))).join("");
+    // Social links: one icon per link under the name, centered, 5 per row (7 and smaller when there are more than two rows).
+    const platforms = new Map((await listPlatforms(db)).map((x) => [x.key, x]));
+    const iconSrc = (l: (typeof p.links)[number]) => (l.own_icon ? `/icons/social/link/${l.id}` : `/icons/social/platform/${encodeURIComponent(l.platform_key)}?v=${platforms.get(l.platform_key)?.icon_version ?? 1}`);
+    const socials = p.links.length
+      ? `<div class="socials${iconsPerRow(p.links.length) === 7 ? " dense" : ""}">${p.links
+          .map((l) => {
+            const name = l.label || l.platform_name || "連結";
+            return `<div class="soc"><a class="soc-link" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer nofollow" title="${escapeHtml(name)}"><img class="soc-ico" src="${iconSrc(l)}" alt="${escapeHtml(name)}"></a><button type="button" class="soc-copy" data-url="${escapeHtml(l.url)}">複製</button></div>`;
+          })
+          .join("")}</div>`
+      : "";
     const mine = viewer?.member_id === p.id;
     const share = `<button type="button" class="small" id="share" data-label="分享" data-title="${escapeHtml(nameOf(p))}｜會員中心"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
     const edit = mine ? `<a class="button small primary" href="/me/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>` : "";
     const body =
       `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}</div></div>` +
-      `<section class="card"><div class="hero">${avatar}<div><div class="nameline"><h1>${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` +
+      `<section class="card"><div class="hero">${avatar}<div><div class="nameline"><h1>${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` + socials +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
       `${rows || '<p class="help">還沒有公開的資料。</p>'}</section>` +
       [
@@ -307,6 +348,6 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         .sort((a, b) => place(a.block) - place(b.block))
         .map((b) => b.html)
         .join("");
-    return page(c, sitePage({ title: nameOf(p), nav, body, script: "/assets/share.js" }));
+    return page(c, sitePage({ title: nameOf(p), nav, body, script: ["/assets/share.js", "/assets/social.js"] }));
   });
 }

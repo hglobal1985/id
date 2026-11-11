@@ -4,7 +4,7 @@ import { escapeHtml } from "./pages";
 import { clipName, type RankBadge } from "./nav-text";
 
 export const SITE_CSP =
-  "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+  "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 export const APPS_PATH = "/apps";
 export const NOTIFICATIONS_PATH = "/notifications";
