@@ -46,3 +46,9 @@ export function rankBadge(label: string | null | undefined): RankBadge | null {
   if (!text || text === "無") return null;
   return fitBadge(text);
 }
+
+/** Font step for the name at the top of a page: it always stays on one line, so a long name shrinks (0 = normal). */
+export function nameSize(name: string): 0 | 1 | 2 | 3 {
+  const units = textUnits(name.trim());
+  return units <= 6 ? 0 : units <= 8 ? 1 : units <= 10 ? 2 : 3;
+}

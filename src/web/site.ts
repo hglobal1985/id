@@ -23,11 +23,11 @@ import { chartHtml } from "./chart";
 import { lifeChartOf } from "../profile/astro";
 import { AMWAY_FIELDS } from "../amway/fields";
 import { approvedRankLabel, listOptions, readAmwayFields } from "../db/amway";
-import { rankBadge } from "./nav-text";
+import { nameSize, rankBadge } from "./nav-text";
 import { readNumbers } from "../db/member-numbers";
 import { publicId } from "../profile/member-number";
 import { loadLayout } from "../db/layout";
-import { visibilityOf } from "../profile/visibility";
+import { amwayDefault, visibilityOf } from "../profile/visibility";
 import { linkIcon, listLinks, listPlatforms, platformIcon } from "../db/social";
 import { builtinIcon } from "../social/icons";
 import { iconsPerRow } from "../social/rules";
@@ -278,7 +278,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           const rows = await readAmwayFields(db, id);
           for (const f of AMWAY_FIELDS.slice().sort((a, b) => (layout.get(a.key) ?? a.order) - (layout.get(b.key) ?? b.order))) {
             const row = rows.get(f.key);
-            if (!pub(f.key) || !row || typeof row.value !== "string" || !(row.value_approved || row.status === "not_required")) continue;
+            if (!pub(f.key, amwayDefault(f.key)) || !row || typeof row.value !== "string" || !(row.value_approved || row.status === "not_required")) continue;
             const label = f.type === "select" ? (options.get(f.key)?.find((o) => o.value === row.value)?.label ?? "") : row.value;
             if (label) amway.push({ label: f.label, text: label });
           }
@@ -286,7 +286,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         const birthday = str("birthday");
         const chart = birthday && pub("derived") ? lifeChartOf(birthday) : null;
         const links = await listLinks(db, id);
-        return { m, id, items, edu, amway, chart, badges: await heroBadges(db, id), links };
+        return { m, id, items, edu, amway, chart, badges: await heroBadges(db, id, true), links };
       }),
     );
     const nameOf = (p: (typeof profiles)[number]) => {
@@ -338,12 +338,12 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const edit = mine ? `<a class="button small primary" href="/me/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>` : "";
     const body =
       `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}</div></div>` +
-      `<section class="card"><div class="hero">${avatar}<div><div class="nameline"><h1>${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` + socials +
+      `<section class="card"><div class="hero">${avatar}<div class="hero-main"><div class="nameline"><h1 class="nm nm-${nameSize(nameOf(p))}">${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` + socials +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
       `${rows || '<p class="help">還沒有公開的資料。</p>'}</section>` +
       [
         { block: "amway", html: amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "" },
-        { block: "life", html: p.chart ? `<section class="card"><h2>生命靈數</h2>${chartHtml(p.chart)}</section>` : "" },
+        { block: "birthday", html: p.chart ? `<section class="card"><h2>生命靈數</h2>${chartHtml(p.chart)}</section>` : "" },
       ]
         .sort((a, b) => place(a.block) - place(b.block))
         .map((b) => b.html)

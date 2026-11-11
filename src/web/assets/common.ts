@@ -33,9 +33,15 @@ export const COMMON_JS = String.raw`
     floppy: '<path d="M5 3h11l3 3v15H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 3v6h8V3M8 21v-7h8v7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
     share: '<circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/>',
     plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
+    // The native share symbols: iPhone/iPad/Mac use the box with an up arrow, Android the three connected dots.
+    shareios: '<path d="M12 15V3.5M8 7l4-4 4 4M7.5 10H6a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18 10h-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    shareandroid: '<path d="M8.6 10.9l6.8-4M8.6 13.1l6.8 4" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="5.5" r="3" fill="currentColor"/><circle cx="6" cy="12" r="3" fill="currentColor"/><circle cx="18" cy="18.5" r="3" fill="currentColor"/>',
     tri: '<polygon points="12,3 22,21 2,21" fill="none" stroke="#e5303a" stroke-width="2.6" stroke-linejoin="round"/>'
   };
   HG.icon = function (name, cls) { return svg(ICONS[name], cls); };
+  HG.isApple = function () { var ua = navigator.userAgent || ""; return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1); };
+  /** The share symbol of the device: the Apple one on iPhone, iPad and Mac, otherwise the Android one. */
+  HG.shareIcon = function (cls) { return svg(ICONS[HG.isApple() ? "shareios" : "shareandroid"], cls); };
 
   HG.api = function (method, path, body, raw) {
     var opt = { method: method, credentials: "same-origin", headers: {} };

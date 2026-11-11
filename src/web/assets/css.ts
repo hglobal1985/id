@@ -105,7 +105,10 @@ button[disabled]{opacity:.5;cursor:default}
 .avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;object-fit:cover;background:linear-gradient(135deg,#0c603c,#486c48);color:#fff;font-weight:700;flex:0 0 auto;width:96px;height:96px;font-size:38px;overflow:hidden}
 .avatar.sm{width:32px;height:32px;font-size:13px}.avatar.md{width:64px;height:64px;font-size:25px}.avatar.lg{width:80px;height:80px;font-size:32px}
 .hero{display:flex;align-items:center;gap:14px;margin:4px 0 14px}
-.nameline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}.nameline h1{margin:0}
+.hero-main{min-width:0;flex:1}
+.nameline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}.nameline h1{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;min-width:0}
+.nm-0{font-size:1.4rem}.nm-1{font-size:1.15rem}.nm-2{font-size:.95rem}.nm-3{font-size:.8rem}
+.hero .sub{flex-wrap:nowrap;white-space:nowrap;min-width:0}.hero .sub .badge{overflow:hidden;text-overflow:ellipsis}
 .badges{display:inline-flex;flex-wrap:wrap;gap:4px}
 .rank.k-system{background:var(--green-soft);color:var(--green-d);border-color:#bcd8c6}.rank.k-center{background:#f4f1dc;color:#6b5b12;border-color:#ddd4a0}.hero h1{margin:0 0 4px;word-break:break-word}.hero .sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pagebar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
@@ -177,6 +180,14 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .num-line{display:grid;grid-template-columns:minmax(120px,170px) 1fr auto;gap:8px;align-items:start;margin:6px 0}
 @media (max-width:480px){.num-line{grid-template-columns:1fr;}}
 .actions .small .ico{width:1em;height:1em}
+/* three picture buttons in one full-width row */
+.avbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 6px}
+.avbtns button{min-height:44px;padding:6px 4px;font-size:.95rem;white-space:nowrap}
+/* public address with the big share button at its left */
+.pubrow{display:flex;align-items:center;gap:12px;margin-top:8px}
+.pubtext{min-width:0;display:flex;flex-direction:column}.pubtext a{word-break:break-all}
+.share-big{flex:none;width:56px;height:56px;min-height:56px;padding:0;border-radius:16px;border-color:var(--green);color:var(--green);background:var(--green-soft)}
+.share-big .ico{width:30px;height:30px}
 /* social links: icons under the name, centered; 5 per row, 7 (smaller) when there are more than two rows */
 .socials{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 0;margin:2px 0 14px}
 .soc{position:relative;width:20%;display:flex;flex-direction:column;align-items:center;gap:4px}

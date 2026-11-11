@@ -49,9 +49,14 @@ const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 
 type Link = { id: string; platform_key: string; platform_name: string | null; url: string; label: string | null; icon_url: string; custom: boolean };
 
 describe("social rules (unit)", () => {
-  it("urls: https only, real host, no credentials, no spaces", () => {
+  it("urls: a missing http:// or https:// is added (https), a typed one is kept; real host, no credentials, no spaces", () => {
     expect(validateSocialUrl(" https://www.instagram.com/abc ")).toEqual({ ok: true, url: "https://www.instagram.com/abc" });
-    for (const bad of ["http://a.example.com", "javascript:alert(1)", "https://localhost", "https://u:p@a.example.com", "https://a.example.com/a b", "", 5, "x".repeat(301)]) {
+    expect(validateSocialUrl("www.instagram.com/abc")).toEqual({ ok: true, url: "https://www.instagram.com/abc" });
+    expect(validateSocialUrl("line.me/ti/p/abc")).toEqual({ ok: true, url: "https://line.me/ti/p/abc" });
+    expect(validateSocialUrl("//x.com/me")).toEqual({ ok: true, url: "https://x.com/me" });
+    expect(validateSocialUrl("http://old.example.com/page")).toEqual({ ok: true, url: "http://old.example.com/page" }); // typed http stays
+    expect(validateSocialUrl("HTTPS://Example.com/Path")).toEqual({ ok: true, url: "https://example.com/Path" });
+    for (const bad of ["javascript:alert(1)", "data:text/html,x", "mailto:a@b.co", "ftp://a.example.com", "https://localhost", "localhost", "https://u:p@a.example.com", "https://a.example.com/a b", "", 5, "x".repeat(301)]) {
       expect(validateSocialUrl(bad).ok, String(bad)).toBe(false);
     }
   });
@@ -87,22 +92,26 @@ describe("social links", () => {
   it("adds, lists and removes links; the same platform may be added many times; urls are checked", async () => {
     const a = await person("a", "甲");
     const add = (platform_key: string, url: string, label?: string) => req(a, "POST", "/v1/me/social-links", { platform_key, url, ...(label ? { label } : {}) });
-    expect((await add("line", "http://line.me/x")).status).toBe(422);
+    expect((await add("line", "javascript:alert(1)")).status).toBe(422);
+    const fixed = (await (await add("line", "line.me/ti/p/fix")).json()) as Link; // no scheme typed: https:// is added
+    expect(fixed.url).toBe("https://line.me/ti/p/fix");
+    expect(((await (await add("line", "http://line.me/typed")).json()) as Link).url).toBe("http://line.me/typed"); // typed http stays
+    await req(a, "DELETE", `/v1/me/social-links/${fixed.id}`);
     expect((await add("nope", "https://line.me/x")).status).toBe(422);
     const first = (await (await add("instagram", "https://www.instagram.com/one")).json()) as Link;
     await add("instagram", "https://www.instagram.com/two");
     await add("line", "https://line.me/ti/p/abc");
     const list = (await (await req(a, "GET", "/v1/me/social-links")).json()) as { links: Link[]; max: number };
-    expect(list.links.map((l) => l.url)).toEqual(["https://www.instagram.com/one", "https://www.instagram.com/two", "https://line.me/ti/p/abc"]);
-    expect(list.links[0]?.icon_url).toBe(`${ISSUER}/icons/social/platform/instagram?v=1`);
+    expect(list.links.map((l) => l.url)).toEqual(["http://line.me/typed", "https://www.instagram.com/one", "https://www.instagram.com/two", "https://line.me/ti/p/abc"]);
+    expect(list.links.find((l) => l.platform_key === "instagram")?.icon_url).toBe(`${ISSUER}/icons/social/platform/instagram?v=1`);
     expect(list.max).toBe(30);
     // Someone else's link cannot be removed.
     const b = await person("b", "乙");
     expect((await req(b, "DELETE", `/v1/me/social-links/${first.id}`)).status).toBe(404);
     expect((await req(a, "DELETE", `/v1/me/social-links/${first.id}`)).status).toBe(200);
-    expect(((await (await req(a, "GET", "/v1/me/social-links")).json()) as { links: Link[] }).links).toHaveLength(2);
+    expect(((await (await req(a, "GET", "/v1/me/social-links")).json()) as { links: Link[] }).links).toHaveLength(3);
     // At most 30.
-    for (let i = 0; i < 28; i++) await add("x", `https://x.com/u${i}`);
+    for (let i = 0; i < 27; i++) await add("x", `https://x.com/u${i}`);
     expect((await add("x", "https://x.com/more")).status).toBe(409);
   });
 

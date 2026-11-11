@@ -80,7 +80,7 @@ const DefinitionsSchema = z
     version: z.string(),
     groups: z.array(z.object({ key: z.string(), label: z.string(), order: z.number().int() })),
     fields: z.array(FieldDefinitionSchema),
-    blocks: z.array(z.object({ key: z.string(), label: z.string(), order: z.number().int() })).openapi({ description: "The big blocks of the page in the order the super admin set (avatar, amway, basic, education, contact, birthday, life); render the blocks in this order." }),
+    blocks: z.array(z.object({ key: z.string(), label: z.string(), order: z.number().int() })).openapi({ description: "The big blocks of the page in the order the super admin set (avatar, amway, basic, education, contact, birthday = 生日與生命靈數); render the blocks in this order." }),
     info: z.array(z.object({ key: z.string(), group: z.string(), order: z.number().int(), label: z.string(), type: z.string(), collapsed: z.boolean() })),
     avatar: z.record(z.unknown()),
   })

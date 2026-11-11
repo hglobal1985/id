@@ -239,7 +239,7 @@ export const ME_JS = String.raw`
           api("DELETE", "/v1/me/social-links/" + encodeURIComponent(l.id)).then(function (r) { if (r.status === 200) refreshSocial(); else HG.toast(errText(r)); });
         } })]));
     });
-    row.appendChild(el("div", { class: "soc" }, [el("button", { type: "button", class: "soc-plus", "aria-label": "新增社群", onclick: function () { if (panel) { panel.remove(); panel = null; } else { panel = addPanel(function () { panel = null; }); box.appendChild(panel); } } }, [HG.icon("plus")]), el("span", { class: "soc-tag", text: "新增社群" })]));
+    row.appendChild(el("div", { class: "soc" }, [el("button", { type: "button", class: "soc-plus", "aria-label": "新增連結", onclick: function () { if (panel) { panel.remove(); panel = null; } else { panel = addPanel(function () { panel = null; }); box.appendChild(panel); } } }, [HG.icon("plus")]), el("span", { class: "soc-tag", text: "新增連結" })]));
     box.appendChild(row);
     return box;
   }
@@ -267,7 +267,7 @@ export const ME_JS = String.raw`
     });
     paintCustom();
     var panel = el("div", { class: "soc-panel" }, [
-      el("label", { text: "選擇社群" }), dd.el, el("div", { class: "gap" }), url, custom, el("div", { class: "actions" }, [
+      el("label", { text: "選擇平台" }), dd.el, el("div", { class: "gap" }), url, custom, el("div", { class: "actions" }, [
         el("button", { type: "button", class: "primary", text: "新增", onclick: function () {
           var body = { platform_key: key, url: url.value.trim() }; if (isCustom() && label.value.trim()) body.label = label.value.trim();
           api("POST", "/v1/me/social-links", body).then(function (r) {
@@ -309,16 +309,30 @@ export const ME_JS = String.raw`
     var nums = numbers(), first = nums[0] ? pid(nums[0]) : "";
     var KIND = { system: "系統", center: "中心", rank: "獎銜" };
     var badges = (p.badges || []).length ? el("span", { class: "badges" }, p.badges.map(function (b) { return el("span", { class: "rank k-" + b.kind + " rk" + b.size, title: KIND[b.kind] + "：" + b.text, text: b.text }); })) : null;
+    // The name always stays on one line: a long name takes a smaller font step.
+    var units = 0; Array.from(shownName() || "我的帳號").forEach(function (ch) { units += /[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef\u3000-\u303f]/.test(ch) ? 1 : 0.55; });
+    var nm = units <= 6 ? 0 : units <= 8 ? 1 : units <= 10 ? 2 : 3;
     return el("section", { class: "card" }, [
-      el("div", { class: "hero" }, [HG.bubble("lg", p.avatar.url, shownName()), el("div", {}, [el("div", { class: "nameline" }, [el("h1", { text: shownName() || "我的帳號" }), badges]), el("div", { class: "sub" }, [el("span", { class: "help", text: "會員編號" }), first ? el("span", { class: "badge num", text: first }) : null])])]),
-      socialBlock(),
-      el("div", { class: "actions" }, [
-        el("button", { type: "button", class: "small", text: "上傳圖片", onclick: function () { file.click(); } }),
-        el("button", { type: "button", class: "small", text: "使用 Google 頭像", onclick: act("POST", "/v1/me/profile/avatar/google") }),
-        p.avatar.url ? el("button", { type: "button", class: "small danger", text: "移除頭像", onclick: act("DELETE", "/v1/me/profile/avatar") }) : null, file
+      el("div", { class: "hero" }, [HG.bubble("lg", p.avatar.url, shownName()), el("div", { class: "hero-main" }, [el("div", { class: "nameline" }, [el("h1", { class: "nm nm-" + nm, text: shownName() || "我的帳號" }), badges]), el("div", { class: "sub" }, [el("span", { class: "help", text: "會員編號" }), first ? el("span", { class: "badge num", text: first }) : null])])]),
+      // The three picture buttons sit in one full-width row under the picture.
+      el("div", { class: "avbtns" }, [
+        el("button", { type: "button", text: "上傳圖片", onclick: function () { file.click(); } }),
+        el("button", { type: "button", text: "Google頭像", onclick: act("POST", "/v1/me/profile/avatar/google") }),
+        el("button", { type: "button", class: "danger", text: "移除頭像", disabled: !p.avatar.url, onclick: act("DELETE", "/v1/me/profile/avatar") }), file
       ]),
-      el("div", { class: "help" }, ["頭像一律公開。"]), m
+      el("div", { class: "help" }, ["頭像一律公開。"]), m,
+      socialBlock()
     ]);
+  }
+
+  // The public address with a big share button at its left (the phone's own share sheet; the symbol follows the device).
+  function publicUrlRow(url) {
+    var btn = el("button", { type: "button", class: "share-big", "aria-label": "分享我的公開網址", title: "分享", onclick: function () {
+      if (navigator.share) { navigator.share({ title: shownName() ? shownName() + "｜會員中心" : "會員中心", url: url }).catch(function () {}); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { HG.toast("已複製連結"); }, function () { HG.toast("請手動複製網址"); });
+      else HG.toast("請手動複製網址");
+    } }, [HG.shareIcon()]);
+    return el("div", { class: "pubrow" }, [btn, el("div", { class: "pubtext" }, [el("span", { class: "help", text: "公開網址" }), el("a", { href: url, text: url })])]);
   }
 
   // ---- member number (same logic as starry.phd: random, <country><0 + 6 digits>; Amway members may change it) ----
@@ -329,7 +343,7 @@ export const ME_JS = String.raw`
     function display() {
       var list = numbers();
       return el("div", {}, [el("div", { class: "chips" }, list.map(function (e, i) { return el("span", { class: "badge num", text: pid(e) + (i === 0 ? "（預設）" : "") }); })),
-        f.public_url ? el("div", { class: "help" }, ["公開網址：", el("a", { href: f.public_url, text: f.public_url })]) : null]);
+        f.public_url ? publicUrlRow(f.public_url) : null]);
     }
     var cands = el("div");
     function editor() {
@@ -443,13 +457,14 @@ export const ME_JS = String.raw`
     }
     return el("td", { class: "ln-cell" }, [inner]);
   }
-  function chartCard() {
+  // The 生命靈數 chart inside the birthday block (one block for both).
+  function chartBody() {
     var c = S.profile.life_chart; if (!c) return null;
     function item(cls, label, value, badge) { return el("div", { class: "ln-item " + cls }, [el("span", { text: label }), el("span", { class: "ln-badge " + badge, text: String(value) })]); }
     function legend(cls, text) { return el("div", {}, [el("span", { class: "ln-dot " + cls }), el("span", { text: text })]); }
     var rows = CHART_ROWS.map(function (row) { return el("tr", {}, row.map(function (n) { return cell(n, c.rings[n]); })); });
-    return el("section", { class: "card" }, [
-      el("div", { class: "row-head" }, [el("h2", { text: "生命靈數" }), el("div", { class: "row-tools" }, [lockedPill()])]),
+    return el("div", { class: "row" }, [
+      el("div", { class: "row-head" }, [el("label", { text: "生命靈數" }), el("div", { class: "row-tools" }, [lockedPill()])]),
       el("div", { class: "ln-card" }, [
         el("div", { class: "ln-head" }, [item("z", "星座：" + c.zodiac_name, c.zodiac_number, "ln-b-zodiac"), item("b", "生日數：", c.birthday_number, "ln-b-birthday"), item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent"), item("l", "加總命數：", c.life_number, "ln-b-life")]),
         el("table", { class: "ln-grid", "aria-label": "彩色九宮格" }, rows),
@@ -508,7 +523,7 @@ export const ME_JS = String.raw`
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
       return card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField)));
     }
-    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { return card("生日", [profileField(S.def.birthday)]); }, life: chartCard };
+    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { var ch = chartBody(); return card("生日與生命靈數", [profileField(S.def.birthday), ch]); } };
     (S.defs.blocks || []).slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (blk) {
       var make = makers[blk.key], node = make ? make() : null; if (node) { root.appendChild(node); NODES[blk.key] = node; }
     });

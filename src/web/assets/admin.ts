@@ -222,7 +222,7 @@ export const ADMIN_JS = String.raw`
         img.src = url;
       }
       pane.appendChild(el("h1", { text: "社群平台" }));
-      pane.appendChild(el("p", { class: "help", text: "會員在名片上新增社群連結時可以選的平台。按 ▲ ▼ 調整順序後按「儲存順序」；可以改名稱、換圖示（會自動縮小）、刪除（已建立的連結會保留，改顯示通用連結圖示）。「自定義」讓會員自己上傳小圖示，不能刪除。" }));
+      pane.appendChild(el("p", { class: "help", text: "會員在名片上新增連結時可以選的平台。按 ▲ ▼ 調整順序後按「儲存順序」；可以改名稱、換圖示（會自動縮小）、刪除（已建立的連結會保留，改顯示通用連結圖示）。「自定義」讓會員自己上傳小圖示，不能刪除。" }));
       var add = el("input", { type: "text", maxlength: 30, placeholder: "新增一個平台（名稱）", "aria-label": "新平台名稱" });
       var card1 = el("section", { class: "card" }, [el("h2", { text: "平台（" + list.length + "）" })]);
       function repaint() {

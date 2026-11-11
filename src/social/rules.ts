@@ -8,20 +8,31 @@ export const PLATFORM_ICON_MAX_BYTES = 32 * 1024;
 
 export type UrlCheck = { ok: true; url: string } | { ok: false; message: string };
 
-/** An https address with a real host and no credentials. */
+/**
+ * A web address the member typed. A missing scheme is added (https://); a typed http:// or https:// is kept as typed.
+ * Other schemes (javascript:, data:, mailto: ...) are refused. The host must be real and no credentials are allowed.
+ */
 export function validateSocialUrl(raw: unknown): UrlCheck {
   if (typeof raw !== "string") return { ok: false, message: "請貼上網址" };
-  const v = raw.normalize("NFC").trim();
+  let v = raw.normalize("NFC").trim();
   if (!v || v.length > URL_MAX) return { ok: false, message: `網址不可空白，最多 ${URL_MAX} 字` };
   // eslint-disable-next-line no-control-regex -- refusing control characters is the point
   if (/[\u0000-\u001F\u007F\s]/.test(v)) return { ok: false, message: "網址不可含空白或控制字元" };
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) {
+    if (!/^https?:\/\//i.test(v)) return { ok: false, message: "只能是 http:// 或 https:// 開頭的網址" };
+  } else if (/^(javascript|data|vbscript|mailto|tel|file|blob|about):/i.test(v)) {
+    return { ok: false, message: "只能是網址（http:// 或 https://）" };
+  } else {
+    v = `https://${v.replace(/^\/\//, "")}`;
+  }
   let u: URL;
   try {
     u = new URL(v);
   } catch {
-    return { ok: false, message: "網址格式不正確（請以 https:// 開頭）" };
+    return { ok: false, message: "網址格式不正確" };
   }
-  if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return { ok: false, message: "請輸入 https:// 開頭的網址" };
+  if (u.username || u.password || !u.hostname.includes(".")) return { ok: false, message: "網址格式不正確" };
+  // A typed http:// stays http://; URL() only normalizes the rest (host case, a bare path "/").
   return { ok: true, url: u.toString() };
 }
 
