@@ -1,3 +1,4 @@
+import type { Role } from "./admin/roles";
 /** Worker bindings. Secrets are set by the owner with `wrangler secret put`; never commit values. */
 export interface Env {
   /** Central member database (D1). Bound per environment in wrangler.jsonc. */
@@ -31,7 +32,7 @@ export interface AuthContext {
 
 export interface StaffContext {
   memberId: string;
-  roles: ("super_admin" | "secretary" | "reviewer")[];
+  roles: Role[];
   authTime: number;
 }
 

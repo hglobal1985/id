@@ -200,19 +200,24 @@ describe("fields and review", () => {
     expect((await put(m, "amway_id", "1")).status).toBe(404);
   });
 
-  it("choosing hglobal needs review; rank under hglobal keeps the old value while pending", async () => {
+  it("choosing 寰宇 alone passes at once; naming a center sends the center (and the rank) to review, the rank keeps its old value while pending", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
     let res = await put(m, "education_system", "寰宇");
-    expect(await res.json()).toMatchObject({ value: null, pending_value: "寰宇", status: "pending" });
-    expect((await put(m, "education_center", "台北中心")).status).toBe(200);
-    res = await put(m, "rank", "12");
-    expect(await res.json()).toMatchObject({ value: null, pending_value: "12", status: "pending" });
-    expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_system", "rank"]);
+    expect(await res.json()).toMatchObject({ value: "寰宇", pending_value: null, status: "not_required" });
+    res = await put(m, "rank", "12"); // no center yet: nothing to review
+    expect(await res.json()).toMatchObject({ value: "12", status: "not_required" });
+    expect(await pendingReviews(db)).toEqual([]);
+
+    res = await put(m, "education_center", "台北中心");
+    expect(await res.json()).toMatchObject({ value: null, pending_value: "台北中心", status: "pending" });
+    // the rank saved before the center existed now waits for the same review
+    expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
+    expect(db.raw.prepare("SELECT DISTINCT center_norm FROM amway_review_requests").all()).toEqual([{ center_norm: "台北中心" }]);
 
     for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff-1", ctx());
     let s = await me(m);
-    expect(s.fields.education_system).toMatchObject({ value: "寰宇", status: "approved", pending_value: null });
+    expect(s.fields.education_center).toMatchObject({ value: "台北中心", status: "approved", pending_value: null });
     expect(s.fields.rank).toMatchObject({ value: "12", status: "approved" });
 
     // Changing an approved rank: old value stays during review; rejection keeps the old value.
@@ -227,29 +232,44 @@ describe("fields and review", () => {
     expect(kinds).toEqual(["amway.review.approved", "amway.review.approved", "amway.review.rejected"]);
   });
 
+  it("leaving 寰宇 releases the center and the rank that were only waiting for review", async () => {
+    const m = await member("g-a", "甲");
+    await enable(m);
+    await put(m, "education_system", "寰宇");
+    await put(m, "education_center", "台北中心");
+    expect((await pendingReviews(db)).map((r) => r.field_key)).toEqual(["education_center"]);
+    await put(m, "education_system", "其他體系B");
+    const s = await me(m);
+    expect(s.fields.education_center).toMatchObject({ value: "台北中心", pending_value: null, status: "not_required" });
+    expect(await pendingReviews(db)).toEqual([]);
+  });
+
   it("other education systems need no review and the rank is approved automatically", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
     expect(await (await put(m, "education_system", "其他體系B")).json()).toMatchObject({ status: "not_required", value: "其他體系B" });
     expect(await (await put(m, "rank", "15")).json()).toMatchObject({ status: "not_required", value: "15" });
+    expect(await (await put(m, "education_center", "台北中心")).json()).toMatchObject({ status: "not_required", value: "台北中心" });
     expect(await pendingReviews(db)).toEqual([]);
   });
 
   it("a value that skipped review earlier (staff included) goes through the standard review when it is sent again", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
-    // legacy row: 寰宇 saved without review and never approved
-    db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_system', '\"寰宇\"', NULL, 'not_required', 0, '2026-11-11T10:00:00+08:00')").run(m.id);
-    const res = await put(m, "education_system", "寰宇");
-    expect(await res.json()).toMatchObject({ value: null, pending_value: "寰宇", status: "pending" });
-    expect((await pendingReviews(db)).map((r) => r.field_key)).toEqual(["education_system"]);
+    await put(m, "education_system", "寰宇");
+    // legacy row: the center was saved without review and never approved
+    db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_center', '\"台北中心\"', NULL, 'not_required', 0, '2026-11-11T10:00:00+08:00')").run(m.id);
+    const res = await put(m, "education_center", "台北中心");
+    expect(await res.json()).toMatchObject({ value: null, pending_value: "台北中心", status: "pending" });
+    expect((await pendingReviews(db)).map((r) => r.field_key)).toEqual(["education_center"]);
   });
 
   it("re-sending the same value is idempotent; going back to the effective value cancels the pending change", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
     await put(m, "education_system", "寰宇");
-    await put(m, "education_system", " 寰宇 "); // same term, different spelling
+    await put(m, "education_center", "台北中心");
+    await put(m, "education_center", " 台北中心 "); // same term, different spelling
     expect(await pendingReviews(db)).toHaveLength(1);
     await decideReview(db, (await pendingReviews(db))[0]!.id, "approve", "s", ctx());
     await put(m, "rank", "12");
@@ -319,16 +339,19 @@ describe("spouses share rank", () => {
 
 describe("rules (unit)", () => {
   const hg = new Set(["寰宇"]);
-  it("review decisions", () => {
+  it("review decisions: 寰宇 alone needs none; with a center the center and the rank do", () => {
     const sys = getAmwayField("education_system")!;
+    const center = getAmwayField("education_center")!;
     const rank = getAmwayField("rank")!;
-    expect(needsReview(sys, "寰宇", { effective: null, pending: null }, hg)).toBe(true);
-    expect(needsReview(sys, "  寰宇 ", { effective: null, pending: null }, hg)).toBe(true);
-    expect(needsReview(sys, "其他體系", { effective: null, pending: null }, hg)).toBe(false);
-    expect(needsReview(rank, "12", { effective: "hglobal", pending: null }, hg)).toBe(true);
-    expect(needsReview(rank, "12", { effective: null, pending: "hglobal" }, hg)).toBe(true);
-    expect(needsReview(rank, "12", { effective: "sys_b", pending: null }, hg)).toBe(false);
-    expect(needsReview(getAmwayField("upline_diamond")!, "某鑽石", { effective: "hglobal", pending: null }, hg)).toBe(false);
+    const hgSys = { effective: "hglobal", pending: null };
+    expect(needsReview(sys, "寰宇", { system: hgSys, hasCenter: true })).toBe(false); // the system itself is never reviewed
+    expect(needsReview(center, "台北中心", { system: hgSys, hasCenter: true })).toBe(true);
+    expect(needsReview(center, "台北中心", { system: { effective: "sys_b", pending: null }, hasCenter: true })).toBe(false);
+    expect(needsReview(rank, "12", { system: hgSys, hasCenter: false })).toBe(false); // no center: nothing to review
+    expect(needsReview(rank, "12", { system: hgSys, hasCenter: true })).toBe(true);
+    expect(needsReview(rank, "12", { system: { effective: null, pending: "hglobal" }, hasCenter: true })).toBe(true);
+    expect(needsReview(rank, "12", { system: { effective: "sys_b", pending: null }, hasCenter: true })).toBe(false);
+    expect(needsReview(getAmwayField("upline_diamond")!, "某鑽石", { system: hgSys, hasCenter: true })).toBe(false);
     expect(systemKey("寰宇", hg)).toBe("hglobal");
     expect(systemKey("其他", hg)).toBe("其他");
     expect(systemKey(null, hg)).toBeNull();

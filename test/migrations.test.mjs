@@ -197,4 +197,22 @@ describe("D1 migrations", () => {
     ]);
     db.close();
   });
+
+  it("0022 keeps the staff, allows the new positions and flags 寰宇 as the reviewed system again", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 22)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-11T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('boss','g1','active','${ts}','${ts}')`);
+    db.exec(`INSERT INTO staff_roles (member_id, role, granted_at, granted_by) VALUES ('boss', 'super_admin', '${ts}', NULL)`);
+    db.exec(`UPDATE vocab_terms SET hglobal = 0 WHERE pool = 'education_system' AND norm = '寰宇'`); // the owner had unmarked it
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0022"))), "utf8"));
+    expect(db.prepare("SELECT member_id, role FROM staff_roles").all()).toEqual([{ member_id: "boss", role: "super_admin" }]);
+    for (const role of ["president", "course", "sound", "ticket", "activity", "reviewer", "secretary"]) {
+      db.exec(`INSERT INTO staff_roles (member_id, role, granted_at, granted_by) VALUES ('boss', '${role}', '${ts}', NULL)`);
+    }
+    expect(() => db.exec(`INSERT INTO staff_roles (member_id, role, granted_at, granted_by) VALUES ('boss', 'king', '${ts}', NULL)`)).toThrow();
+    expect(db.prepare("SELECT hglobal FROM vocab_terms WHERE pool = 'education_system' AND norm = '寰宇'").get().hglobal).toBe(1);
+    db.close();
+  });
 });
+

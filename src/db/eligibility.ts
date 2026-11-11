@@ -10,9 +10,13 @@ export async function loadMemberEligibility(db: D1Database, memberId: string): P
   const rows = await readAmwayFields(db, memberId);
   const sys = rows.get("education_system");
   const rank = rows.get("rank");
+  // 寰宇 alone passes at once; a member who also named a regional center is verified once that center was approved by its reviewer.
+  const center = rows.get("education_center");
+  const hasCenter = !!center && (center.value !== null || center.pending_value !== null);
+  const centerOk = !hasCenter || (!!center && center.value !== null && center.value_approved);
   return {
     amwayActive: m.amway_enabled === 1,
-    hglobalVerified: !!sys && sys.value_approved && systemKey(sys.value, hg) === HGLOBAL,
+    hglobalVerified: !!sys && systemKey(sys.value, hg) === HGLOBAL && centerOk,
     approvedRank: rank && rank.value_approved && typeof rank.value === "string" ? rank.value : null,
   };
 }

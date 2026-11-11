@@ -110,25 +110,75 @@ describe("access control", () => {
 });
 
 describe("reviews", () => {
-  it("reviewers are notified, see the queue and decide; the member is notified", async () => {
-    const rv = await person("rv", "審核員", ["reviewer"]);
-    const m = await amwayMember("m", "小美");
-    await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" });
-    expect(db.raw.prepare("SELECT kind FROM notifications WHERE member_id = ?").all(rv.id).map((r) => r.kind)).toEqual(["staff.review.requested"]);
+  /** Gives a staff member a saved (approved) regional center, as a reviewer's own profile does. */
+  const setCenter = (id: string, center: string) =>
+    db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_center', ?, NULL, 'approved', 1, '2026-11-11T10:00:00+08:00')").run(id, JSON.stringify(center));
 
-    const q = (await (await admin(rv, "GET", "/v1/admin/reviews")).json()) as { reviews: { id: string; display_name: string; field_label: string; requested_value: unknown }[] };
+  it("only the reviewers of the SAME center are told, see the queue and decide; the record names who decided", async () => {
+    const rv = await person("rv", "審核員甲", ["reviewer"]);
+    const rv2 = await person("rv2", "審核員乙", ["reviewer"]);
+    const other = await person("rv3", "審核員丙", ["reviewer"]);
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    setCenter(rv.id, "台北中心");
+    setCenter(rv2.id, " 台北中心 ");
+    setCenter(other.id, "高雄 195");
+    const m = await amwayMember("m", "小美");
+    // 寰宇 alone: no review, nobody is told
+    expect(((await (await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" })).json()) as { status: string }).status).toBe("not_required");
+    const told = (id: string) => db.raw.prepare("SELECT kind FROM notifications WHERE member_id = ?").all(id).map((r) => r.kind);
+    expect(told(rv.id)).toEqual([]);
+    // naming a center: every reviewer of that center is told (more than one), the others and the head office are not
+    await member(m, "PUT", "/v1/me/amway/fields/education_center", { value: "台北中心" });
+    expect(told(rv.id)).toEqual(["staff.review.requested"]);
+    expect(told(rv2.id)).toEqual(["staff.review.requested"]);
+    expect(told(other.id)).toEqual([]);
+    expect(told(hq.id)).toEqual([]);
+
+    const q = (await (await admin(rv, "GET", "/v1/admin/reviews")).json()) as { reviews: { id: string; display_name: string; field_label: string; center: string; requested_value: unknown }[] };
     expect(q.reviews).toHaveLength(1);
-    expect(q.reviews[0]).toMatchObject({ display_name: "小美", field_label: "直銷商培訓系統", requested_value: "寰宇" });
-    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").get(rv.id)?.n).toBe(1);
+    expect(q.reviews[0]).toMatchObject({ display_name: "小美", field_label: "地區教育中心", center: "台北中心", requested_value: "台北中心" });
+    // a reviewer of another center sees nothing and may not decide; the head office sees everything
+    expect(((await (await admin(other, "GET", "/v1/admin/reviews")).json()) as { reviews: unknown[] }).reviews).toEqual([]);
+    expect((await admin(other, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(403);
+    expect(((await (await admin(hq, "GET", "/v1/admin/reviews")).json()) as { reviews: unknown[] }).reviews).toHaveLength(1);
+
     expect((await admin(rv, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(200);
-    // Deciding finishes the reviewers' "waiting for review" notice.
-    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").get(rv.id)?.n).toBe(0);
+    // Deciding finishes the reviewers' "waiting for review" notices (also the other reviewer's).
+    for (const id of [rv.id, rv2.id]) expect(db.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND kind = 'staff.review.requested' AND read_at IS NULL").get(id)?.n).toBe(0);
     expect((await admin(rv, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(404);
-    const state = (await (await member(m, "GET", "/v1/me/amway")).json()) as { fields: { education_system: { status: string } } };
-    expect(state.fields.education_system.status).toBe("approved");
+    const state = (await (await member(m, "GET", "/v1/me/amway")).json()) as { fields: { education_center: { status: string } } };
+    expect(state.fields.education_center.status).toBe("approved");
     expect(db.raw.prepare("SELECT actor_type, actor_id FROM audit_log WHERE action = 'amway.review.approve'").get()).toEqual({ actor_type: "staff", actor_id: rv.id });
+    // the review record names the person who decided
+    const hist = (await (await admin(rv2, "GET", "/v1/admin/reviews/history")).json()) as { history: { field_label: string; status: string; decided_by: string }[] };
+    expect(hist.history).toHaveLength(1);
+    expect(hist.history[0]).toMatchObject({ field_label: "地區教育中心", status: "approved", decided_by: "審核員甲" });
+    expect(((await (await admin(other, "GET", "/v1/admin/reviews/history")).json()) as { history: unknown[] }).history).toEqual([]);
   });
 
+  it("with no reviewer for that center the request goes to the head-office secretaries and super admins", async () => {
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const rv = await person("rv", "審核員", ["reviewer"]);
+    setCenter(rv.id, "高雄 195");
+    const m = await amwayMember("m", "小美");
+    await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" });
+    await member(m, "PUT", "/v1/me/amway/fields/education_center", { value: "屏東 221" });
+    const told = (id: string) => db.raw.prepare("SELECT kind FROM notifications WHERE member_id = ?").all(id).map((r) => r.kind);
+    expect(told(hq.id)).toEqual(["staff.review.requested"]);
+    expect(told(sa.id)).toEqual(["staff.review.requested"]);
+    expect(told(rv.id)).toEqual([]);
+  });
+
+  it("the new positions exist: 會長, 課務, 音控, 票務, 活動 (and 審核員, 總部秘書)", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const target = await person("t", "某人");
+    const list = (await (await admin(sa, "GET", "/v1/admin/staff")).json()) as { roles: { role: string; label: string }[] };
+    expect(list.roles.map((r) => r.label)).toEqual(["超級管理員", "總部秘書", "審核員", "會長", "課務", "音控", "票務", "活動"]);
+    const res = await admin(sa, "PUT", `/v1/admin/staff/${target.id}`, { roles: ["president", "course", "sound", "ticket", "activity"] });
+    expect(res.status).toBe(200);
+    expect(db.raw.prepare("SELECT role FROM staff_roles WHERE member_id = ? ORDER BY role").all(target.id).map((r) => r.role)).toEqual(["activity", "course", "president", "sound", "ticket"]);
+  });
   it("reviewers adjust only the six fields", async () => {
     const rv = await person("rv", "審核員", ["reviewer"]);
     const m = await amwayMember("m", "小美");
@@ -184,14 +234,15 @@ describe("options and vocabularies", () => {
     expect((await member(a, "PUT", "/v1/me/amway/fields/education_center", { value: "我的自訂中心" })).status).toBe(200);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'education_center' AND term = '我的自訂中心'").get()?.n).toBe(0);
     expect(((await (await member(a, "GET", "/v1/me/amway")).json()) as { hglobal: boolean }).hglobal).toBe(false);
-    // 寰宇 means H-Global1985: it needs review and unlocks the vocabulary.
-    expect(((await (await member(b, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" })).json()) as { status: string }).status).toBe("pending");
+    // 寰宇 means H-Global1985: choosing it alone needs no review, and it unlocks the vocabulary.
+    expect(((await (await member(b, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" })).json()) as { status: string }).status).toBe("not_required");
     expect(((await (await member(b, "GET", "/v1/me/amway")).json()) as { hglobal: boolean }).hglobal).toBe(true);
     expect((await member(b, "PUT", "/v1/me/amway/fields/education_center", { value: "新北中心" })).status).toBe(200);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'education_center' AND term = '新北中心'").get()?.n).toBe(1);
     // The super admin adds, edits and deletes the center terms; members' values follow edits.
     expect((await admin(sa, "POST", "/v1/admin/vocab/education_center/rename", { from: "新北中心", to: "新北" })).status).toBe(200);
-    expect(((await (await member(b, "GET", "/v1/me/amway")).json()) as { fields: { education_center: { value: string } } }).fields.education_center.value).toBe("新北");
+    // b is 寰宇 with a center, so the center is waiting for review: the rename follows the pending value
+    expect(((await (await member(b, "GET", "/v1/me/amway")).json()) as { fields: { education_center: { pending_value: string } } }).fields.education_center.pending_value).toBe("新北");
     await admin(sa, "POST", "/v1/admin/vocab/education_center/add", { term: "新加坡" });
     const after = (await (await admin(sa, "GET", "/v1/admin/vocab/education_center")).json()) as { terms: { term: string }[] };
     expect(after.terms[16]?.term).toBe("新加坡"); // admin-ordered terms first, then what members typed
@@ -243,7 +294,8 @@ describe("options and vocabularies", () => {
     expect(((await (await member(a, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇學院" })).json()) as { status: string }).status).toBe("not_required");
     expect((await admin(sa, "POST", "/v1/admin/vocab/education_system/hglobal", { term: "寰宇學院", hglobal: true })).status).toBe(200);
     const b = await amwayMember("b", "乙");
-    expect(((await (await member(b, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇學院" })).json()) as { status: string }).status).toBe("pending");
+    expect(((await (await member(b, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇學院" })).json()) as { status: string }).status).toBe("not_required"); // the system alone is never reviewed
+    expect(((await (await member(b, "PUT", "/v1/me/amway/fields/education_center", { value: "新竹 122" })).json()) as { status: string }).status).toBe("pending"); // with a center it is
   });
 });
 

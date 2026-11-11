@@ -21,12 +21,27 @@ export const NOTES_JS = String.raw`
           var num = r.member_number ? (r.member_number.number.indexOf(r.member_number.country) === 0 ? r.member_number.number : r.member_number.country + r.member_number.number) : "";
           return el("div", { class: "note-item unread" }, [
             el("strong", { text: (r.display_name || "會員") + (num ? "（" + num + "）" : "") + "：" + r.field_label }),
+            r.center ? el("div", { class: "help", text: "中心：" + r.center }) : null,
             el("div", { text: "原本：" + show(r.current_value, r.field_key) + " → 申請：" + show(r.requested_value, r.field_key) }),
             el("div", { class: "when", text: when(r.created_at) }),
             el("div", { class: "actions" }, [el("button", { type: "button", class: "small primary", text: "核准", onclick: decide("approve") }), el("button", { type: "button", class: "small danger", text: "駁回", onclick: decide("reject") }), box])
           ]);
         });
-        return el("section", { class: "card" }, [el("h2", { text: "待審核（" + list.length + "）" })].concat(items.length ? items : [el("p", { class: "help", text: "目前沒有待審核的申請。" })]));
+        var pending = el("section", { class: "card" }, [el("h2", { text: "待審核（" + list.length + "）" })].concat(items.length ? items : [el("p", { class: "help", text: "目前沒有待審核的申請。" })]));
+        // The record of decided requests, with the name of the person who decided each one.
+        return api("GET", "/v1/admin/reviews/history").then(function (h) {
+          var done = (h.status === 200 && h.body.history) || [];
+          var rows = done.map(function (r) {
+            var num = r.member_number ? (r.member_number.number.indexOf(r.member_number.country) === 0 ? r.member_number.number : r.member_number.country + r.member_number.number) : "";
+            return el("div", { class: "note-item" }, [
+              el("strong", { text: (r.display_name || "會員") + (num ? "（" + num + "）" : "") + "：" + r.field_label + " " + (r.status === "approved" ? "已核准" : "已駁回") }),
+              r.center ? el("div", { class: "help", text: "中心：" + r.center }) : null,
+              el("div", { text: "申請：" + show(r.requested_value, r.field_key) }),
+              el("div", { class: "when", text: when(r.decided_at) + " 審核人員：" + (r.decided_by || "（未記錄）") })
+            ]);
+          });
+          return el("div", {}, [pending, el("section", { class: "card" }, [el("h2", { text: "審核紀錄" })].concat(rows.length ? rows : [el("p", { class: "help", text: "還沒有審核紀錄。" })]))]);
+        });
       });
     });
   }

@@ -266,7 +266,7 @@ async function renderNotification(
       break;
     case "staff.review.requested":
       title = "新的審核申請";
-      body = "有會員送出需要審核的資料，請到後台處理。";
+      body = `有會員送出需要審核的「${label}」，請在本頁上方的「待審核」處理。`;
       actions = ["open_review_queue"];
       break;
     case "amway.review.adjusted":
