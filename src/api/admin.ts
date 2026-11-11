@@ -17,7 +17,7 @@ import { REAUTH_MAX_AGE, ROLES, ROLE_LABELS, can, permissionsOf, type Permission
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds } from "../lib/time";
 import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
-import { POOLS, POOL_KEYS, isPool } from "../vocab/terms";
+import { POOLS, POOL_KEYS, isPool, normTerm } from "../vocab/terms";
 import { loadOverview } from "../db/overview";
 import { loadLayout, saveLayout } from "../db/layout";
 import { BLOCK_PREFIX, LAYOUT_GROUPS, LAYOUT_GROUP_LABELS, defaultLayout, validateLayout } from "../profile/layout";
@@ -378,6 +378,14 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const def = getAmwayField(field_key);
     if (!def || !REVIEWER_ADJUSTABLE.includes(field_key)) return c.json(errorBody("not_found", "Field cannot be adjusted", c.get("requestId"), { field_key }), 404);
     if (!(await getMember(c.env.DB, member_id))) return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
+    // A reviewer may only adjust members of the own regional center (a member without a center belongs to nobody's center).
+    const scope = await reviewScope(c);
+    if (!scope.all) {
+      const row = (await readAmwayFields(c.env.DB, member_id)).get("education_center");
+      const v = row?.value ?? row?.pending_value ?? null;
+      const memberCenter = typeof v === "string" && v.trim() ? normTerm(v) : null;
+      if (!inScope(scope, memberCenter)) return c.json(errorBody("forbidden", "這位會員不屬於您負責的中心", c.get("requestId"), { required_permission: "adjust" }), 403);
+    }
     const options = (await listOptions(c.env.DB)).get(field_key) ?? [];
     const v = validateAmwayValue(def, c.req.valid("json").value, options);
     if (!v.ok) return c.json(errorBody("invalid_field", v.message, c.get("requestId"), { field_key, reason: v.reason }), 422);

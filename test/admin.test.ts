@@ -179,9 +179,16 @@ describe("reviews", () => {
     expect(res.status).toBe(200);
     expect(db.raw.prepare("SELECT role FROM staff_roles WHERE member_id = ? ORDER BY role").all(target.id).map((r) => r.role)).toEqual(["activity", "course", "president", "sound", "ticket"]);
   });
-  it("reviewers adjust only the six fields", async () => {
+  it("reviewers adjust only the six fields, and only for members of their own center; the head office may adjust anyone", async () => {
+    const setCenter = (id: string, center: string) =>
+      db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_center', ?, NULL, 'approved', 1, '2026-11-11T10:00:00+08:00')").run(id, JSON.stringify(center));
     const rv = await person("rv", "審核員", ["reviewer"]);
+    const other = await person("rv2", "別中心審核員", ["reviewer"]);
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    setCenter(rv.id, "台北中心");
+    setCenter(other.id, "高雄 195");
     const m = await amwayMember("m", "小美");
+    await member(m, "PUT", "/v1/me/amway/fields/education_center", { value: "台北中心" });
     let res = await admin(rv, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "15" });
     expect(res.status).toBe(200);
     expect(((await (await member(m, "GET", "/v1/me/amway")).json()) as { fields: { rank: unknown } }).fields.rank).toMatchObject({ value: "15", status: "approved" });
@@ -190,6 +197,11 @@ describe("reviews", () => {
     res = await admin(rv, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "99" });
     expect(res.status).toBe(422);
     expect((await admin(rv, "GET", "/v1/admin/vocab")).status).toBe(403);
+    // another center's reviewer, and a reviewer without a center, are refused; the head office is not
+    expect((await admin(other, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "12" })).status).toBe(403);
+    const nobody = await person("rv3", "未填中心的審核員", ["reviewer"]);
+    expect((await admin(nobody, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "12" })).status).toBe(403);
+    expect((await admin(hq, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "12" })).status).toBe(200);
   });
 
   it("finds members by number, name or id", async () => {
