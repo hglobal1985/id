@@ -66,9 +66,9 @@ export interface LifeChart {
   talent_numbers: number[];
   life_number: number;
   rings: Record<number, Rings>;
-  /** 主線: the straight lines (row, column or diagonal of the 3x3 grid) whose three numbers all carry a circle. */
+  /** 主線: the straight lines (row, column or diagonal of the 3x3 grid) whose three numbers are all marked (a circle, or the 加總命數 triangle). */
   lines: [number, number, number][];
-  /** 副線: the short diagonals around the centre (2-4, 4-8, 8-6, 6-2) whose two numbers both carry a circle (drawn dashed). */
+  /** 副線: the short diagonals around the centre (2-4, 4-8, 8-6, 6-2) whose two numbers are both marked (a circle, or the 加總命數 triangle; drawn dashed). */
   sub_lines: [number, number][];
 }
 
@@ -98,8 +98,9 @@ export function lifeChartOf(birthday: string): LifeChart | null {
   for (let d = 1; d <= 9; d++) rings[d] = { black: 0, birthday: d === birthdayNumber, zodiac: d === zodiacNumber, talent: 0, life: d === sum };
   for (const d of digits) if (d >= 1) (rings[d] as Rings).black += 1;
   for (const t of talent) for (const ch of String(t)) if (Number(ch) >= 1) (rings[Number(ch)] as Rings).talent += 1;
-  const circled = (n: number) => { const r = rings[n] as Rings; return r.black > 0 || r.birthday || r.zodiac || r.talent > 0; };
-  const lines = GRID_LINES.filter((l) => l.every(circled)).map((l) => [...l] as [number, number, number]);
-  const sub_lines = SUB_LINES.filter((l) => l.every(circled)).map((l) => [...l] as [number, number]);
+  // A number is marked when it has a circle OR it is the 加總命數 (its red triangle): a number that only carries the triangle still joins the lines.
+  const marked = (n: number) => { const r = rings[n] as Rings; return r.black > 0 || r.birthday || r.zodiac || r.talent > 0 || r.life; };
+  const lines = GRID_LINES.filter((l) => l.every(marked)).map((l) => [...l] as [number, number, number]);
+  const sub_lines = SUB_LINES.filter((l) => l.every(marked)).map((l) => [...l] as [number, number]);
   return { zodiac_name: sign, zodiac_number: zodiacNumber, birthday_number: birthdayNumber, talent_numbers: talent, life_number: sum, rings, lines, sub_lines };
 }

@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-11.11";
-export const HANDOFF_UPDATED = "2026-11-11 20:30（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-12.1";
+export const HANDOFF_UPDATED = "2026-11-12 09:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -91,7 +91,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 【視覺規範】以手機閱讀舒適度優先排版：單欄、觸控區域至少 44 px、亮色系（不做深色模式、不使用星空特效）。顏色、字體、圓角、方框、按鈕、名字旁方框、九宮格的標準全部寫在視覺規範文件，要點：背景暖白 #f8f6ef、卡片白底 1 px #e2dfd2 邊線 16 px 圓角、主色深綠 #0c603c（按下 #094a2e、淺綠底 #e7f1ea）、橘 #cc6c0c、危險 #b3261e；系統字型 16 px 行高 1.65；按鈕與輸入框 10 px 圓角、高度至少 40／44；名稱與標籤用全圓角；名字旁的系統／中心／獎銜方框在頁首寬度隨文字、字級固定 .78 rem 不縮小（主選單內才縮小）；會員編號不加框，與「會員編號」文字同一行同字體。",
     `   - 頭像上傳：選好圖片後先出現裁切視窗（圓形範圍，可拖曳移動、縮放），按「使用這張」才縮成約 256 px 方形 JPEG 上傳。置頂按鈕列固定三格：自己的頁面是「編輯｜分享｜預覽公開頁」，編輯畫面是「上一頁｜分享｜預覽公開頁」，位置與高度一致；分享一律分享公開網址（${origin}/<代碼>）。`,
     `   - 社群連結的名稱：圖示下方的名稱框固定兩行高，字多自動縮小到放得下；名稱預設是平台名稱，會員新增時可自訂（label，最多 30 字，例如「健管」）。在編輯畫面點名稱可編輯該連結（PUT /v1/me/social-links/{id}，body {"url","label"}，label 空字串＝改回平台名稱）；在公開畫面點名稱是複製連結，點圖示才在新視窗開啟。`,
-    "   - 生命靈數九宮格：GET /v1/me/profile 的 life_chart 提供 rings、lines（主線，三個數字都有圈的橫／直／斜線，畫實線）、sub_lines（副線，2-4、4-8、8-6、6-2 兩個數字都有圈，畫虛線）。每個數字固定一格，圈再多也不可擠壓排版；加總命數畫實心紅三角形在數字下層、數字改白色；連線藍色、線寬與圈線相同。九宮格下方的圖例（先天數生日數字、生日數、星座數、天賦數、加總命數、主線、副線、橫線、直線、斜線，每一項前面畫對應的圈或線）只在會員自己的頁面（已登入、自己看自己）顯示；對外顯示的公開頁（別人看到的）一律不顯示全部圖例。細節與色碼見視覺規範。",
+    "   - 生命靈數九宮格：GET /v1/me/profile 的 life_chart 提供 rings、lines（主線，三個數字都有圈或三角形的橫／直／斜線，畫實線）、sub_lines（副線，2-4、4-8、8-6、6-2 兩個數字都有圈或三角形，畫虛線）。每個數字固定一格，圈再多也不可擠壓排版；加總命數畫實心紅三角形在數字下層、數字改白色；連線藍色、線寬與圈線相同。九宮格下方的圖例（先天數生日數字、生日數、星座數、天賦數、加總命數、主線、副線、橫線、直線、斜線，每一項前面畫對應的圈或線）只在會員自己的頁面（已登入、自己看自己）顯示；對外顯示的公開頁（別人看到的）一律不顯示全部圖例。細節與色碼見視覺規範。",
     `   - 只在中央會員網站、App 不需要做：「是否同意讓搜尋引擎為你打知名度？」勾選（GET／PUT /v1/me/search-indexing 只開放給中央會員網站）、每頁底部的「網站設計 杜杜龍」署名、公開頁 /<代碼> 的純淨版面（沒有選單、頁尾、分享與編輯按鈕）。自己的頁面網址是 ${origin}/my/<代碼>，編輯頁是 ${origin}/my/edit。`,
     "6. 資格查詢（哪些內容只給符合資格的會員看）：",
     `   - POST ${origin}/v1/eligibility/check，body {"rule":{"audience":"hglobal_verified"|"everyone","min_rank":"<獎銜代碼，選填，只能搭配 hglobal_verified>"}} → {"allowed":true|false,"reason":"…"}。列表頁一次查多筆用 POST ${origin}/v1/eligibility/check-batch，body {"rules":[…最多 50 筆]}，回傳 results 與 rules 順序相同。兩支都需要 amway.read。`,

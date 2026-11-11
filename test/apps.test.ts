@@ -158,7 +158,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-11.11", digest: "9f3450624b8f7da7" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-12.1", digest: "127ec60805773222" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -170,7 +170,7 @@ describe("handoff text", () => {
       expect(text).toContain(must);
     }
     // the design standard: the document is linked and its key numbers are in the text
-    for (const must of ["先讀這三份文件", "docs/design-standard.md", "#f8f6ef", "#0c603c", "裁切視窗", "sub_lines", "有圈", "xxx生命靈數 x年x月x日", "對外顯示的公開頁（別人看到的）一律不顯示全部圖例", "只在中央會員網站、App 不需要做", "/my/edit"]) expect(text).toContain(must);
+    for (const must of ["先讀這三份文件", "docs/design-standard.md", "#f8f6ef", "#0c603c", "裁切視窗", "sub_lines", "有圈或三角形", "xxx生命靈數 x年x月x日", "對外顯示的公開頁（別人看到的）一律不顯示全部圖例", "只在中央會員網站、App 不需要做", "/my/edit"]) expect(text).toContain(must);
     for (const never of ["繁星", "安麗", "Battery", "電池", "Passkey", "Apple 登入"]) expect(text).not.toContain(never);
   });
 });
