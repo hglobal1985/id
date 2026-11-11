@@ -149,7 +149,7 @@ const RAW: FieldDefinition[] = [
   contact({ key: "region", group: "contact", order: 40, label: "縣市／州", type: "text", max_length: 50 }),
   contact({ key: "city", group: "contact", order: 50, label: "鄉鎮市區", type: "text", max_length: 50 }),
   {
-    ...basic({ key: "birthday", group: "birthday", order: 10, label: "生日", help: "格式：YYYY-MM-DD。", type: "date", visibility: "private" }),
+    ...basic({ key: "birthday", group: "birthday", order: 10, label: "生日", type: "date", visibility: "private" }),
     scope: "profile.birthday.write",
   },
 ];

@@ -151,11 +151,12 @@ details.fold>summary{color:var(--fg)}
 /* tables */
 table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left;padding:8px 6px;border-top:1px solid var(--line);vertical-align:top;word-break:break-word}
 .tablewrap{overflow-x:auto}
-.dots{border-collapse:collapse;width:100%;font-size:.9rem}
-.dots th,.dots td{border:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
-.dots th:first-child,.dots td:first-child{text-align:left;white-space:normal;min-width:11em}
+.dots{border-collapse:collapse;width:100%;table-layout:fixed;font-size:.72rem;line-height:1.3}
+.dots th,.dots td{border:1px solid var(--line);padding:5px 2px;text-align:center;word-break:break-all}
+.dots th:first-child,.dots td:first-child{text-align:left;width:34%;padding:5px 6px;word-break:normal}
 .dots th.me{background:var(--green-soft);color:var(--green-d)}
-.dots td.y{color:var(--green);font-size:1.15rem}.dots td:not(.y):not(:first-child){color:#b9c2bc}
+.dots td.y{color:var(--green);font-size:1rem}.dots td:not(.y):not(:first-child){color:#b9c2bc}
+.dateparts{display:flex;gap:8px}.dateparts .dd{flex:1 1 0;min-width:0}.dateparts .dd-btn{padding:6px 10px}
 .filters{display:grid;gap:8px;margin:8px 0}
 .filters select{width:100%;min-height:44px}
 .member-row .linklike{border:0;background:transparent;padding:0;min-height:0;color:var(--green);font-weight:700;text-align:left;text-decoration:underline}

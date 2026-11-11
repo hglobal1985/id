@@ -67,13 +67,16 @@ export const ADMIN_JS = String.raw`
   function permissionsTab() {
     api("GET", "/v1/admin/permissions").then(function (r) {
       if (r.status !== 200) { pane.appendChild(card("權限", [el("p", { class: "msg bad", text: errText(r) })])); return; }
-      var b = r.body, head = el("tr", {}, [el("th", { text: "功能" })].concat(b.roles.map(function (x) { return el("th", { class: b.mine.indexOf(x.role) >= 0 ? "me" : "", text: x.label }); })).concat([el("th", { text: "鑽石級以上獎銜" })]));
-      var rows = b.features.map(function (f) {
-        return el("tr", {}, [el("td", { text: f.label })].concat(b.roles.map(function (x) { return el("td", { class: f.roles.indexOf(x.role) >= 0 ? "y" : "", text: f.roles.indexOf(x.role) >= 0 ? "●" : "·" }); })).concat([el("td", { class: f.diamond ? "y" : "", text: f.diamond ? "●" : "·" })]));
+      // 超級管理員 and 總部秘書 can do everything, so they are not columns; rows only they have are left out too.
+      var b = r.body, cols = b.roles.filter(function (x) { return x.role !== "super_admin" && x.role !== "secretary"; });
+      var feats = b.features.filter(function (f) { return f.diamond || cols.some(function (x) { return f.roles.indexOf(x.role) >= 0; }); });
+      var head = el("tr", {}, [el("th", { text: "功能" })].concat(cols.map(function (x) { return el("th", { class: b.mine.indexOf(x.role) >= 0 ? "me" : "", text: x.label }); })).concat([el("th", { text: "鑽石級以上獎銜" })]));
+      var rows = feats.map(function (f) {
+        return el("tr", {}, [el("td", { text: f.label })].concat(cols.map(function (x) { return el("td", { class: f.roles.indexOf(x.role) >= 0 ? "y" : "", text: f.roles.indexOf(x.role) >= 0 ? "●" : "·" }); })).concat([el("td", { class: f.diamond ? "y" : "", text: f.diamond ? "●" : "·" })]));
       });
       pane.appendChild(card("權限", [
-        el("p", { class: "help", text: "● 表示可以使用，· 表示不行。「鑽石級以上獎銜」是身分條件：本人已審核通過的獎銜達到鑽石級以上，不論職務都可查詢全部會員（只能查詢）。標示色底的欄位是您自己的職務。" }),
-        el("div", { class: "tablewrap" }, [el("table", { class: "dots" }, [head].concat(rows))])
+        el("p", { class: "help", text: "● 可以使用，· 不行。「鑽石級以上獎銜」是身分條件：本人已審核的獎銜達到鑽石級以上，不論職務都可查詢全部會員（只能查詢）。超級管理員與總部秘書擁有全部功能，不列在表內。標色的欄位是您自己的職務。" }),
+        el("table", { class: "dots" }, [head].concat(rows))
       ]));
     });
   }

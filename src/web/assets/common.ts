@@ -59,7 +59,12 @@ export const COMMON_JS = String.raw`
     if (res.body && res.body.error) {
       var c = res.body.error.code;
       if (c === "reauth_required") return "為了確認是您本人，請先重新登入。";
-      if (c === "rate_limited") return "修改太頻繁，請稍後再試。";
+      if (c === "rate_limited") {
+        var d = res.body.error.details || {}, secs = Number(d.retry_after) || 0;
+        // The member number may only be changed 3 times in 24 hours: say so, and when it can be changed again.
+        if (d.field_key === "member_number") return "24 小時內最多修改 3 次會員編號" + (secs ? "，約 " + Math.max(1, Math.ceil(secs / 3600)) + " 小時後可再修改" : "") + "。";
+        return "修改太頻繁，請稍後再試。";
+      }
       if (c === "amway_disabled") return "請先勾選「我是Amway會員」。";
       return res.body.error.message || "儲存失敗";
     }

@@ -138,7 +138,24 @@ export const ME_JS = String.raw`
         return { node: dd.el, get: function () { return dd.get() || null; } };
       }
       if (def.type === "textarea") { input = el("textarea", { maxlength: def.max_length, "aria-label": def.label }); input.value = v || ""; return { node: input, get: function () { return input.value.trim() || null; } }; }
-      var kind = { url: "url", email: "email", phone: "tel", date: "date" }[def.type] || "text";
+      if (def.type === "date") {
+        // Year / month / day in three separate drop-downs (no calendar); the month shows the number and the English short name.
+        var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        function pad(n) { return n < 10 ? "0" + n : String(n); }
+        var parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || "") || [];
+        var yOpts = [{ value: "", label: "年" }], mOpts = [{ value: "", label: "月" }], dOpts = [{ value: "", label: "日" }], i;
+        for (i = new Date().getFullYear(); i >= 1900; i--) yOpts.push({ value: String(i), label: String(i) });
+        MON.forEach(function (n, k) { mOpts.push({ value: pad(k + 1), label: (k + 1) + " " + n }); });
+        for (i = 1; i <= 31; i++) dOpts.push({ value: pad(i), label: String(i) });
+        var yy = HG.dropdown({ options: yOpts, value: parts[1] || "", searchable: true, placeholder: "年" });
+        var mm = HG.dropdown({ options: mOpts, value: parts[2] || "", placeholder: "月" });
+        var dd3 = HG.dropdown({ options: dOpts, value: parts[3] || "", placeholder: "日" });
+        return { node: el("div", { class: "dateparts" }, [yy.el, mm.el, dd3.el]), get: function () {
+          var a = yy.get(), b = mm.get(), c = dd3.get();
+          return !a && !b && !c ? null : (a || "") + "-" + (b || "") + "-" + (c || "");
+        } };
+      }
+      var kind = { url: "url", email: "email", phone: "tel" }[def.type] || "text";
       input = el("input", { type: kind, maxlength: def.max_length, "aria-label": def.label });
       if (def.ui === "autocomplete") { var cur = (def.options.filter(function (o) { return o.value === v; })[0] || {}).label; input.value = cur || ""; node = HG.suggestBox(input, countryFetcher(def)); }
       else { input.value = v || ""; node = def.suggest ? HG.suggestBox(input, suggestFetcher(def.suggest)) : input; }
@@ -498,26 +515,29 @@ export const ME_JS = String.raw`
   }
 
   // ---- life number chart (same drawing data as the starry.phd member center) ----
-  // One SVG with fixed geometry (same as src/web/chart.ts): each number has its own 100x80 cell, so any number of circles
-  // or a shape never moves anything. Outward from the middle: the shape (天賦數 = small solid triangle, 加總命數 = small solid square) behind the white number, then the circles.
-  var RING_COLOR = { black: "#0f172a", birthday: "#f5b400", zodiac: "#8b2fe0" }, TALENT_COLOR = "#3d7a06", LIFE_COLOR = "#e5303a";
-  function centre(n) { return n === 0 ? { x: 350, y: 200 } : { x: 50 + 100 * Math.floor((n - 1) / 3), y: 40 + 80 * ((n - 1) % 3) }; }
+  // One SVG with fixed geometry (same as src/web/chart.ts): each number has its own 72x80 cell, so any number of circles
+  // or a shape never moves anything. Outward from the middle: the shape (天賦數 = outlined triangles, one per occurrence; 加總命數 = small solid square) behind the white number, then the circles.
+  var RING_COLOR = { black: "#0f172a", birthday: "#f5b400", zodiac: "#8b2fe0" }, TALENT_COLOR = "#7ccf1b", LIFE_COLOR = "#e5303a";
+  function centre(n) { return n === 0 ? { x: 252, y: 200 } : { x: 36 + 72 * Math.floor((n - 1) / 3), y: 40 + 80 * ((n - 1) % 3) }; }
   function chartCell(n, r) {
-    var kinds = [], i;
+    var kinds = [], i, k;
     for (i = 0; i < r.black; i++) kinds.push("black");
     if (r.birthday) kinds.push("birthday");
     if (r.zodiac) kinds.push("zodiac");
-    var tri = r.talent > 0, sq = !!r.life, shape = tri || sq;
-    var c = centre(n), r0 = shape ? 21 : 15, step = kinds.length > 1 ? Math.min(4.5, (37 - r0) / (kinds.length - 1)) : 0, out = "";
+    var sq = !!r.life;
+    var c = centre(n), r0 = sq ? 21 : 15, step = kinds.length > 1 ? Math.min(4.5, (34 - r0) / (kinds.length - 1)) : 0, out = "";
     for (i = kinds.length - 1; i >= 0; i--) out += '<circle cx="' + c.x + '" cy="' + c.y + '" r="' + (r0 + i * step).toFixed(2) + '" fill="#f6f8f4" stroke="' + RING_COLOR[kinds[i]] + '" stroke-width="2.5"/>';
-    if (tri) out += '<polygon points="' + c.x + "," + (c.y - 14) + " " + (c.x - 15) + "," + (c.y + 11) + " " + (c.x + 15) + "," + (c.y + 11) + '" fill="' + TALENT_COLOR + '" stroke="' + TALENT_COLOR + '" stroke-width="2" stroke-linejoin="round"/>';
+    for (k = r.talent - 1; k >= 0; k--) {
+      var w = 15 + 6 * k;
+      out += '<polygon points="' + c.x + "," + (c.y - w * 0.95).toFixed(1) + " " + (c.x - w) + "," + (c.y + w * 0.65).toFixed(1) + " " + (c.x + w) + "," + (c.y + w * 0.65).toFixed(1) + '" fill="none" stroke="' + TALENT_COLOR + '" stroke-width="2.5" stroke-linejoin="round"/>';
+    }
     if (sq) out += '<rect x="' + (c.x - 12) + '" y="' + (c.y - 12) + '" width="24" height="24" rx="2" fill="' + LIFE_COLOR + '" stroke="' + LIFE_COLOR + '" stroke-width="2" stroke-linejoin="round"/>';
-    var fill = shape ? "#ffffff" : kinds.length ? "#0f172a" : "#c3cbbf";
-    return out + '<text x="' + c.x + '" y="' + (c.y + (tri && !sq ? 3 : 1)) + '" dy=".35em" text-anchor="middle" font-size="' + (shape ? 18 : 24) + '" fill="' + fill + '">' + n + "</text>";
+    var fill = sq ? "#ffffff" : (kinds.length || r.talent > 0) ? "#0f172a" : "#c3cbbf";
+    return out + '<text x="' + c.x + '" y="' + (c.y + 1) + '" dy=".35em" text-anchor="middle" font-size="' + (sq ? 20 : 26) + '" fill="' + fill + '">' + n + "</text>";
   }
   function chartSvg(c) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"), html = "";
-    s.setAttribute("class", "ln-svg"); s.setAttribute("viewBox", "0 0 400 240"); s.setAttribute("role", "img"); s.setAttribute("aria-label", "彩色九宮格");
+    s.setAttribute("class", "ln-svg"); s.setAttribute("viewBox", "0 0 288 240"); s.setAttribute("role", "img"); s.setAttribute("aria-label", "彩色九宮格");
     function seg(l, extra) { var a = centre(l[0]), b = centre(l[l.length - 1]); return '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"' + extra + "/>"; }
     (c.sub_lines || []).forEach(function (l) { html += seg(l, ' stroke-dasharray="7 6"'); });
     (c.lines || []).forEach(function (l) { html += seg(l, ""); });
@@ -526,8 +546,8 @@ export const ME_JS = String.raw`
   }
   var BLUE = 'stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" fill="none"';
   var LINE_LEGEND = [
-    { icon: '<circle cx="4" cy="12" r="2.6" ' + BLUE + '/><circle cx="20" cy="12" r="2.6" ' + BLUE + '/><line x1="6.6" y1="12" x2="17.4" y2="12" ' + BLUE + "/>", text: "主線：天賦、能力" },
-    { icon: '<circle cx="4" cy="12" r="2.6" ' + BLUE + '/><circle cx="20" cy="12" r="2.6" ' + BLUE + '/><line x1="6.6" y1="12" x2="17.4" y2="12" ' + BLUE + ' stroke-dasharray="2.4 2.4"/>', text: "副線：人際互動、處事態度" },
+    { icon: '<line x1="2" y1="16" x2="22" y2="8" ' + BLUE + "/>", text: "主線：天賦、能力" },
+    { icon: '<line x1="2" y1="16" x2="22" y2="8" ' + BLUE + ' stroke-dasharray="3.2 3.2"/>', text: "副線：人際互動、處事態度" },
     { icon: '<line x1="2" y1="12" x2="22" y2="12" ' + BLUE + "/>", text: "橫線：你如何與世界互動？" },
     { icon: '<line x1="12" y1="2" x2="12" y2="22" ' + BLUE + "/>", text: "直線：你如何運用自己的能力？" },
     { icon: '<line x1="3" y1="21" x2="21" y2="3" ' + BLUE + "/>", text: "斜線：你如何追求人生目標？" }
@@ -556,7 +576,7 @@ export const ME_JS = String.raw`
         el("div", { class: "ln-head" }, [item("z", "星座：" + c.zodiac_name, c.zodiac_number, "ln-b-zodiac"), item("b", "生日數：", c.birthday_number, "ln-b-birthday"), item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent"), item("l", "加總命數：", c.life_number, "ln-b-life")]),
         chartSvg(c),
         el("div", { class: "ln-legend" }, [
-          legend("rg-black", "先天數生日數字"), legend("rg-birthday", "生日數"), legend("rg-zodiac", "星座數"), el("div", {}, [svgIcon("ln-dot-tri", '<polygon points="12,4 21,19 3,19" fill="#3d7a06" stroke="#3d7a06" stroke-width="2" stroke-linejoin="round"/>'), el("span", { text: "天賦數" })]),
+          legend("rg-black", "先天數生日數字"), legend("rg-birthday", "生日數"), legend("rg-zodiac", "星座數"), el("div", {}, [svgIcon("ln-dot-tri", '<polygon points="12,4 21,19 3,19" fill="none" stroke="#7ccf1b" stroke-width="2.4" stroke-linejoin="round"/>'), el("span", { text: "天賦數" })]),
           el("div", {}, [svgIcon("ln-dot-tri", '<rect x="5" y="5" width="14" height="14" rx="2" fill="#e5303a" stroke="#e5303a" stroke-width="2" stroke-linejoin="round"/>'), el("span", { text: "加總命數" })]),
           ].concat(LINE_LEGEND.map(function (l) { return el("div", {}, [svgIcon("ln-dot-tri", l.icon), el("span", { text: l.text })]); })))
       ])

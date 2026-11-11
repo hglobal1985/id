@@ -619,10 +619,8 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.openapi(putStaffRoute, async (c) => {
     const d = deny(c, "staff.manage");
     if (d) return d as never;
+    // Giving or changing positions does not ask for a fresh sign-in (owner decision 2026-11-12).
     const staff = c.get("staff");
-    if (epochSeconds(deps.now()) - staff.authTime > REAUTH_MAX_AGE) {
-      return c.json(errorBody("reauth_required", "請重新登入後再試", c.get("requestId"), { login_url: "/login?return_to=%2F" }), 401);
-    }
     const { member_id } = c.req.valid("param");
     if (!(await getMember(c.env.DB, member_id))) return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
     const roles = [...new Set(c.req.valid("json").roles)] as Role[];

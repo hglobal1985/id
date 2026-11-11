@@ -102,6 +102,19 @@ describe("member number", () => {
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe("rate_limited");
   });
 
+  it("the limit names the field and says when it can be changed again; a super administrator is not held to it", async () => {
+    const a = await member("g-a", "甲");
+    for (const n of ["1", "2", "3"]) await setNumbers(a, [{ country: "TW", number: n }]);
+    const res = await setNumbers(a, [{ country: "TW", number: "4" }]);
+    const err = ((await res.json()) as { error: { message: string; details: { field_key: string; retry_after: number } } }).error;
+    expect(err.details.field_key).toBe("member_number");
+    expect(err.details.retry_after).toBeGreaterThan(0);
+    expect(err.message).toContain("3 次");
+    const boss = await member("g-boss", "超管");
+    db.raw.prepare("INSERT INTO staff_roles (member_id, role, granted_at) VALUES (?, 'super_admin', 'x')").run(boss.id);
+    for (const n of ["11", "12", "13", "14", "15"]) expect((await setNumbers(boss, [{ country: "TW", number: n }])).status, n).toBe(200);
+  });
+
   it("allows duplicates and reports the other member as a spouse candidate (name shown, no member id)", async () => {
     const a = await member("g-a", "甲");
     const b = await member("g-b", "乙");

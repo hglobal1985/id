@@ -485,12 +485,12 @@ describe("staff management and audit", () => {
     expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("last_super_admin");
     expect((await admin(m, "PUT", `/v1/admin/staff/${m.id}`, { roles: ["super_admin"] })).status).toBe(403);
 
+    // No forced sign-in again for position changes, however long ago the super admin signed in.
     now = new Date(now.getTime() + 11 * 60 * 1000);
-    res = await admin(sa, "PUT", `/v1/admin/staff/${m.id}`, { roles: [] });
-    expect(res.status).toBe(401);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("reauth_required");
+    res = await admin(sa, "PUT", `/v1/admin/staff/${m.id}`, { roles: ["secretary", "reviewer"] });
+    expect(res.status).toBe(200);
     const list = (await (await admin(sa, "GET", "/v1/admin/staff")).json()) as { staff: { member_id: string; roles: string[]; display_name: string }[] };
-    expect(list.staff.find((s) => s.member_id === m.id)).toMatchObject({ roles: ["secretary"], display_name: "新秘書" });
+    expect(list.staff.find((s) => s.member_id === m.id)).toMatchObject({ roles: ["reviewer", "secretary"], display_name: "新秘書" });
   });
 
   it("audit can be filtered and holds no member values", async () => {

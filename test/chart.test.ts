@@ -22,14 +22,15 @@ describe("life number chart: 主線 and 副線", () => {
     expect((svg.match(/<line /g) ?? []).length).toBe(8);
   });
 
-  it("天賦數 = small solid triangle, 加總命數 = small solid square, both smaller than the old big triangle, number in white", () => {
-    const html = chartHtml(lifeChartOf("1985-07-03")!); // talent 33 → 3; life 6
-    expect(html).toContain('fill="#3d7a06"'); // the triangle on 3
-    expect(html).toContain('<rect x="138" y="188" width="24" height="24"'); // the square on 6 (x 150, y 200)
-    // the old shape was 38 wide and 32 tall; the new triangle is 30 x 25 and the square 24 x 24
-    const tri = /<polygon points="(\d+),(\d+) (\d+),(\d+) (\d+),(\d+)"/.exec(html)!;
-    expect(Number(tri[5]) - Number(tri[3])).toBeLessThan(38);
-    expect(Number(tri[4]) - Number(tri[2])).toBeLessThan(32);
+  it("天賦數 = outlined triangles, one per occurrence and free to overlap the circles; 加總命數 = a small solid square", () => {
+    const html = chartHtml(lifeChartOf("1985-07-03")!); // talent 33 → 3 twice; life 6
+    // 3 sits at x 36, y 200 and appears twice in 33: two nested outlined triangles
+    expect((html.match(/<polygon points="36,/g) ?? []).length).toBe(2);
+    expect(html).toMatch(/<polygon points="36,[\d.]+ 21,[\d.]+ 51,[\d.]+" fill="none"/); // the inner one (half width 15)
+    expect(html).toMatch(/<polygon points="36,[\d.]+ 15,[\d.]+ 57,[\d.]+" fill="none"/); // the outer one (half width 21)
+    expect(html).toContain('<rect x="96" y="188" width="24" height="24"'); // the square on 6 (x 108, y 200)
+    // the numbers are drawn larger now (26; 20 inside the square)
+    expect(html).toMatch(/<text x="36" y="201" dy="\.35em" text-anchor="middle" font-size="26" fill="#0f172a">3<\/text>/);
   });
 
   it("0 sits right of 9 and has one line only: 3-6-9-0 (the reference chart for 1992-02-03)", () => {
@@ -43,27 +44,27 @@ describe("life number chart: 主線 and 副線", () => {
     const plain = lifeChartOf("1999-11-15")!;
     expect(plain.rings[0]).toMatchObject({ black: 0, talent: 0 });
     expect(plain.lines.every((l) => !l.includes(0))).toBe(true);
-    // drawn at the right end of the bottom row (x 350, y 200), in the 4th column
+    // drawn at the right end of the bottom row (x 252, y 200), in the 4th column
     const html = chartHtml(c);
-    expect(html).toMatch(/<text x="350" y="20[0-9]"[^>]*>0<\/text>/);
-    expect(html).toMatch(/<line x1="50" y1="200" x2="350" y2="200"/); // 3 ... 0
+    expect(html).toMatch(/<text x="252" y="20[0-9]"[^>]*>0<\/text>/);
+    expect(html).toMatch(/<line x1="36" y1="200" x2="252" y2="200"/); // 3 ... 0
   });
 
   it("is one fixed-geometry SVG: 主線 solid and 副線 dashed as wide as the circles, a solid triangle behind a white number", () => {
     const html = chartHtml(lifeChartOf("1990-04-15")!);
-    expect(html).toContain('<svg class="ln-svg" viewBox="0 0 400 240"');
+    expect(html).toContain('<svg class="ln-svg" viewBox="0 0 288 240"');
     expect((html.match(/<line /g) ?? []).length).toBe(4); // 2 main + 2 sub lines (no legend)
     expect((html.match(/stroke-dasharray="7 6"/g) ?? []).length).toBe(2);
     expect(html).toContain('stroke="#2563eb" stroke-width="2.5"'); // same width as the 2.5 circles
-    // 加總命數 (2) = a small solid red square, and 2 is also in the talent number 29: a small solid green triangle below it
-    expect(html).toContain('<rect x="38" y="108" width="24" height="24" rx="2" fill="#e5303a"');
-    expect(html).toContain('<polygon points="50,106 35,131 65,131" fill="#3d7a06"');
-    expect(html.indexOf("<polygon points=\"50,106")).toBeLessThan(html.indexOf('<rect x="38" y="108"')); // the square is on top of the triangle
-    expect(html).toMatch(/<text x="50" y="121" dy="\.35em" text-anchor="middle" font-size="18" fill="#ffffff">2<\/text>/);
-    // 9 is in the talent number 29: a triangle (and its black circles), no bright-green circle any more
-    expect(html).toMatch(/<polygon points="250,\d+ [^"]*" fill="#3d7a06"/);
-    expect(html).not.toContain("#7ccf1b");
-    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) expect(html).toMatch(new RegExp(`<text x="${50 + 100 * Math.floor((n - 1) / 3)}" y="\\d+"[^>]*>${n}</text>`));
+    // 加總命數 (2) = a small solid red square; 2 is also in the talent number 29: an outlined green triangle below the square
+    expect(html).toContain('<rect x="24" y="108" width="24" height="24" rx="2" fill="#e5303a"');
+    expect(html).toMatch(/<polygon points="36,[\d.]+ 21,[\d.]+ 51,[\d.]+" fill="none" stroke="#7ccf1b" stroke-width="2.5"/);
+    expect(html.indexOf('<polygon points="36,')).toBeLessThan(html.indexOf('<rect x="24" y="108"')); // the square is on top
+    expect(html).toMatch(/<text x="36" y="121" dy="\.35em" text-anchor="middle" font-size="20" fill="#ffffff">2<\/text>/);
+    // 9 is in the talent number 29 too: an outlined triangle (and its black circles); talent triangles are never filled
+    expect(html).toMatch(/<polygon points="180,[\d.]+ [^"]*" fill="none" stroke="#7ccf1b"/);
+    expect(html).not.toContain('fill="#7ccf1b"');
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) expect(html).toMatch(new RegExp(`<text x="${36 + 72 * Math.floor((n - 1) / 3)}" y="\\d+"[^>]*>${n}</text>`));
   });
 
   it("the explanations under the grid are only for signed-in members; the clean public page has none", () => {
@@ -75,7 +76,10 @@ describe("life number chart: 主線 and 副線", () => {
     for (const t of ["先天數生日數字", "加總命數", "主線：天賦、能力", "副線：人際互動、處事態度", "橫線：你如何與世界互動？", "直線：你如何運用自己的能力？", "斜線：你如何追求人生目標？"]) expect(withLegend).toContain(t);
     expect(withLegend).not.toContain("特殊連線");
     expect(withLegend).not.toMatch(/[（(]/);
-    expect(withLegend).toContain('stroke-dasharray="2.4 2.4"'); // the 副線 mark is dashed
+    expect(withLegend).toContain('stroke-dasharray="3.2 3.2"'); // the 副線 mark is dashed
+    // the 主線 / 副線 marks are one plain line each: no circles at the ends (they would hide the dashes)
+    const marks = withLegend.slice(withLegend.indexOf('主線：天賦、能力') - 400, withLegend.indexOf('副線：人際互動、處事態度'));
+    expect(marks).not.toContain('<circle');
   });
 });
 
