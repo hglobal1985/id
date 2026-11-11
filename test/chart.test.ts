@@ -25,10 +25,15 @@ describe("life number chart: 主線 and 副線", () => {
   it("天賦數 = outlined triangles, one per occurrence and free to overlap the circles; 加總命數 = a small solid square", () => {
     const html = chartHtml(lifeChartOf("1985-07-03")!); // talent 33 → 3 twice; life 6
     // 3 sits at x 36, y 200 and appears twice in 33: two nested outlined triangles
-    expect((html.match(/<polygon points="36,/g) ?? []).length).toBe(2);
-    expect(html).toMatch(/<polygon points="36,[\d.]+ 21,[\d.]+ 51,[\d.]+" fill="none"/); // the inner one (half width 15)
-    expect(html).toMatch(/<polygon points="36,[\d.]+ 15,[\d.]+ 57,[\d.]+" fill="none"/); // the outer one (half width 21)
-    expect(html).toContain('<rect x="96" y="188" width="24" height="24"'); // the square on 6 (x 108, y 200)
+    expect((html.match(/<polygon points="36\.0,/g) ?? []).length).toBe(2);
+    expect(html).toMatch(/<polygon points="36\.0,[\d.]+ 21\.0,[\d.]+ 51\.0,[\d.]+" fill="none"/); // the inner one (half width 15)
+    expect(html).toMatch(/<polygon points="36\.0,[\d.]+ 12\.9,[\d.]+ 59\.1,[\d.]+" fill="none"/); // the outer one, scaled about the incentre
+    // the gap between the two triangles (base to base) is the same 4.5 as between two circles
+    const polys = [...html.matchAll(/<polygon points="36\.0,[\d.]+ [\d.]+,([\d.]+) /g)].map((m) => Number(m[1]));
+    expect(Math.abs(polys[0]! - polys[1]!)).toBeGreaterThan(4.4);
+    expect(Math.abs(polys[0]! - polys[1]!)).toBeLessThan(4.6);
+    // the square is an outline too (28 x 28 around 6 at x 108, y 200), not filled
+    expect(html).toContain('<rect x="94" y="186" width="28" height="28" rx="2" fill="none" stroke="#e5303a" stroke-width="1.5"');
     // the numbers are drawn larger now (26; 20 inside the square)
     expect(html).toMatch(/<text x="36" y="201" dy="\.35em" text-anchor="middle" font-size="26" fill="#0f172a">3<\/text>/);
   });
@@ -55,14 +60,15 @@ describe("life number chart: 主線 and 副線", () => {
     expect(html).toContain('<svg class="ln-svg" viewBox="0 0 288 240"');
     expect((html.match(/<line /g) ?? []).length).toBe(4); // 2 main + 2 sub lines (no legend)
     expect((html.match(/stroke-dasharray="7 6"/g) ?? []).length).toBe(2);
-    expect(html).toContain('stroke="#2563eb" stroke-width="2.5"'); // same width as the 2.5 circles
-    // 加總命數 (2) = a small solid red square; 2 is also in the talent number 29: an outlined green triangle below the square
-    expect(html).toContain('<rect x="24" y="108" width="24" height="24" rx="2" fill="#e5303a"');
-    expect(html).toMatch(/<polygon points="36,[\d.]+ 21,[\d.]+ 51,[\d.]+" fill="none" stroke="#7ccf1b" stroke-width="2.5"/);
-    expect(html.indexOf('<polygon points="36,')).toBeLessThan(html.indexOf('<rect x="24" y="108"')); // the square is on top
-    expect(html).toMatch(/<text x="36" y="121" dy="\.35em" text-anchor="middle" font-size="20" fill="#ffffff">2<\/text>/);
+    expect(html).toContain('stroke="#0ea5e9" stroke-width="1.5"'); // sky blue, as thin as the circles (1.5)
+    expect(html).not.toContain("#2563eb");
+    expect(html).not.toContain('stroke-width="2.5"'); // nothing is drawn with the old thick outline
+    // 加總命數 (2) = an outlined red square (28 x 28); 2 is also in the talent number 29: an outlined green triangle — they overlap freely
+    expect(html).toContain('<rect x="22" y="106" width="28" height="28" rx="2" fill="none" stroke="#e5303a" stroke-width="1.5"');
+    expect(html).toMatch(/<polygon points="36\.0,[\d.]+ 21\.0,[\d.]+ 51\.0,[\d.]+" fill="none" stroke="#7ccf1b" stroke-width="1.5"/);
+    expect(html).toMatch(/<text x="36" y="121" dy="\.35em" text-anchor="middle" font-size="26" fill="#0f172a">2<\/text>/); // the number stays dark
     // 9 is in the talent number 29 too: an outlined triangle (and its black circles); talent triangles are never filled
-    expect(html).toMatch(/<polygon points="180,[\d.]+ [^"]*" fill="none" stroke="#7ccf1b"/);
+    expect(html).toMatch(/<polygon points="180\.0,[\d.]+ [^"]*" fill="none" stroke="#7ccf1b"/);
     expect(html).not.toContain('fill="#7ccf1b"');
     for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) expect(html).toMatch(new RegExp(`<text x="${36 + 72 * Math.floor((n - 1) / 3)}" y="\\d+"[^>]*>${n}</text>`));
   });

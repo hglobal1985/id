@@ -157,6 +157,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .dots th.me{background:var(--green-soft);color:var(--green-d)}
 .dots td.y{color:var(--green);font-size:1rem}.dots td:not(.y):not(:first-child){color:#b9c2bc}
 .dateparts{display:flex;gap:8px}.dateparts .dd{flex:1 1 0;min-width:0}.dateparts .dd-btn{padding:6px 10px}
+.permline{display:flex;flex-wrap:wrap;gap:2px 16px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}.permname{flex:1 1 100%;font-weight:700;font-size:.95rem}.chkwrap{display:inline-flex;align-items:center;gap:6px}.chk[disabled]{opacity:.75;cursor:default}
 .filters{display:grid;gap:8px;margin:8px 0}
 .filters select{width:100%;min-height:44px}
 .member-row .linklike{border:0;background:transparent;padding:0;min-height:0;color:var(--green);font-weight:700;text-align:left;text-decoration:underline}
@@ -168,7 +169,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .ln-badge{display:inline;font-weight:inherit}
 .ln-svg{display:block;width:100%;height:auto;margin:4px 0 0}
 .ln-svg text{font-family:inherit;font-weight:800}
-.ln-dot{flex:none;width:16px;height:16px;border-radius:50%;border:2.5px solid;box-sizing:border-box}
+.ln-dot{flex:none;width:16px;height:16px;border-radius:50%;border:1.5px solid;box-sizing:border-box}
 .rg-black{border-color:#0f172a}.rg-birthday{border-color:#f5b400}.rg-zodiac{border-color:#8b2fe0}.rg-talent{border-color:#7ccf1b}
 .ln-legend{border-top:2px solid #e3e8df;margin-top:4px;padding-top:8px;display:grid;grid-template-columns:1fr;gap:4px;font-size:.8rem;color:#1e293b;line-height:1.3}
 .ln-legend>div{display:flex;align-items:center;gap:8px}

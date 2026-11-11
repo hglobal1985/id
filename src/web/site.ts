@@ -5,7 +5,7 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { SESSION_COOKIE, readCookie } from "../auth/cookies";
 import { findActiveSessionByToken, getMember } from "../db/identity";
-import { rolesOf } from "../db/staff";
+import { isStaffMember } from "../db/staff";
 import { readProfile } from "../db/profile";
 import { getActiveBinding, otherSide } from "../db/spouse";
 import { publicItems } from "../profile/public";
@@ -75,10 +75,10 @@ async function navFor(c: C, deps: Deps, path: string): Promise<SiteNav> {
   if (!s) return { signedIn: false, path };
   const [user, roles, unread] = await Promise.all([
     navUser(c.env.DB, s.member_id),
-    rolesOf(c.env.DB, s.member_id),
+    isStaffMember(c.env.DB, s.member_id),
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").bind(s.member_id).first<{ n: number }>(),
   ]);
-  return { signedIn: true, staff: roles.length > 0, user, path, unread: unread?.n ?? 0 };
+  return { signedIn: true, staff: roles, user, path, unread: unread?.n ?? 0 };
 }
 
 function asset(c: C, body: string, type: string) {
@@ -168,7 +168,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.get("/admin", async (c) => {
     const s = await currentSession(c, deps);
     if (!s) return c.redirect("/login?return_to=%2Fadmin", 302);
-    if (!(await rolesOf(c.env.DB, s.member_id)).length) {
+    if (!(await isStaffMember(c.env.DB, s.member_id))) {
       return page(c, sitePage({ title: "後台", nav: await navFor(c, deps, "/admin"), body: '<section class="card"><h2>沒有權限</h2><p>此頁面只開放給管理人員。</p></section>' }), 403);
     }
     return page(c, sitePage({ title: "後台", admin: true, nav: await navFor(c, deps, "/admin"), body: '<div id="app"><p class="help">載入中…</p></div>', script: "/assets/admin.js" }));

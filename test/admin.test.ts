@@ -509,3 +509,97 @@ describe("staff management and audit", () => {
     expect((await admin(rv, "GET", "/v1/admin/audit")).status).toBe(403);
   });
 });
+
+describe("positions and extra permissions are two settings", () => {
+  const setField = (id: string, key: string, value: unknown) =>
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, ?, ?, NULL, 'approved', 1, '2026-11-11T10:00:00+08:00')").run(id, key, JSON.stringify(value));
+  const list = async (p: P, qs = "") => (await (await admin(p, "GET", `/v1/admin/members${qs}`)).json()) as { members: { member_id: string }[]; can_manage: boolean };
+  const ids = (r: { members: { member_id: string }[] }) => r.members.map((x) => x.member_id).sort();
+  const setCenter = (id: string, center: string) =>
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_center', ?, NULL, 'approved', 1, '2026-11-11T10:00:00+08:00')").run(id, JSON.stringify(center));
+  const meOf = async (p: P) => (await (await admin(p, "GET", "/v1/admin/me")).json()) as { permissions: string[]; grants: { permission: string; scope: string }[] };
+  const give = (sa: P, id: string, roles: string[], grants?: unknown) => admin(sa, "PUT", `/v1/admin/staff/${id}`, { roles, ...(grants !== undefined ? { grants } : {}) });
+
+  it("the catalog lists the permissions with their scopes and the default permissions of every position", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const rv = await person("rv", "審核員", ["reviewer"]);
+    expect((await admin(rv, "GET", "/v1/admin/permission-catalog")).status).toBe(403);
+    const c = (await (await admin(sa, "GET", "/v1/admin/permission-catalog")).json()) as { permissions: { permission: string; scopes: string[] }[]; roles: { role: string; label: string; grants: { permission: string; scope: string }[] }[]; scopes: Record<string, string> };
+    expect(c.permissions.find((p) => p.permission === "members.read")?.scopes).toEqual(["center", "hglobal", "all"]);
+    expect(c.permissions.find((p) => p.permission === "review")?.scopes).toEqual(["center", "all"]);
+    expect(c.permissions.find((p) => p.permission === "staff.manage")?.scopes).toEqual(["all"]);
+    expect(c.roles.find((r) => r.role === "reviewer")?.grants).toEqual([{ permission: "review", scope: "center" }, { permission: "members.read", scope: "center" }]);
+    expect(c.scopes).toMatchObject({ center: "自己中心", hglobal: "系統＝寰宇", all: "全部" });
+  });
+
+  it("a position plus extra permissions: the extra ones add to the defaults, are checked, deduplicated and audited", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const t = await person("t", "票務同仁");
+    const a = await amwayMember("a", "甲"); setField(a.id, "education_center", "新竹 122");
+    const b = await amwayMember("b", "乙"); setField(b.id, "education_center", "台南 187");
+    // 票務 alone: only the own center (none filled in → nobody)
+    expect((await give(sa, t.id, ["ticket"])).status).toBe(200);
+    expect(((await (await admin(t, "GET", "/v1/admin/members")).json()) as { members: unknown[] }).members).toEqual([]);
+    // + extra: look up everyone
+    let res = await give(sa, t.id, ["ticket"], [{ permission: "members.read", scope: "all" }]);
+    expect(res.status).toBe(200);
+    expect((await meOf(t)).grants).toEqual([{ permission: "members.read", scope: "all" }]);
+    expect(ids(await list(t))).toEqual(expect.arrayContaining([a.id, b.id]));
+    expect((await list(t)).can_manage).toBe(false); // still read only
+    // an extra permission the position already gives is not stored
+    res = await give(sa, t.id, ["ticket"], [{ permission: "members.read", scope: "center" }]);
+    expect(((await res.json()) as { grants: unknown[] }).grants).toEqual([]);
+    // bad permission / scope not allowed for that permission
+    expect((await give(sa, t.id, ["ticket"], [{ permission: "nope", scope: "all" }])).status).toBe(422);
+    expect((await give(sa, t.id, ["ticket"], [{ permission: "members.manage", scope: "center" }])).status).toBe(422);
+    expect((await give(sa, t.id, ["ticket"], "x")).status).toBe(422);
+    // the change is audited with the permissions before and after (keys, never names)
+    await give(sa, t.id, ["ticket"], [{ permission: "audit.read", scope: "all" }]);
+    const log = db.raw.prepare("SELECT detail FROM audit_log WHERE action = 'staff.roles.set' AND target_id = ? ORDER BY rowid DESC LIMIT 1").get(t.id)?.detail as string;
+    expect(JSON.parse(log)).toMatchObject({ after: "ticket", grants_after: "audit.read:all" });
+    expect((await admin(t, "GET", "/v1/admin/audit")).status).toBe(200);
+    // the staff list shows them
+    const staff = (await (await admin(sa, "GET", "/v1/admin/staff")).json()) as { staff: { member_id: string; roles: string[]; grants: unknown[] }[] };
+    expect(staff.staff.find((x) => x.member_id === t.id)).toMatchObject({ roles: ["ticket"], grants: [{ permission: "audit.read", scope: "all" }] });
+  });
+
+  it("someone with only extra permissions (no position) is staff; the scope decides how far an extra permission reaches", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const g = await person("g", "只有額外權限");
+    expect((await admin(g, "GET", "/v1/admin/me")).status).toBe(403);
+    await give(sa, g.id, [], [{ permission: "review", scope: "center" }, { permission: "adjust", scope: "center" }]);
+    expect((await admin(g, "GET", "/v1/admin/me")).status).toBe(200);
+    setCenter(g.id, "新竹 122");
+    const a = await amwayMember("a", "甲"); setField(a.id, "education_center", "新竹 122");
+    const b = await amwayMember("b", "乙"); setField(b.id, "education_center", "台南 187");
+    expect((await admin(g, "PUT", `/v1/admin/members/${a.id}/amway/rank`, { value: "15" })).status).toBe(200);
+    expect((await admin(g, "PUT", `/v1/admin/members/${b.id}/amway/rank`, { value: "15" })).status).toBe(403); // another center
+    // widened to everyone
+    await give(sa, g.id, [], [{ permission: "adjust", scope: "all" }]);
+    expect((await admin(g, "PUT", `/v1/admin/members/${b.id}/amway/rank`, { value: "15" })).status).toBe(200);
+  });
+
+  it("nobody can give out a permission they do not hold; giving permissions is itself a permission", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const helper = await person("h", "幫手");
+    const target = await person("t", "對象");
+    await give(sa, helper.id, ["course"], [{ permission: "staff.manage", scope: "all" }]);
+    expect((await give(helper, target.id, ["ticket"])).status).toBe(200); // positions: allowed
+    expect((await give(helper, target.id, ["ticket"], [{ permission: "members.manage", scope: "all" }])).status).toBe(403); // not held
+    expect((await give(helper, target.id, ["ticket"], [{ permission: "staff.manage", scope: "all" }])).status).toBe(200); // held
+    const nobody = await person("n", "沒有權限");
+    expect((await give(nobody, target.id, ["ticket"])).status).toBe(403);
+  });
+
+  it("extra permissions go away with the member (deleted) and with the last super admin rule intact", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    const t = await person("t", "票務");
+    await give(sa, t.id, ["ticket"], [{ permission: "audit.read", scope: "all" }]);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM staff_grants WHERE member_id = ?").get(t.id)?.n).toBe(1);
+    expect((await admin(hq, "POST", `/v1/admin/members/${t.id}/delete`)).status).toBe(200);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM staff_grants WHERE member_id = ?").get(t.id)?.n).toBe(0);
+    expect((await give(sa, sa.id, [], [])).status).toBe(422); // the last super admin stays
+  });
+});
+
