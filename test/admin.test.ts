@@ -305,6 +305,8 @@ describe("reviews", () => {
     expect((await admin(sa, "POST", `/v1/admin/members/${sa.id}/status`, { status: "disabled" })).status).toBe(409);
     expect((await admin(hq, "POST", `/v1/admin/members/${sa.id}/status`, { status: "disabled" })).status).toBe(409);
     // delete
+    // no forced sign-in again before deleting, however long ago the head office signed in
+    now = new Date(now.getTime() + 11 * 60 * 1000);
     const del = await admin(hq, "POST", `/v1/admin/members/${m.id}/delete`);
     expect(del.status).toBe(200);
     expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(m.id)?.status).toBe("deleted");

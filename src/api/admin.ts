@@ -16,7 +16,7 @@ import { decideReview, listOptions, readAmwayFields, staffAdjust } from "../db/a
 import { readNumbers } from "../db/member-numbers";
 import { getActiveBinding, otherSide } from "../db/spouse";
 import { REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
-import { FEATURES, REAUTH_MAX_AGE, ROLES, ROLE_LABELS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
+import { FEATURES, ROLES, ROLE_LABELS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
@@ -135,7 +135,7 @@ const memberDeleteRoute = createRoute({
   method: "post",
   path: "/v1/admin/members/{member_id}/delete",
   tags: ["admin"],
-  summary: "Delete a member (anonymizes and closes the account at once; head office; needs a sign-in within 10 minutes)",
+  summary: "Delete a member (anonymizes and closes the account at once; head office)",
   security,
   request: { params: z.object({ member_id: z.string().max(64) }) },
   responses: { 200: { description: "Deleted", content: json(Any) }, ...common, 404: err("not_found"), 409: err("last_super_admin or self") },
@@ -456,9 +456,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (d) return d as never;
     const staff = c.get("staff");
     const { member_id } = c.req.valid("param");
-    if (epochSeconds(deps.now()) - staff.authTime > REAUTH_MAX_AGE) {
-      return c.json(errorBody("reauth_required", "請重新登入後再試", c.get("requestId"), { login_url: "/login?return_to=%2Fadmin" }), 401);
-    }
+    // Deleting a member does not ask for a fresh sign-in either (owner decision 2026-11-12).
     if (member_id === staff.memberId) return c.json(errorBody("conflict", "不能刪除自己（請用「刪除帳號」）", c.get("requestId")), 409);
     const r = await deleteAccount(c.env.DB, member_id, deps.now(), c.get("requestId"));
     if (r === "not_found") return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
