@@ -41,8 +41,8 @@ export const AMWAY_FIELDS: AmwayFieldDef[] = [
   { key: "upline_platinum", order: 70, label: "上手白金", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_platinum" },
 ];
 
-/** The six fields reviewers may adjust directly (treated as approved). */
-export const REVIEWER_ADJUSTABLE = ["education_system", "education_center", "rank", "upline_diamond", "upline_platinum", "upline_crown_ambassador"];
+/** The fields the head office may change for a member directly (treated as approved): 系統, 中心, 獎銜. */
+export const REVIEWER_ADJUSTABLE = ["education_system", "education_center", "rank"];
 
 export const AMWAY_KEYS = AMWAY_FIELDS.map((f) => f.key);
 const BY_KEY = new Map(AMWAY_FIELDS.map((f) => [f.key, f]));

@@ -9,15 +9,18 @@ import { ErrorBodySchema, errorBody } from "../errors";
 import { SESSION_COOKIE, readCookie } from "../auth/cookies";
 import { findActiveSessionByToken, getMember } from "../db/identity";
 import { centerNormOfMember, listStaff, rolesOf, setRoles } from "../db/staff";
+import { memberInScope, memberScopeOf, searchMemberIds } from "../db/member-scope";
+import { deleteAccount } from "../db/deletion";
+import { auditStatement } from "../db/audit";
 import { decideReview, listOptions, readAmwayFields, staffAdjust } from "../db/amway";
 import { readNumbers } from "../db/member-numbers";
 import { getActiveBinding, otherSide } from "../db/spouse";
 import { REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
-import { REAUTH_MAX_AGE, ROLES, ROLE_LABELS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
+import { FEATURES, REAUTH_MAX_AGE, ROLES, ROLE_LABELS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
-import { epochSeconds } from "../lib/time";
+import { epochSeconds, taipeiIso } from "../lib/time";
 import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
-import { POOLS, POOL_KEYS, isPool, normTerm } from "../vocab/terms";
+import { POOLS, POOL_KEYS, isPool } from "../vocab/terms";
 import { loadOverview } from "../db/overview";
 import { loadLayout, saveLayout } from "../db/layout";
 import { BLOCK_PREFIX, LAYOUT_GROUPS, LAYOUT_GROUP_LABELS, defaultLayout, validateLayout } from "../profile/layout";
@@ -96,10 +99,46 @@ const membersRoute = createRoute({
   method: "get",
   path: "/v1/admin/members",
   tags: ["admin"],
-  summary: "Find members by member number, member id, or display name",
+  summary: "Look up members (read only). Without any filter it lists the members the staff member may see, newest first. What is visible depends on the position: own regional center, 寰宇 for 會長, everyone for the head office and for 鑽石級以上獎銜.",
   security,
-  request: { query: z.object({ q: z.string().min(1).max(100) }) },
-  responses: { 200: { description: "Matches (max 20)", content: json(Any) }, ...common },
+  request: {
+    query: z.object({
+      q: z.string().max(100).optional(),
+      system: z.string().max(60).optional(),
+      center: z.string().max(60).optional(),
+      rank: z.string().max(40).optional(),
+      status: z.enum(["active", "disabled"]).optional(),
+      amway: z.enum(["yes", "no"]).optional(),
+      country: z.string().max(4).optional(),
+      offset: z.coerce.number().int().min(0).max(100000).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }),
+  },
+  responses: { 200: { description: "Members, total and the scope", content: json(Any) }, ...common },
+});
+
+const filtersRoute = createRoute({ method: "get", path: "/v1/admin/member-filters", tags: ["admin"], summary: "Choices for the member filters (systems, centers, ranks, countries)", security, responses: { 200: { description: "Choices", content: json(Any) }, ...common } });
+
+const permissionsRoute = createRoute({ method: "get", path: "/v1/admin/permissions", tags: ["admin"], summary: "The permission table (who may do what) for the 權限 page", security, responses: { 200: { description: "Dot chart data", content: json(Any) }, ...common } });
+
+const memberStatusRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/members/{member_id}/status",
+  tags: ["admin"],
+  summary: "Suspend (disabled) or reinstate (active) a member; a suspended member is signed out everywhere (head office)",
+  security,
+  request: { params: z.object({ member_id: z.string().max(64) }), body: { required: true, content: json(z.object({ status: z.enum(["active", "disabled"]) })) } },
+  responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found"), 409: err("last_super_admin or self") },
+});
+
+const memberDeleteRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/members/{member_id}/delete",
+  tags: ["admin"],
+  summary: "Delete a member (anonymizes and closes the account at once; head office; needs a sign-in within 10 minutes)",
+  security,
+  request: { params: z.object({ member_id: z.string().max(64) }) },
+  responses: { 200: { description: "Deleted", content: json(Any) }, ...common, 404: err("not_found"), 409: err("last_super_admin or self") },
 });
 
 const memberRoute = createRoute({
@@ -324,25 +363,108 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.openapi(membersRoute, async (c) => {
     const d = deny(c, "members.read");
     if (d) return d as never;
-    const q = c.req.valid("query").q.trim();
     const db = c.env.DB;
-    const like = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
-    const r = await db
-      .prepare(
-        `SELECT DISTINCT m.id FROM members m
-         LEFT JOIN member_numbers n ON n.member_id = m.id
-         LEFT JOIN profile_field_values v ON v.member_id = m.id AND v.field_key = 'display_name'
-         WHERE m.id = ? OR n.number = ? OR m.display_name LIKE ? ESCAPE '\\' OR v.value LIKE ? ESCAPE '\\'
-         LIMIT 20`,
-      )
-      .bind(q, q.toUpperCase(), like, like)
-      .all<{ id: string }>();
+    const st = c.get("staff");
+    const scope = await memberScopeOf(db, st.memberId, st.roles);
+    const f = c.req.valid("query");
+    const { ids, total } = await searchMemberIds(db, scope, f);
+    const ladder = await db.prepare("SELECT value, label FROM amway_options WHERE field_key = 'rank'").all<{ value: string; label: string }>();
+    const rankLabel = new Map((ladder.results ?? []).map((r) => [r.value, r.label]));
+    const text = (v: unknown) => (typeof v === "string" ? v : v && typeof v === "object" && "option" in v ? String((v as { option: string }).option) : null);
     const out = [];
-    for (const x of r.results ?? []) {
-      const m = await getMember(db, x.id);
-      out.push({ member_id: x.id, display_name: await displayName(db, x.id), member_number: (await readNumbers(db, x.id))[0] ?? null, status: m?.status, amway_enabled: m?.amway_enabled === 1 });
+    for (const id of ids) {
+      const m = await getMember(db, id);
+      const fields = await readAmwayFields(db, id);
+      const rank = text(fields.get("rank")?.value ?? null);
+      out.push({
+        member_id: id,
+        display_name: await displayName(db, id),
+        member_number: (await readNumbers(db, id))[0] ?? null,
+        status: m?.status,
+        amway_enabled: m?.amway_enabled === 1,
+        system: text(fields.get("education_system")?.value ?? null),
+        center: text(fields.get("education_center")?.value ?? null),
+        rank: rank ? (rankLabel.get(rank) ?? rank) : null,
+        created_at: m?.created_at ?? null,
+      });
     }
-    return c.json({ members: out }, 200);
+    return c.json({ members: out, total, scope: scope.labels, can_manage: can(st.roles, "members.manage") }, 200);
+  });
+
+  app.openapi(filtersRoute, async (c) => {
+    const d = deny(c, "members.read");
+    if (d) return d as never;
+    const db = c.env.DB;
+    const opts = await listOptions(db);
+    const countries = await db.prepare("SELECT DISTINCT registration_country AS c FROM members WHERE registration_country IS NOT NULL AND status != 'deleted' ORDER BY c").all<{ c: string }>();
+    return c.json(
+      {
+        systems: (await listTerms(db, "education_system")).map((t) => t.term),
+        centers: (await listTerms(db, "education_center")).map((t) => t.term),
+        ranks: opts.get("rank") ?? [],
+        countries: (countries.results ?? []).map((r) => r.c),
+      },
+      200,
+    );
+  });
+
+  app.openapi(permissionsRoute, async (c) => {
+    const columns = ROLES.map((r) => ({ role: r, label: ROLE_LABELS[r] }));
+    return c.json(
+      {
+        roles: columns,
+        features: FEATURES.map((f) => ({ label: f.label, roles: f.roles, diamond: f.diamond === true })),
+        mine: c.get("staff").roles,
+      },
+      200,
+    );
+  });
+
+  app.openapi(memberStatusRoute, async (c) => {
+    const d = deny(c, "members.manage");
+    if (d) return d as never;
+    const db = c.env.DB;
+    const { member_id } = c.req.valid("param");
+    const { status } = c.req.valid("json");
+    const staff = c.get("staff");
+    const m = await getMember(db, member_id);
+    if (!m || m.status === "deleted") return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
+    if (status === "disabled" && member_id === staff.memberId) return c.json(errorBody("conflict", "不能停權自己", c.get("requestId")), 409);
+    if (status === "disabled" && (await rolesOf(db, member_id)).includes("super_admin")) {
+      const others = await db.prepare("SELECT COUNT(*) AS n FROM staff_roles WHERE role = 'super_admin' AND member_id != ?").bind(member_id).first<{ n: number }>();
+      if (!others?.n) return c.json(errorBody("conflict", "至少要保留一位超級管理員", c.get("requestId")), 409);
+    }
+    const now = deps.now();
+    const t = epochSeconds(now);
+    await db.batch([
+      db.prepare("UPDATE members SET status = ?, updated_at = ? WHERE id = ?").bind(status, taipeiIso(now), member_id),
+      ...(status === "disabled"
+        ? [
+            db.prepare("UPDATE login_sessions SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, member_id),
+            db.prepare("UPDATE oauth_refresh_tokens SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, member_id),
+            db.prepare("UPDATE app_sessions SET revoked_epoch = ?, revoke_reason = 'suspended' WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, member_id),
+            db.prepare("UPDATE device_sso SET revoked_epoch = ? WHERE member_id = ? AND revoked_epoch IS NULL").bind(t, member_id),
+          ]
+        : []),
+      auditStatement(db, { actorType: "staff", actorId: staff.memberId, action: status === "disabled" ? "member.suspend" : "member.reinstate", targetType: "member", targetId: member_id, appId: null, result: "success", requestId: c.get("requestId") }, now),
+    ]);
+    return c.json({ member_id, status }, 200);
+  });
+
+  app.openapi(memberDeleteRoute, async (c) => {
+    const d = deny(c, "members.manage");
+    if (d) return d as never;
+    const staff = c.get("staff");
+    const { member_id } = c.req.valid("param");
+    if (epochSeconds(deps.now()) - staff.authTime > REAUTH_MAX_AGE) {
+      return c.json(errorBody("reauth_required", "請重新登入後再試", c.get("requestId"), { login_url: "/login?return_to=%2Fadmin" }), 401);
+    }
+    if (member_id === staff.memberId) return c.json(errorBody("conflict", "不能刪除自己（請用「刪除帳號」）", c.get("requestId")), 409);
+    const r = await deleteAccount(c.env.DB, member_id, deps.now(), c.get("requestId"));
+    if (r === "not_found") return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
+    if (r === "last_super_admin") return c.json(errorBody("conflict", "至少要保留一位超級管理員", c.get("requestId")), 409);
+    await auditStatement(c.env.DB, { actorType: "staff", actorId: staff.memberId, action: "member.delete", targetType: "member", targetId: member_id, appId: null, result: "success", requestId: c.get("requestId") }, deps.now()).run();
+    return c.json({ member_id, deleted: true }, 200);
   });
 
   app.openapi(memberRoute, async (c) => {
@@ -350,8 +472,10 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (d) return d as never;
     const db = c.env.DB;
     const id = c.req.valid("param").member_id;
+    const st = c.get("staff");
     const m = await getMember(db, id);
     if (!m) return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
+    if (!(await memberInScope(db, await memberScopeOf(db, st.memberId, st.roles), id))) return c.json(errorBody("forbidden", "這位會員不在您可以查詢的範圍", c.get("requestId"), { required_permission: "members.read" }), 403);
     const binding = await getActiveBinding(db, id);
     const fields = Object.fromEntries([...(await readAmwayFields(db, id))].map(([k, v]) => [k, v]));
     return c.json(
@@ -366,6 +490,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         amway: fields,
         spouse: binding ? { member_id: otherSide(binding, id), display_name: await displayName(db, otherSide(binding, id)), bound_at: binding.created_at, bound_by_this_member: binding.initiator_id === id } : null,
         staff_roles: await rolesOf(db, id),
+        can_manage: can(st.roles, "members.manage"),
       },
       200,
     );
@@ -378,14 +503,6 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const def = getAmwayField(field_key);
     if (!def || !REVIEWER_ADJUSTABLE.includes(field_key)) return c.json(errorBody("not_found", "Field cannot be adjusted", c.get("requestId"), { field_key }), 404);
     if (!(await getMember(c.env.DB, member_id))) return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
-    // A reviewer may only adjust members of the own regional center (a member without a center belongs to nobody's center).
-    const scope = await reviewScope(c);
-    if (!scope.all) {
-      const row = (await readAmwayFields(c.env.DB, member_id)).get("education_center");
-      const v = row?.value ?? row?.pending_value ?? null;
-      const memberCenter = typeof v === "string" && v.trim() ? normTerm(v) : null;
-      if (!inScope(scope, memberCenter)) return c.json(errorBody("forbidden", "這位會員不屬於您負責的中心", c.get("requestId"), { required_permission: "adjust" }), 403);
-    }
     const options = (await listOptions(c.env.DB)).get(field_key) ?? [];
     const v = validateAmwayValue(def, c.req.valid("json").value, options);
     if (!v.ok) return c.json(errorBody("invalid_field", v.message, c.get("requestId"), { field_key, reason: v.reason }), 422);
