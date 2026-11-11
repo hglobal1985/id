@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-11.10";
-export const HANDOFF_UPDATED = "2026-11-11 20:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-11.11";
+export const HANDOFF_UPDATED = "2026-11-11 20:30（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -78,7 +78,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 電腦版的 Enter 鍵：電腦（滑鼠加鍵盤）上輸入法選字要按 Enter，所以所有可自訂輸入的欄位（職業、公司、興趣與專長、大學系名、地區教育中心…）按 Enter 都不要有任何動作（不送出、不確認標籤、不選建議）；用逗號等符號、空格、點選建議、按「儲存」來完成。手機上才保留 Enter 確認標籤。輸入法組字中（isComposing）也不要處理分隔符號。",
     `   - 多項欄位（tags）：輸入時遇到 , ; : - # * / \\ ' ， 、 ； ： 。 . 或空白字元或按 Enter，就確認為一個項目（變成可移除的標籤）。`,
     "   - 頭像區：上傳圖片、Google頭像、移除頭像三個按鈕排成一整列，放在頭像正下方（再下面才是社群連結圖示列）。會員編號欄位的「公開網址」最左邊放一個超大的分享按鈕，呼叫手機的原生分享選單（navigator.share，不支援時複製連結）；按鈕圖示依裝置不同：iPhone／iPad 用方框加向上箭頭，Android 用三點相連的分享符號（符合各平台原生圖示）。",
-    "   - 生日與生命靈數是同一個區塊（block 是 birthday）：區塊大標題寫成「xxx的生命靈數（x年x月x日）」，xxx 是顯示名稱，年月日是會員的生日（例如「小美的生命靈數（1985年7月3日）」）；會員把生日設為隱藏時，對外只寫「xxx的生命靈數」，不要露出日期。檢視畫面不要再另外顯示「生日」列和「生命靈數」小標題（日期已在大標題）；只有編輯畫面保留生日輸入欄。GET /v1/profile/field-definitions 的 blocks 只有 avatar、amway、basic、education、contact、birthday 六個，依 order 排列。",
+    "   - 生日與生命靈數是同一個區塊（block 是 birthday）：區塊大標題寫成「xxx生命靈數 x年x月x日」（沒有「的」、沒有括號，生命靈數與日期之間一個空格），xxx 是顯示名稱，年月日是會員的生日（例如「小美生命靈數 1985年7月3日」）；標題強制一行不換行，字太多就自動縮小字體；會員把生日設為隱藏時，對外只寫「xxx生命靈數」，不要露出日期。檢視畫面不要再另外顯示「生日」列和「生命靈數」小標題（日期已在大標題）；只有編輯畫面保留生日輸入欄。GET /v1/profile/field-definitions 的 blocks 只有 avatar、amway、basic、education、contact、birthday 六個，依 order 排列。",
     `   - 社群連結（取代原本的「個人網站」欄位，一律顯示）：名片照片下方一列置中的小圖示，每列 5 個；圖示總數超過兩排時改縮小，每列 7 個。最後一個是「＋」圖示，下方寫「新增連結」。每個圖示下方有「複製」小標籤（複製該網址），點圖示在新視窗開啟連結。可選平台與圖示由 GET ${origin}/v1/social/platforms 取得（順序與圖示由後台決定，不要寫死；custom 為 true 的是「自定義」）；GET／POST ${origin}/v1/me/social-links（body {"platform_key","url","label"?}，網址沒打 http:// 或 https:// 時由中央補上 https://、打了就照會員輸入的保留（只收這兩種開頭），最多 30 個，同一平台可重複新增）、DELETE ${origin}/v1/me/social-links/{id}；「自定義」連結可用 PUT ${origin}/v1/me/social-links/{id}/icon 直接送圖片位元組（先縮成約 64 px 的小圖，不超過 16 KB）。`,
     "   - 審核規則：選「直銷商培訓系統」＝寰宇不需審核，立刻生效。只有「寰宇＋同時填了地區教育中心」時，「中心」與「獎銜」才需審核：送出後欄位 status 為 pending（顯示「等待審核中」），原本的值維持有效，由相同中心的審核員核准後才換成新值；駁回則維持原值。App 只顯示 status，不要自己判斷。",
     "   - 一律公開的欄位（顯示名稱、居住國家／地區、生命靈數九宮格，以及會員編號、頭像）：沒有填寫就不顯示；欄位定義的 visibility.configurable 為 false，畫面上仍顯示和其他欄位一樣的圓角方框與眼睛圖案「公開」，但不能按（沒有切換）；PUT /v1/me/profile/visibility 對這些欄位回 422 always_public。所有 Amway 欄位（直銷商培訓系統、地區教育中心、獎銜、推薦人、上手、皇冠大使）都有公開／隱藏切換，預設值看欄位定義的 visibility.default（皇冠大使預設隱藏，其餘預設公開）。暱稱欄位已刪除。",
@@ -130,7 +130,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "8. 共用登入（三、2）：手機用共用 Keychain 群組保存 sso_token，啟動與回到前景時 exchange／status；網頁版登入後 adopt、載入頁面時 check、登出走 /auth/sso/logout；登出按鈕寫「登出所有 App」。（2026-11-10.3 新增）",
     "9. 會員資料頁（三、5）：一律公開欄位只顯示「公開」不能切換、名字旁的系統／中心／獎銜方框、電腦版 Enter 不動作、地區教育中心點開顯示全部、App 內原地修改、關聯詞、多項欄位確認符號、學歷分列（空白的碩士、博士列會自動消失）、會員編號提示與公開網址格式、Amway 勾選立即生效、地區教育中心的條件式關聯詞、不使用原生下拉與勾選框、亮色系配色。（2026-11-11.1 新增，.2 補充）",
     "10. 視覺規範（視覺規範文件）：顏色只用規範內的色碼、theme 集中管理、圓角與方框尺寸、名字旁方框與會員編號的樣式、不使用原生下拉與勾選框。（2026-11-11.9 新增）",
-    "11. 2026-11-11.9 新增的資料頁項目：頭像上傳前的裁切視窗、置頂三格按鈕、社群連結名稱框（兩行高、可自訂、編輯畫面點名稱可編輯）、九宮格主線／副線／實心三角形／圖例只在自己的頁面顯示（對外公開頁不顯示）、區塊大標題「xxx的生命靈數（x年x月x日）」、審核規則（寰宇不需審核，寰宇＋中心才審核中心與獎銜）。",
+    "11. 2026-11-11.9 新增的資料頁項目：頭像上傳前的裁切視窗、置頂三格按鈕、社群連結名稱框（兩行高、可自訂、編輯畫面點名稱可編輯）、九宮格主線／副線／實心三角形／圖例只在自己的頁面顯示（對外公開頁不顯示）、區塊大標題「xxx生命靈數 x年x月x日」（一行、字多縮小）、審核規則（寰宇不需審核，寰宇＋中心才審核中心與獎銜）。",
     "12. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");

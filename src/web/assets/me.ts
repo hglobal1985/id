@@ -10,7 +10,7 @@ export const ME_JS = String.raw`
   var S = {}, UI = { master: false, doctor: false };
 
   function msg() { return HG.msg(); }
-  function card(title, kids) { return el("section", { class: "card" }, [title ? el("h2", { text: title }) : null].concat(kids)); }
+  function card(title, kids, titleClass) { return el("section", { class: "card" }, [title ? el("h2", { text: title, class: titleClass || "" }) : null].concat(kids)); }
   function fold(title, kids) { return el("details", { class: "card fold" }, [el("summary", { text: title })].concat(kids)); }
 
   function load() {
@@ -538,7 +538,12 @@ export const ME_JS = String.raw`
   // 「xxx的生命靈數（x年x月x日）」 is the block's title (the plain 生日與生命靈數 until a birthday is saved).
   function lifeTitle() {
     var f = S.profile.fields.birthday, m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((f && f.value) || "");
-    return m ? (shownName() || "我") + "的生命靈數（" + m[1] + "年" + Number(m[2]) + "月" + Number(m[3]) + "日）" : "生日與生命靈數";
+    return m ? (shownName() || "我") + "生命靈數 " + m[1] + "年" + Number(m[2]) + "月" + Number(m[3]) + "日" : "生日與生命靈數";
+  }
+  // The title stays on one line: the longer it is, the smaller the font (same steps as the public page).
+  function titleClassOf(t) {
+    var u = 0; Array.from(t).forEach(function (ch) { u += /[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef\u3000-\u303f]/.test(ch) ? 1 : 0.55; });
+    return "life-title lt-" + (u <= 14.5 ? 0 : u <= 17 ? 1 : u <= 19.5 ? 2 : u <= 23 ? 3 : 4);
   }
   // The 生命靈數 chart inside the birthday block (one block for both).
   function chartBody() {
@@ -613,11 +618,12 @@ export const ME_JS = String.raw`
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
       return card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField)));
     }
-    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { var ch = chartBody(); return card(lifeTitle(), [profileField(S.def.birthday), ch]); } };
+    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { var ch = chartBody(); var t = lifeTitle(); return card(t, [profileField(S.def.birthday), ch], titleClassOf(t)); } };
     (S.defs.blocks || []).slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (blk) {
       var make = makers[blk.key], node = make ? make() : null; if (node) { root.appendChild(node); NODES[blk.key] = node; }
     });
     var se = searchCard(); root.appendChild(se); NODES.search = se; MAKERS.search = searchCard;
+    HG.fitTitles(root);
     var sp = spouseCard(); if (sp) root.appendChild(sp);
     root.appendChild(devicesCard());
     root.appendChild(deletionCard());

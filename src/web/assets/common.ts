@@ -92,6 +92,19 @@ export const COMMON_JS = String.raw`
     if (window.requestAnimationFrame) window.requestAnimationFrame(run); else run();
   };
 
+  HG.fitTitles = function (root) {
+  // The block title stays on one line: shrink the font until it fits the real width (the lt-N class is only the no-script fallback).
+    function run() {
+      Array.prototype.forEach.call(root.querySelectorAll(".life-title"), function (h) {
+        h.className = "life-title"; h.style.fontSize = "";
+        var f = parseFloat(getComputedStyle(h).fontSize) || 17.6;
+        while (h.scrollWidth > h.clientWidth + 1 && f > 8) { f -= 0.5; h.style.fontSize = f + "px"; }
+      });
+    }
+    if (window.requestAnimationFrame) window.requestAnimationFrame(run); else run();
+    window.addEventListener("resize", run);
+  };
+
   HG.bubble = function (size, url, name) {
     return url ? el("img", { class: "avatar " + size, src: url, alt: name || "" }) : el("span", { class: "avatar " + size, role: "img", "aria-label": name || "", text: HG.initials(name) });
   };

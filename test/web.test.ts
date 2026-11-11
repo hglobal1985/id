@@ -476,17 +476,17 @@ describe("search engine agreement", () => {
 });
 
 describe("birthday and 生命靈數 share one block; the pages' top buttons", () => {
-  it("one block titled 「xxx的生命靈數（x年x月x日）」: no separate 生日 row or 生命靈數 label; the legend is only on the owner's own page", async () => {
+  it("one block titled 「xxx生命靈數 x年x月x日」: no separate 生日 row or 生命靈數 label; the legend is only on the owner's own page", async () => {
     const a = await person("a", "甲");
     const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
     await req(a, "PUT", "/v1/me/profile/fields/birthday", { value: "1990-04-05" });
     // the birthday is hidden by default: the chart is public, the date is not
     let guest = await (await req(null, "GET", `/${n}`)).text();
-    expect(guest).toContain("<h2>甲的生命靈數</h2>");
+    expect(guest).toContain('<h2 class="life-title lt-0">甲生命靈數</h2>');
     expect(guest).not.toContain("1990");
     await req(a, "PUT", "/v1/me/profile/visibility", { fields: { birthday: "public" } });
     guest = await (await req(null, "GET", `/${n}`)).text();
-    expect(guest).toContain("<h2>甲的生命靈數（1990年4月5日）</h2>");
+    expect(guest).toContain('<h2 class="life-title lt-0">甲生命靈數 1990年4月5日</h2>');
     expect(guest).not.toContain("<label>生日</label>"); // the date is in the title, not repeated as a row
     expect(guest).not.toContain("<label>生命靈數</label>"); // nor the small label
     expect(guest).not.toContain("<h2>生日與生命靈數</h2>");
@@ -495,8 +495,12 @@ describe("birthday and 生命靈數 share one block; the pages' top buttons", ()
     expect(await (await req(a, "GET", `/${n}`)).text()).not.toContain("ln-legend");
     // the owner's own page shows it
     const mine = await (await req(a, "GET", `/my/${n}`)).text();
-    expect(mine).toContain("<h2>甲的生命靈數（1990年4月5日）</h2>");
+    expect(mine).toContain('<h2 class="life-title lt-0">甲生命靈數 1990年4月5日</h2>');
     expect(mine).toContain("主線：天賦、能力");
+    // a long name takes a smaller font, never a second line
+    await req(a, "PUT", "/v1/me/profile/fields/display_name", { value: "王大明明明明明明明明明明明" });
+    const long = await (await req(null, "GET", `/${n}`)).text();
+    expect(long).toMatch(/<h2 class="life-title lt-[1-4]">王大明明明明明明明明明明明生命靈數 1990年4月5日<\/h2>/);
   });
 
   it("/my page: 編輯, 分享, 預覽公開頁 in that order; 分享 shares the public address", async () => {

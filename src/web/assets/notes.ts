@@ -100,6 +100,16 @@ export const SHARE_JS = String.raw`
 export const SOCIAL_JS = String.raw`
 (function () {
   "use strict";
+  // The block title stays on one line: shrink the font until it fits the real width (the lt-N class is only the no-script fallback).
+  function fitTitles() {
+    Array.prototype.forEach.call(document.querySelectorAll(".life-title"), function (h) {
+      h.className = "life-title"; h.style.fontSize = "";
+      var f = parseFloat(getComputedStyle(h).fontSize) || 17.6;
+      while (h.scrollWidth > h.clientWidth + 1 && f > 8) { f -= 0.5; h.style.fontSize = f + "px"; }
+    });
+  }
+  fitTitles();
+  window.addEventListener("resize", fitTitles);
   // The name sits in a box two lines high: a long name takes a smaller font to fit.
   Array.prototype.forEach.call(document.querySelectorAll(".soc-copy"), function (b) {
     var f = parseFloat(getComputedStyle(b).fontSize) || 11;

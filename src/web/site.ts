@@ -23,7 +23,7 @@ import { chartHtml, lifeTitle } from "./chart";
 import { lifeChartOf } from "../profile/astro";
 import { AMWAY_FIELDS } from "../amway/fields";
 import { approvedRankLabel, listOptions, readAmwayFields } from "../db/amway";
-import { nameSize, rankBadge } from "./nav-text";
+import { nameSize, rankBadge, titleSize } from "./nav-text";
 import { readNumbers } from "../db/member-numbers";
 import { publicId } from "../profile/member-number";
 import { loadLayout } from "../db/layout";
@@ -344,9 +344,9 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       [
         { block: "amway", html: amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "" },
         {
-          // One block: 「xxx的生命靈數（x年x月x日）」 — the birthday row and the small 生命靈數 label are not repeated.
+          // One block: 「xxx生命靈數 x年x月x日」, one line (a long title takes a smaller font) — the birthday row and the small 生命靈數 label are not repeated.
           block: "birthday",
-          html: p.chart ? `<section class="card"><h2>${escapeHtml(lifeTitle(nameOf(p), p.birthday))}</h2>${chartHtml(p.chart, owner)}</section>` : "",
+          html: p.chart ? `<section class="card"><h2 class="life-title lt-${titleSize(lifeTitle(nameOf(p), p.birthday))}">${escapeHtml(lifeTitle(nameOf(p), p.birthday))}</h2>${chartHtml(p.chart, owner)}</section>` : "",
         },
       ]
         .sort((a, b) => place(a.block) - place(b.block))
