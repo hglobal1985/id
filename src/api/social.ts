@@ -4,7 +4,7 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { bearerAuth, missingScope } from "./auth";
-import { can } from "../admin/roles";
+import { can, type Grant } from "../admin/roles";
 import { resolveIssuer } from "../oidc/config";
 import { sniffImage } from "../db/profile";
 import { addLink, addPlatform, deletePlatform, listLinks, listPlatforms, removeLink, renamePlatform, reorderPlatforms, setLinkIcon, setPlatformIcon, updateLink } from "../db/social";
@@ -225,7 +225,7 @@ export function registerSocialRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) 
   });
 
   // ---- super admin (the staff check of /v1/admin/* runs first) ----
-  const allowed = (c: { get: (k: "staff") => { roles: string[] } }) => can(c.get("staff").roles, "social.manage");
+  const allowed = (c: { get: (k: "staff") => { roles: string[]; grants: Grant[] } }) => can(c.get("staff").roles, "social.manage", c.get("staff").grants);
   const forbidden = (c: { get: (k: "requestId") => string; json: (b: unknown, s: 403) => Response }) => c.json(errorBody("forbidden", "Not permitted for your role", c.get("requestId"), { required_permission: "social.manage" }), 403);
   const actor = (c: { get: (k: "staff" | "requestId") => never }) => ({ memberId: (c.get("staff") as { memberId: string }).memberId, requestId: c.get("requestId") as string, now: deps.now() });
 

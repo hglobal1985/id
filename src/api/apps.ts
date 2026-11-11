@@ -124,7 +124,8 @@ const adminHandoffRoute = createRoute({
 });
 
 function deny(c: C, p: Permission): Response | null {
-  if (can(c.get("staff").roles, p)) return null;
+  const st = c.get("staff");
+  if (can(st.roles, p, st.grants)) return null;
   return c.json(errorBody("forbidden", "Not permitted for your role", c.get("requestId"), { required_permission: p }), 403);
 }
 

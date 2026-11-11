@@ -75,7 +75,7 @@ export const ADMIN_JS = String.raw`
         return el("tr", {}, [el("td", { text: f.label })].concat(cols.map(function (x) { return el("td", { class: f.roles.indexOf(x.role) >= 0 ? "y" : "", text: f.roles.indexOf(x.role) >= 0 ? "●" : "·" }); })).concat([el("td", { class: f.diamond ? "y" : "", text: f.diamond ? "●" : "·" })]));
       });
       pane.appendChild(card("權限", [
-        el("p", { class: "help", text: "● 可以使用，· 不行。「鑽石級以上獎銜」是身分條件：本人已審核的獎銜達到鑽石級以上，不論職務都可查詢全部會員（只能查詢）。超級管理員與總部秘書擁有全部功能，不列在表內。標色的欄位是您自己的職務。" }),
+        el("p", { class: "help", text: "● 可以使用，· 不行。「鑽石級以上獎銜」是身分條件：本人已審核的獎銜達到鑽石級以上，不論職務都可查詢全部會員（只能查詢）。超級管理員與總部秘書擁有全部功能，不列在表內。這張表是各職務的預設權限；另外特別開給某個人的權限，請到「管理人員」查看與設定。標色的欄位是您自己的職務。" }),
         el("table", { class: "dots" }, [head].concat(rows))
       ]));
     });
@@ -410,27 +410,63 @@ export const ADMIN_JS = String.raw`
   }
 
   function staff() {
-    api("GET", "/v1/admin/staff").then(function (r) {
-      var b = r.body;
-      function labelOf(role) { var f = b.roles.filter(function (x) { return x.role === role; })[0]; return f ? f.label : role; }
+    Promise.all([api("GET", "/v1/admin/staff"), api("GET", "/v1/admin/permission-catalog")]).then(function (rr) {
+      var b = rr[0].body, cat = rr[1].body;
+      if (rr[0].status !== 200 || rr[1].status !== 200) { pane.appendChild(card("管理人員", [el("p", { class: "msg bad", text: errText(rr[0].status !== 200 ? rr[0] : rr[1]) })])); return; }
+      function labelOf(role) { var f = cat.roles.filter(function (x) { return x.role === role; })[0]; return f ? f.label : role; }
+      function permText(g) { var p = cat.permissions.filter(function (x) { return x.permission === g.permission; })[0]; return (p ? p.label : g.permission) + (p && p.scopes.length > 1 ? "（" + cat.scopes[g.scope] + "）" : ""); }
       var panel = el("div"), box = m();
-      // Pick a member from a searchable list, then tick the positions.
+      // Positions (default permissions) and extra permissions are two separate settings: pick a member, tick positions, then the permissions.
       var qi = el("input", { type: "text", placeholder: "搜尋會員（編號、姓名）", maxlength: 100 }), results = el("div");
+      function chk(text, on, disabled, change, note) {
+        var btn = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": on ? "true" : "false", disabled: disabled, onclick: function () { if (!disabled) change(!on); } }, [el("span", { class: "box" }), el("span", { text: text })]);
+        return note ? el("span", { class: "chkwrap" }, [btn, el("span", { class: "help", text: note })]) : btn;
+      }
       function choose(id, name) {
-        api("GET", "/v1/admin/members/" + id).then(function (d) {
-          var current = (d.body && d.body.staff_roles) || [];
-          var checks = b.roles.map(function (x) { var c = el("input", { type: "checkbox", value: x.role }); c.checked = current.indexOf(x.role) >= 0; return [c, el("label", { text: " " + x.label })]; });
-          panel.textContent = "";
-          panel.appendChild(el("div", { class: "row" }, [el("strong", { text: "給予職務：" + name })].concat(checks.map(function (c) { return el("div", {}, c); })).concat([
-            el("div", { class: "actions" }, [el("button", { class: "primary", text: "儲存職務", onclick: function () {
-              var roles = checks.filter(function (c) { return c[0].checked; }).map(function (c) { return c[0].value; });
-              api("PUT", "/v1/admin/staff/" + encodeURIComponent(id), { roles: roles }).then(function (res) {
-                if (res.status === 200) { pane.textContent = ""; staff(); return; }
-                if (res.body && res.body.error && res.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return; }
-                say(box, false, errText(res));
+        Promise.all([api("GET", "/v1/admin/members/" + id)]).then(function (dd) {
+          var d = dd[0].body || {}, roleSet = {}, extra = {};
+          (d.staff_roles || []).forEach(function (x) { roleSet[x] = true; });
+          (d.staff_grants || []).forEach(function (x) { extra[x.permission + ":" + x.scope] = true; });
+          var wrap = el("div"), save = m();
+          function inheritedBy(perm, scope) { var by = []; cat.roles.forEach(function (rl) { if (roleSet[rl.role] && rl.grants.some(function (g) { return g.permission === perm && g.scope === scope; })) by.push(rl.label); }); return by; }
+          function effective() {
+            var out = [];
+            cat.permissions.forEach(function (p) {
+              var sc = p.scopes.filter(function (x) { return inheritedBy(p.permission, x).length || extra[p.permission + ":" + x]; });
+              if (sc.length) out.push(p.label + (p.scopes.length > 1 ? "：" + sc.map(function (x) { return cat.scopes[x]; }).join("、") : ""));
+            });
+            return out;
+          }
+          function render() {
+            wrap.textContent = "";
+            wrap.appendChild(el("h3", { text: "① 職務（每個職務有一組預設權限）" }));
+            cat.roles.forEach(function (rl) { wrap.appendChild(el("div", {}, [chk(rl.label, !!roleSet[rl.role], false, function (on) { roleSet[rl.role] = on; render(); })])); });
+            wrap.appendChild(el("h3", { text: "② 額外權限（在職務預設之外，另外特別開給這個人）" }));
+            wrap.appendChild(el("p", { class: "help", text: "已由職務給的權限會打勾並標示「來自職務」，不能在這裡取消；想拿掉就取消那個職務。沒有打勾的可以另外開。" }));
+            cat.permissions.forEach(function (p) {
+              var line = el("div", { class: "permline" }, [el("div", { class: "permname", text: p.label })]);
+              p.scopes.forEach(function (sc) {
+                var by = inheritedBy(p.permission, sc), key = p.permission + ":" + sc;
+                line.appendChild(chk(p.scopes.length > 1 ? cat.scopes[sc] : "開啟", by.length > 0 || !!extra[key], by.length > 0, function (on) { if (on) extra[key] = true; else delete extra[key]; render(); }, by.length ? "來自職務：" + by.join("、") : ""));
               });
-            } }), box])
-          ])));
+              wrap.appendChild(line);
+            });
+            wrap.appendChild(el("h3", { text: "③ 實際權限預覽" }));
+            var eff = effective();
+            wrap.appendChild(el("ul", { class: "plain" }, (eff.length ? eff : ["（沒有任何權限）"]).map(function (t) { return el("li", { text: t }); })));
+            if (d.diamond_rank) wrap.appendChild(el("p", { class: "help", text: "另外：本人已審核的獎銜達到鑽石級以上，不論職務都可查詢全部會員（只能查詢）。" }));
+            wrap.appendChild(el("div", { class: "actions" }, [el("button", { class: "primary", text: "儲存職務與權限", onclick: function () {
+              var roles = cat.roles.filter(function (rl) { return roleSet[rl.role]; }).map(function (rl) { return rl.role; });
+              var grants = Object.keys(extra).map(function (k) { var i = k.indexOf(":"); return { permission: k.slice(0, i), scope: k.slice(i + 1) }; }).filter(function (g) { return !inheritedBy(g.permission, g.scope).length; });
+              api("PUT", "/v1/admin/staff/" + encodeURIComponent(id), { roles: roles, grants: grants }).then(function (res) {
+                if (res.status === 200) { pane.textContent = ""; staff(); return; }
+                say(save, false, errText(res));
+              });
+            } }), save]));
+          }
+          panel.textContent = "";
+          panel.appendChild(el("div", { class: "row" }, [el("strong", { text: "職務與權限：" + name }), wrap]));
+          render();
         });
       }
       function search() {
@@ -444,13 +480,16 @@ export const ADMIN_JS = String.raw`
         });
       }
       pane.appendChild(card("管理人員", b.staff.map(function (s) {
-        return el("div", { class: "row" }, [el("strong", { text: s.display_name || s.member_id }), el("div", { class: "help", text: s.roles.map(labelOf).join("、") + (s.center ? "（中心：" + s.center + "）" : "") }),
-          el("button", { type: "button", class: "small", text: "編輯職務", onclick: function () { choose(s.member_id, s.display_name || "會員"); } })]);
+        return el("div", { class: "row" }, [el("strong", { text: s.display_name || s.member_id }),
+          el("div", { class: "help", text: "職務：" + (s.roles.length ? s.roles.map(labelOf).join("、") : "（無）") + (s.center ? " 中心：" + s.center : "") }),
+          s.grants.length ? el("div", { class: "help", text: "額外權限：" + s.grants.map(permText).join("、") }) : null,
+          el("button", { type: "button", class: "small", text: "編輯職務與權限", onclick: function () { choose(s.member_id, s.display_name || "會員"); } })]);
       })));
-      pane.appendChild(card("給予職務", [el("p", { class: "help", text: "搜尋會員、點選名字，再勾選要給的職務；取消全部勾選就是移除職務。" }), el("div", { class: "inline" }, [qi, el("button", { class: "primary", text: "搜尋", onclick: search })]), results, panel]));
+      pane.appendChild(card("給予職務與權限", [el("p", { class: "help", text: "搜尋會員、點選名字。職務與權限是兩件事：職務有預設權限，也可以另外特別開更多權限給這個人。" }), el("div", { class: "inline" }, [qi, el("button", { class: "primary", text: "搜尋", onclick: search })]), results, panel]));
       search();
     });
   }
+
 
 
   function audit() {

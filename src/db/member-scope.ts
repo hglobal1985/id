@@ -2,7 +2,7 @@
 // Every position may look up the members of its own regional center; 會長 also the 寰宇 members; a staff member whose own
 // approved rank is 鑽石 or higher, and the head office (總部秘書, 超級管理員), may look up everyone. Union of what applies.
 // Fail closed: no center and no other scope means nobody.
-import { DIAMOND_RANK_LABEL, type Role } from "../admin/roles";
+import { DIAMOND_RANK_LABEL, grantsOf, hasGrant, type Grant, type Role } from "../admin/roles";
 import { normTerm } from "../vocab/terms";
 import { hglobalNorms } from "./vocab";
 import { centerNormOfMember } from "./staff";
@@ -31,14 +31,15 @@ export async function hasDiamondRank(db: D1Database, memberId: string): Promise<
   return threshold !== undefined && mine !== undefined && mine >= threshold;
 }
 
-export async function memberScopeOf(db: D1Database, memberId: string, roles: readonly Role[]): Promise<MemberScope> {
-  const head = roles.includes("super_admin") || roles.includes("secretary");
+export async function memberScopeOf(db: D1Database, memberId: string, roles: readonly Role[], extra: readonly Grant[] = []): Promise<MemberScope> {
+  const grants = grantsOf(roles, extra);
   const labels: string[] = [];
-  const all = head || (await hasDiamondRank(db, memberId));
+  const all = hasGrant(grants, "members.read", "all") || (await hasDiamondRank(db, memberId));
   if (all) labels.push("全部會員");
-  const hglobal = roles.includes("president");
+  const hglobal = grants.some((x) => x.permission === "members.read" && x.scope === "hglobal");
   if (hglobal) labels.push("系統＝寰宇的會員");
-  const center = roles.length ? await centerNormOfMember(db, memberId) : null;
+  const staff = roles.length > 0 || extra.length > 0;
+  const center = staff ? await centerNormOfMember(db, memberId) : null;
   if (center) labels.push("自己中心的會員");
   return { all, hglobal, center, labels };
 }

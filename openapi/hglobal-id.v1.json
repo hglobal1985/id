@@ -3961,6 +3961,52 @@
         }
       }
     },
+    "/v1/admin/permission-catalog": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Permissions (with the scopes each can have) and the default permissions of every position, for the position-and-permission screen",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/admin/members/{member_id}/status": {
       "post": {
         "tags": [
@@ -5143,6 +5189,27 @@
                       ]
                     },
                     "maxItems": 8
+                  },
+                  "grants": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "permission": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "scope": {
+                          "type": "string",
+                          "maxLength": 10
+                        }
+                      },
+                      "required": [
+                        "permission",
+                        "scope"
+                      ]
+                    },
+                    "maxItems": 60
                   }
                 },
                 "required": [

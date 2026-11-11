@@ -8,15 +8,15 @@ import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { SESSION_COOKIE, readCookie } from "../auth/cookies";
 import { findActiveSessionByToken, getMember } from "../db/identity";
-import { centerNormOfMember, listStaff, rolesOf, setRoles } from "../db/staff";
-import { memberInScope, memberScopeOf, searchMemberIds } from "../db/member-scope";
+import { centerNormOfMember, grantsOfMember, listStaff, rolesOf, setRoles } from "../db/staff";
+import { hasDiamondRank, memberInScope, memberScopeOf, searchMemberIds } from "../db/member-scope";
 import { deleteAccount } from "../db/deletion";
 import { auditStatement } from "../db/audit";
 import { decideReview, listOptions, readAmwayFields, staffAdjust } from "../db/amway";
 import { readNumbers } from "../db/member-numbers";
 import { getActiveBinding, otherSide } from "../db/spouse";
 import { REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
-import { FEATURES, ROLES, ROLE_LABELS, can, permissionsOf, type Permission, type Role } from "../admin/roles";
+import { FEATURES, PERMISSION_INFO, PERMISSIONS, ROLE_GRANTS, ROLES, ROLE_LABELS, SCOPE_LABELS, can, grantsOf, hasGrant, permissionsOf, validateGrants, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
@@ -40,14 +40,16 @@ function staffAuth(deps: Deps): MiddlewareHandler<AppBindings> {
     const session = token ? await findActiveSessionByToken(c.env.DB, token, deps.now()) : null;
     if (!session) return c.json(errorBody("unauthenticated", "Sign in required", c.get("requestId")), 401);
     const roles = await rolesOf(c.env.DB, session.member_id);
-    if (!roles.length) return c.json(errorBody("forbidden", "Staff only", c.get("requestId")), 403);
-    c.set("staff", { memberId: session.member_id, roles, authTime: session.auth_time_epoch });
+    const grants = await grantsOfMember(c.env.DB, session.member_id);
+    if (!roles.length && !grants.length) return c.json(errorBody("forbidden", "Staff only", c.get("requestId")), 403);
+    c.set("staff", { memberId: session.member_id, roles, grants, authTime: session.auth_time_epoch });
     await next();
   };
 }
 
 function deny(c: C, p: Permission): Response | null {
-  if (can(c.get("staff").roles, p)) return null;
+  const st = c.get("staff");
+  if (can(st.roles, p, st.grants)) return null;
   return c.json(errorBody("forbidden", "Not permitted for your role", c.get("requestId"), { required_permission: p }), 403);
 }
 
@@ -120,6 +122,8 @@ const membersRoute = createRoute({
 const filtersRoute = createRoute({ method: "get", path: "/v1/admin/member-filters", tags: ["admin"], summary: "Choices for the member filters (systems, centers, ranks, countries)", security, responses: { 200: { description: "Choices", content: json(Any) }, ...common } });
 
 const permissionsRoute = createRoute({ method: "get", path: "/v1/admin/permissions", tags: ["admin"], summary: "The permission table (who may do what) for the 權限 page", security, responses: { 200: { description: "Dot chart data", content: json(Any) }, ...common } });
+
+const catalogRoute = createRoute({ method: "get", path: "/v1/admin/permission-catalog", tags: ["admin"], summary: "Permissions (with the scopes each can have) and the default permissions of every position, for the position-and-permission screen", security, responses: { 200: { description: "Catalog", content: json(Any) }, ...common } });
 
 const memberStatusRoute = createRoute({
   method: "post",
@@ -240,7 +244,7 @@ const putStaffRoute = createRoute({
   tags: ["admin"],
   summary: "Set a member's roles (super admin; needs a sign-in within 10 minutes)",
   security,
-  request: { params: z.object({ member_id: z.string().max(64) }), body: { required: true, content: json(z.object({ roles: z.array(z.enum(ROLES)).max(ROLES.length) })) } },
+  request: { params: z.object({ member_id: z.string().max(64) }), body: { required: true, content: json(z.object({ roles: z.array(z.enum(ROLES)).max(ROLES.length), grants: z.array(z.object({ permission: z.string().max(40), scope: z.string().max(10) })).max(60).optional() })) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
 });
 
@@ -268,7 +272,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
 
   app.openapi(meRoute, (c) => {
     const s = c.get("staff");
-    return c.json({ member_id: s.memberId, roles: s.roles.map((r) => ({ role: r, label: ROLE_LABELS[r] })), permissions: permissionsOf(s.roles) }, 200);
+    return c.json({ member_id: s.memberId, roles: s.roles.map((r) => ({ role: r, label: ROLE_LABELS[r] })), permissions: permissionsOf(s.roles, s.grants), grants: s.grants }, 200);
   });
 
   app.openapi(overviewRoute, async (c) => c.json(await loadOverview(c.env.DB, deps.now()), 200));
@@ -276,7 +280,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   // Head-office secretaries and super admins see and decide every request; a reviewer only those of the own regional center.
   const reviewScope = async (c: C) => {
     const st = c.get("staff");
-    if (st.roles.includes("super_admin") || st.roles.includes("secretary")) return { all: true as const };
+    if (hasGrant(grantsOf(st.roles, st.grants), "review", "all")) return { all: true as const };
     return { all: false as const, center: await centerNormOfMember(c.env.DB, st.memberId) };
   };
   const inScope = (sc: { all: true } | { all: false; center: string | null }, centerNorm: string | null) => sc.all || (sc.center !== null && centerNorm === sc.center);
@@ -365,7 +369,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (d) return d as never;
     const db = c.env.DB;
     const st = c.get("staff");
-    const scope = await memberScopeOf(db, st.memberId, st.roles);
+    const scope = await memberScopeOf(db, st.memberId, st.roles, st.grants);
     const f = c.req.valid("query");
     const { ids, total } = await searchMemberIds(db, scope, f);
     const ladder = await db.prepare("SELECT value, label FROM amway_options WHERE field_key = 'rank'").all<{ value: string; label: string }>();
@@ -388,7 +392,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         created_at: m?.created_at ?? null,
       });
     }
-    return c.json({ members: out, total, scope: scope.labels, can_manage: can(st.roles, "members.manage") }, 200);
+    return c.json({ members: out, total, scope: scope.labels, can_manage: can(st.roles, "members.manage", st.grants) }, 200);
   });
 
   app.openapi(filtersRoute, async (c) => {
@@ -415,6 +419,19 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         roles: columns,
         features: FEATURES.map((f) => ({ label: f.label, roles: f.roles, diamond: f.diamond === true })),
         mine: c.get("staff").roles,
+      },
+      200,
+    );
+  });
+
+  app.openapi(catalogRoute, async (c) => {
+    const d = deny(c, "staff.manage");
+    if (d) return d as never;
+    return c.json(
+      {
+        scopes: SCOPE_LABELS,
+        permissions: PERMISSIONS.map((p) => ({ permission: p, label: PERMISSION_INFO[p].label, scopes: PERMISSION_INFO[p].scopes })),
+        roles: ROLES.map((r) => ({ role: r, label: ROLE_LABELS[r], grants: ROLE_GRANTS[r] })),
       },
       200,
     );
@@ -473,7 +490,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const st = c.get("staff");
     const m = await getMember(db, id);
     if (!m) return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
-    if (!(await memberInScope(db, await memberScopeOf(db, st.memberId, st.roles), id))) return c.json(errorBody("forbidden", "這位會員不在您可以查詢的範圍", c.get("requestId"), { required_permission: "members.read" }), 403);
+    if (!(await memberInScope(db, await memberScopeOf(db, st.memberId, st.roles, st.grants), id))) return c.json(errorBody("forbidden", "這位會員不在您可以查詢的範圍", c.get("requestId"), { required_permission: "members.read" }), 403);
     const binding = await getActiveBinding(db, id);
     const fields = Object.fromEntries([...(await readAmwayFields(db, id))].map(([k, v]) => [k, v]));
     return c.json(
@@ -488,7 +505,9 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         amway: fields,
         spouse: binding ? { member_id: otherSide(binding, id), display_name: await displayName(db, otherSide(binding, id)), bound_at: binding.created_at, bound_by_this_member: binding.initiator_id === id } : null,
         staff_roles: await rolesOf(db, id),
-        can_manage: can(st.roles, "members.manage"),
+        staff_grants: await grantsOfMember(db, id),
+        diamond_rank: await hasDiamondRank(db, id),
+        can_manage: can(st.roles, "members.manage", st.grants),
       },
       200,
     );
@@ -501,6 +520,14 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const def = getAmwayField(field_key);
     if (!def || !REVIEWER_ADJUSTABLE.includes(field_key)) return c.json(errorBody("not_found", "Field cannot be adjusted", c.get("requestId"), { field_key }), 404);
     if (!(await getMember(c.env.DB, member_id))) return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
+    // With the "center" scope (a permission given for the own center only) the member must belong to that center.
+    const st = c.get("staff");
+    if (!hasGrant(grantsOf(st.roles, st.grants), "adjust", "all")) {
+      const own = await memberScopeOf(c.env.DB, st.memberId, st.roles, st.grants);
+      if (!own.center || !(await memberInScope(c.env.DB, { all: false, hglobal: false, center: own.center, labels: [] }, member_id))) {
+        return c.json(errorBody("forbidden", "這位會員不屬於您負責的中心", c.get("requestId"), { required_permission: "adjust" }), 403);
+      }
+    }
     const options = (await listOptions(c.env.DB)).get(field_key) ?? [];
     const v = validateAmwayValue(def, c.req.valid("json").value, options);
     if (!v.ok) return c.json(errorBody("invalid_field", v.message, c.get("requestId"), { field_key, reason: v.reason }), 422);
@@ -611,7 +638,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const d = deny(c, "staff.manage");
     if (d) return d as never;
     const list = await listStaff(c.env.DB);
-    return c.json({ staff: await Promise.all(list.map(async (s) => ({ ...s, display_name: await displayName(c.env.DB, s.member_id), center: s.roles.includes("reviewer") ? await centerTextOf(c.env.DB, s.member_id) : null }))), roles: ROLES.map((r) => ({ role: r, label: ROLE_LABELS[r] })) }, 200);
+    return c.json({ staff: await Promise.all(list.map(async (s) => ({ ...s, display_name: await displayName(c.env.DB, s.member_id), center: await centerTextOf(c.env.DB, s.member_id) }))), roles: ROLES.map((r) => ({ role: r, label: ROLE_LABELS[r] })) }, 200);
   });
 
   app.openapi(putStaffRoute, async (c) => {
@@ -621,10 +648,19 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const staff = c.get("staff");
     const { member_id } = c.req.valid("param");
     if (!(await getMember(c.env.DB, member_id))) return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
-    const roles = [...new Set(c.req.valid("json").roles)] as Role[];
-    const ok = await setRoles(c.env.DB, member_id, roles, staff.memberId, c.get("requestId"), deps.now());
+    const body = c.req.valid("json");
+    const roles = [...new Set(body.roles)] as Role[];
+    const v = validateGrants(body.grants ?? []);
+    if (!v.ok) return c.json(errorBody("invalid_field", v.message, c.get("requestId"), { field_key: "grants", reason: "invalid" }), 422);
+    // Nobody can hand out more than they hold themselves.
+    const mine = grantsOf(staff.roles, staff.grants);
+    for (const x of v.grants) if (!hasGrant(mine, x.permission, x.scope)) return c.json(errorBody("forbidden", "不能給出自己沒有的權限", c.get("requestId"), { required_permission: x.permission }), 403);
+    // Extra permissions that the positions already give add nothing: keep only the ones that do.
+    const base = grantsOf(roles);
+    const extra = v.grants.filter((x) => !hasGrant(base, x.permission, x.scope));
+    const ok = await setRoles(c.env.DB, member_id, roles, extra, staff.memberId, c.get("requestId"), deps.now());
     if (!ok) return c.json(errorBody("invalid_field", "至少要保留一位超級管理員", c.get("requestId"), { field_key: "roles", reason: "last_super_admin" }), 422);
-    return c.json({ member_id, roles }, 200);
+    return c.json({ member_id, roles, grants: extra }, 200);
   });
 
   app.openapi(auditRoute, async (c) => {

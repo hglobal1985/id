@@ -1,4 +1,4 @@
-import type { Role } from "./admin/roles";
+import type { Grant, Role } from "./admin/roles";
 /** Worker bindings. Secrets are set by the owner with `wrangler secret put`; never commit values. */
 export interface Env {
   /** Central member database (D1). Bound per environment in wrangler.jsonc. */
@@ -33,6 +33,8 @@ export interface AuthContext {
 export interface StaffContext {
   memberId: string;
   roles: Role[];
+  /** Extra permissions given to this person on top of the positions' defaults. */
+  grants: Grant[];
   authTime: number;
 }
 
