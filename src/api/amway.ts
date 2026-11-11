@@ -6,6 +6,9 @@ import { ErrorBodySchema, errorBody } from "../errors";
 import { getMember } from "../db/identity";
 import { isHglobalMember, listOptions, readAmwayFields, setAmwayEnabled, writeAmwayField } from "../db/amway";
 import { canonicalTerms, recordTerms } from "../db/vocab";
+import { resetRandomNumber } from "../db/member-numbers";
+import { getActiveBinding, unbindSpouse } from "../db/spouse";
+import { isForcedPublic, visibilityOf } from "../profile/visibility";
 import { readProfile } from "../db/profile";
 import { isPool } from "../vocab/terms";
 import { loadLayout } from "../db/layout";
@@ -58,10 +61,10 @@ const enabledRoute = createRoute({
   method: "put",
   path: "/v1/me/amway/enabled",
   tags: ["amway"],
-  summary: "Turn 「我是Amway會員」 on or off at once, no confirmation step (off keeps the data and pauses eligibility)",
+  summary: "Turn 「我是Amway會員」 on or off at once, no confirmation step (off keeps the data, pauses eligibility and gives the member a new random member number)",
   security,
   request: { body: { required: true, content: json(z.object({ enabled: z.boolean() })) } },
-  responses: { 200: { description: "Saved", content: json(z.object({ enabled: z.boolean() })) }, ...common, 422: err("invalid_field") },
+  responses: { 200: { description: "Saved", content: json(z.object({ enabled: z.boolean(), member_number: z.array(z.object({ country: z.string(), number: z.string() })).optional().openapi({ description: "Present when turned off: the new random member number (only Amway members keep a number of their own choosing; a bound spouse is unbound first)." }) })) }, ...common, 422: err("invalid_field") },
 });
 const fieldRoute = createRoute({
   method: "put",
@@ -128,6 +131,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           visible_when: f.visible_when,
           read_only: false,
           scope: "amway.write",
+          visibility: isForcedPublic(f.key) ? { configurable: false, default: "public" } : { configurable: true, default: "private" },
           status_labels: { pending: "等待審核中", approved: "已審核", rejected: "未通過審核", not_required: "" },
         })),
       },
@@ -145,7 +149,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const fields: Record<string, { value: AmwayValue; pending_value: AmwayValue; status: string; updated_at: string | null; visibility: "public" | "private" }> = {};
     for (const f of AMWAY_FIELDS) {
       const r = rows.get(f.key);
-      const vis = visibility.get(f.key) ?? "private";
+      const vis = visibilityOf(f.key, visibility.get(f.key), "private");
       fields[f.key] = r ? { value: r.value, pending_value: r.pending_value, status: r.status, updated_at: r.updated_at, visibility: vis } : { value: null, pending_value: null, status: "not_required", updated_at: null, visibility: vis };
     }
     const hglobal = await isHglobalMember(c.env.DB, memberId);
@@ -157,8 +161,14 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (denied) return denied as never;
     const { enabled } = c.req.valid("json");
     const { memberId, clientId } = c.get("auth");
-    await setAmwayEnabled(c.env.DB, memberId, enabled, { appId: clientId, requestId: c.get("requestId"), now: deps.now() });
-    return c.json({ enabled }, 200);
+    const now = deps.now();
+    await setAmwayEnabled(c.env.DB, memberId, enabled, { appId: clientId, requestId: c.get("requestId"), now });
+    if (enabled) return c.json({ enabled }, 200);
+    // Turning it off: the member number becomes a fresh random one (a couple bound by an Amway number is unbound first).
+    const binding = await getActiveBinding(c.env.DB, memberId);
+    if (binding) await unbindSpouse(c.env.DB, { memberId, binding, fallbackCountry: "TW", appId: clientId, requestId: c.get("requestId"), now });
+    const member_number = await resetRandomNumber(c.env.DB, memberId, now, c.get("requestId"));
+    return c.json({ enabled, member_number }, 200);
   });
 
   app.openapi(fieldRoute, async (c) => {

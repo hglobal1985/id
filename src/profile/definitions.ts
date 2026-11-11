@@ -4,6 +4,7 @@
 // so labels and limits live here, never in the apps.
 
 import { countryRows } from "./countries";
+import { isForcedPublic } from "./visibility";
 
 export const DEFINITIONS_VERSION = "2026-11-11.1";
 
@@ -36,7 +37,7 @@ export interface FieldDefinition {
   /** Fields sharing a row on the page (for example 大學: school + department). */
   row?: { key: string; label: string; optional_after?: string };
   visible_when?: null;
-  visibility: { configurable: true; default: Visibility };
+  visibility: { configurable: boolean; default: Visibility };
 }
 
 export type GroupKey = "basic" | "education" | "contact" | "birthday";
@@ -118,17 +119,17 @@ const basic = (d: Def): FieldDefinition => ({
   scope: "profile.basic.write",
   read_only: false,
   visible_when: null,
-  visibility: { configurable: true, default: d.visibility ?? "public" },
+  // Always-public fields (see visibility.ts) have no switch.
+  visibility: isForcedPublic(d.key) ? { configurable: false, default: "public" } : { configurable: true, default: d.visibility ?? "public" },
 });
 const contact = (d: Def): FieldDefinition => ({
   ...basic(d),
   scope: "profile.contact.write",
-  visibility: { configurable: true, default: d.visibility ?? "private" },
+  visibility: isForcedPublic(d.key) ? { configurable: false, default: "public" } : { configurable: true, default: d.visibility ?? "private" },
 });
 
 const RAW: FieldDefinition[] = [
   basic({ key: "display_name", group: "basic", order: 10, label: "顯示名稱", type: "text", max_length: 50, required: true }),
-  basic({ key: "nickname", group: "basic", order: 20, label: "暱稱", type: "text", max_length: 30 }),
   basic({ key: "motto", group: "basic", order: 30, label: "座右銘", type: "text", max_length: 100 }),
   basic({ key: "bio", group: "basic", order: 40, label: "自我介紹", type: "textarea", max_length: 1000 }),
   basic({ key: "occupation", group: "basic", order: 50, label: "職業", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "occupation" }),

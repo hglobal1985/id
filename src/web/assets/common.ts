@@ -32,7 +32,8 @@ export const COMMON_JS = String.raw`
     pencil: '<path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
     floppy: '<path d="M5 3h11l3 3v15H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 3v6h8V3M8 21v-7h8v7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
     share: '<circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/>',
-    plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
+    plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
+    tri: '<polygon points="12,3 22,21 2,21" fill="none" stroke="#e5303a" stroke-width="2.6" stroke-linejoin="round"/>'
   };
   HG.icon = function (name, cls) { return svg(ICONS[name], cls); };
 
@@ -77,6 +78,10 @@ export const COMMON_JS = String.raw`
   HG.bubble = function (size, url, name) {
     return url ? el("img", { class: "avatar " + size, src: url, alt: name || "" }) : el("span", { class: "avatar " + size, role: "img", "aria-label": name || "", text: HG.initials(name) });
   };
+
+  // A desktop (mouse, keyboard) as opposed to a phone or tablet. On a desktop the Enter key is used to pick Chinese
+  // characters in the input method, so no field reacts to Enter there (nothing is submitted or confirmed by it).
+  HG.isDesktop = function () { return !!(window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches); };
 
   // Characters that confirm one item of a multi-item field (same list as the server's TOKEN_SEPARATORS).
   HG.SEP = /[\s,;:\-#*\/\\'’，、；：。.．]+/;
@@ -128,7 +133,8 @@ export const COMMON_JS = String.raw`
   };
 
   // ---- suggestions under a text input; fetcher(q) -> Promise<string[]> (any typed character matches) ----
-  HG.suggestBox = function (input, fetcher, onpick) {
+  HG.suggestBox = function (input, fetcher, onpick, opts) {
+    opts = opts || {};
     var box = el("div", { class: "sg" }), list = el("div", { class: "sg-list", role: "listbox", hidden: true }), timer = null, idx = -1, seq = 0;
     function hide() { list.hidden = true; idx = -1; }
     function render(items) {
@@ -140,10 +146,12 @@ export const COMMON_JS = String.raw`
     function choose(t) { hide(); if (onpick) onpick(t); else { input.value = t; input.focus(); } }
     function run() {
       var q = input.value.trim(); var my = ++seq;
-      if (!q) { hide(); return; }
+      if (!q && !opts.openOnFocus) { hide(); return; }
       Promise.resolve(fetcher(q)).then(function (items) { if (my === seq) render(items || []); }, hide);
     }
     input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(run, 150); });
+    // The regional center list opens with the whole list as soon as the field is touched.
+    if (opts.openOnFocus) { input.addEventListener("focus", run); input.addEventListener("click", run); }
     input.addEventListener("blur", function () { setTimeout(hide, 150); });
     input.addEventListener("keydown", function (e) {
       var items = Array.prototype.slice.call(list.querySelectorAll("button"));
@@ -151,7 +159,11 @@ export const COMMON_JS = String.raw`
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault(); idx = e.key === "ArrowDown" ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
         items.forEach(function (b, i) { b.className = i === idx ? "cur" : ""; });
-      } else if (e.key === "Enter" && idx >= 0) { e.preventDefault(); e.stopPropagation(); choose(items[idx].textContent); }
+      } else if (e.key === "Enter") {
+        // Desktop: Enter belongs to the input method and does nothing. Phones: Enter picks the highlighted suggestion.
+        e.preventDefault();
+        if (!HG.isDesktop() && !e.isComposing && idx >= 0) choose(items[idx].textContent);
+      } else if (e.key === "Tab" && idx >= 0) { e.preventDefault(); choose(items[idx].textContent); }
       else if (e.key === "Escape") hide();
     });
     box.appendChild(input); box.appendChild(list);
@@ -160,7 +172,7 @@ export const COMMON_JS = String.raw`
 
   // ---- multi-item input (occupation, company, interests): chips; separators or Enter confirm one item ----
   HG.tags = function (o) {
-    var items = (o.value || []).slice(), chips = el("span", { class: "chips-in" }), input = el("input", { type: "text", placeholder: o.placeholder || "輸入後按 Enter 或逗號確認", "aria-label": o.label || "項目", maxlength: o.itemMax || 50 });
+    var items = (o.value || []).slice(), chips = el("span", { class: "chips-in" }), input = el("input", { type: "text", placeholder: o.placeholder || (HG.isDesktop() ? "輸入後用逗號、頓號或空格確認" : "輸入後按 Enter 或逗號確認"), "aria-label": o.label || "項目", maxlength: o.itemMax || 50 });
     var tg = el("div", { class: "tg" });
     function paint() {
       chips.textContent = "";
@@ -175,13 +187,20 @@ export const COMMON_JS = String.raw`
       paint();
     }
     function flush() { HG.SEP.test(input.value) ? input.value.split(HG.SEP).forEach(add) : add(input.value); input.value = ""; }
-    input.addEventListener("input", function () {
-      if (!HG.SEP.test(input.value)) return;
+    var composing = false;
+    function split() {
+      if (composing || !HG.SEP.test(input.value)) return;
       var parts = input.value.split(HG.SEP), last = parts.pop(); parts.forEach(add); input.value = last;
-    });
+    }
+    input.addEventListener("compositionstart", function () { composing = true; });
+    input.addEventListener("compositionend", function () { composing = false; split(); });
+    input.addEventListener("input", split);
     input.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); flush(); }
-      else if (e.key === "Backspace" && !input.value && items.length) { items.pop(); paint(); }
+      if (e.key === "Enter") {
+        // Desktop: nothing happens (the key picks characters in the input method). Phones: Enter confirms the item.
+        e.preventDefault();
+        if (!HG.isDesktop() && !e.isComposing) flush();
+      } else if (e.key === "Backspace" && !input.value && items.length) { items.pop(); paint(); }
     });
     input.addEventListener("blur", function () { setTimeout(function () { if (input.value.trim()) flush(); }, 160); });
     paint();

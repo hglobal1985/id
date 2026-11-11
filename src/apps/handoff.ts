@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-11.2";
-export const HANDOFF_UPDATED = "2026-11-11 12:02（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-11.3";
+export const HANDOFF_UPDATED = "2026-11-11 14:05（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -73,10 +73,13 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `5. 會員資料（App 內原地修改）：GET ${origin}/v1/profile/field-definitions 取得欄位定義，GET ${origin}/v1/me/profile 取得會員目前的值；每個欄位用 PUT ${origin}/v1/me/profile/fields/<field_key>（body {"value":…}，null 清除）單獨儲存，公開／隱藏用 PUT ${origin}/v1/me/profile/visibility。所有 App 都擁有全部權限範圍，不需要另外申請。畫面請完全依欄位定義產生，不要寫死欄位、名稱或選項；不認得的欄位類型顯示「請更新 App」。`,
     "   - 欄位型態：text、textarea、url、email、phone、date 用一般輸入框；tags 是多項輸入（職業、公司／單位、興趣與專長、使用語言），值是文字陣列；select 是固定選項；country（居住國家／地區）是手動輸入並從建議中選擇。每個欄位旁都要有「公開／隱藏」切換（眼睛圖示），聯絡與地區、生日、Amway 欄位預設全部隱藏。",
     `   - 關聯詞：定義裡有 suggest 的欄位（職業、公司／單位、興趣與專長、大學／碩士／博士的校名與系名、直銷商培訓系統、上手鑽石、上手白金、皇冠大使）是「直接打字＋關聯詞」：會員自由輸入，輸入時呼叫 GET ${origin}/v1/vocab/suggestions?pool=<suggest>&q=<已輸入的字> 顯示建議（只要包含輸入的任一個字就會出現，不分順序），點選後填入；不用強迫會員一定要選。推薦人沒有關聯詞。`,
+    "   - 電腦版的 Enter 鍵：電腦（滑鼠加鍵盤）上輸入法選字要按 Enter，所以所有可自訂輸入的欄位（職業、公司、興趣與專長、大學系名、地區教育中心…）按 Enter 都不要有任何動作（不送出、不確認標籤、不選建議）；用逗號等符號、空格、點選建議、按「儲存」來完成。手機上才保留 Enter 確認標籤。輸入法組字中（isComposing）也不要處理分隔符號。",
     `   - 多項欄位（tags）：輸入時遇到 , ; : - # * / \\ ' ， 、 ； ： 。 . 或空白字元或按 Enter，就確認為一個項目（變成可移除的標籤）。`,
+    "   - 一律公開的欄位（顯示名稱、居住國家／地區、生命靈數九宮格、直銷商培訓系統、地區教育中心、獎銜、推薦人、上手白金、上手鑽石，以及會員編號、頭像）：沒有填寫就不顯示；欄位定義與 /v1/me/amway 的 visibility.configurable 為 false，畫面上仍顯示和其他欄位一樣的圓角方框與眼睛圖案「公開」，但不能按（沒有切換）；PUT /v1/me/profile/visibility 對這些欄位回 422 always_public。其餘欄位（含皇冠大使）有公開／隱藏切換。暱稱欄位已刪除。",
+    "   - 名字旁的方框：名字右邊依序顯示「系統」（直銷商培訓系統）、「中心」（地區教育中心）、「獎銜」（只顯示已審核的，「創辦人」三個字改寫成 F）三個小方框，只在勾選「我是Amway會員」且有填寫時出現；GET /v1/me/profile 的 badges 已算好文字與字級（size 0–3，字多自動縮小到固定五個中文字寬）。最上方寫「會員編號」加國碼的完整編號（例如 TW9475831）。",
     "   - 學歷：大學、碩士、博士各一列，每列「校名＋系名」放在同一行，只顯示「大學」「碩士」「博士」三個名稱（不要顯示欄位全名）。碩士、博士預設整列隱藏：大學列下方放「新增碩士學歷」按鈕，按了才顯示碩士列；有碩士列才出現「新增博士學歷」。已經有資料的列一律顯示。欄位定義的 row 資訊（key、label、optional_after）就是用來分列的。",
-    "   - 會員編號（member_number）與公開網址：公開網址是 ${origin}/<國碼二碼緊接編號>，例如 TW9475831（二碼國碼＋編號，中間沒有空格）；欄位值的 country、number 組成這個代碼（編號本身已含國碼的不重複加）。國家選單照欄位定義 options 的順序（台灣、鄰近國家，其餘依國際電話區碼）。尚未勾選「我是Amway會員」時，欄位旁顯示「隨機產生，不可修改」且不提供編輯；勾選後改顯示「建議修改會員編號」並可編輯（文字取自欄位定義的 help_when_not_amway／help_when_amway）。",
-    `   - 勾選「我是Amway會員」：PUT ${origin}/v1/me/amway/enabled {"enabled":true|false}，打勾或取消立即生效，不要有二次確認，也沒有同意畫面或隱私說明確認頁；打勾後立刻顯示 Amway 欄位（GET ${origin}/v1/amway/field-definitions 與 GET ${origin}/v1/me/amway），每個 Amway 欄位也有「公開／隱藏」切換。「地區教育中心」（education_center）永遠顯示、是自由輸入的文字；只有 GET /v1/me/amway 的 hglobal 為 true（直銷商培訓系統填了代表 H-Global1985 的詞，例如「寰宇」）時，才依欄位定義的 suggest_when_hglobal 顯示專屬關聯詞，不是的話維持純文字、不要有關聯詞。`,
+    "   - 會員編號（member_number）與公開網址：公開網址是 ${origin}/<國碼二碼緊接編號>，例如 TW9475831（二碼國碼＋編號，中間沒有空格）；欄位值的 country、number 組成這個代碼（編號本身已含國碼的不重複加）。國家選單照欄位定義 options 的順序（台灣、鄰近國家，其餘依國際電話區碼）。尚未勾選「我是Amway會員」時，欄位旁顯示「隨機產生，不可修改」且不提供編輯；勾選後改顯示「建議修改會員編號」並可編輯（文字取自 GET /v1/me/profile 的 member_number.note；會員自己改過一次編號後，note 就永久消失，不再提醒）。每次取消勾選「我是Amway會員」，系統會重新隨機產生一組編號（國碼＋0 開頭的 7 位亂數，不夠用時自動加位數），PUT /v1/me/amway/enabled 的回應帶 member_number；取消勾選時若已綁定夫妻會先解除綁定。",
+    `   - 勾選「我是Amway會員」：PUT ${origin}/v1/me/amway/enabled {"enabled":true|false}，打勾或取消立即生效，不要有二次確認，也沒有同意畫面或隱私說明確認頁；打勾後立刻顯示 Amway 欄位（GET ${origin}/v1/amway/field-definitions 與 GET ${origin}/v1/me/amway），每個 Amway 欄位也有「公開／隱藏」切換。「地區教育中心」（education_center）永遠顯示、是自由輸入的文字；只有 GET /v1/me/amway 的 hglobal 為 true（直銷商培訓系統填了代表 H-Global1985 的詞，例如「寰宇」）時，才依欄位定義的 suggest_when_hglobal 顯示專屬清單：點進欄位不用打字就直接列出整份清單（GET /v1/vocab/suggestions?pool=education_center&q= 空字串回傳全部），打字時自動篩選；這個「點開就顯示全部」的規則只適用地區教育中心，不要套用在其他欄位。不是寰宇的話維持純文字、不要有任何關聯詞。`,
     `   - 其他：座右銘欄位要有「隨機提案」按鈕（GET ${origin}/v1/profile/suggestions/motto，只填入輸入框，由會員自己儲存）；頭像用 POST ${origin}/v1/me/profile/avatar 直接送圖片位元組（先縮成約 256 px 的方形 JPEG，不超過 128 KB），或 POST ${origin}/v1/me/profile/avatar/google 使用 Google 頭像；生日設定後 GET /v1/me/profile 的 life_chart 提供生命靈數九宮格的繪圖資料。每個欄位的編輯按鈕，在編輯狀態要原地變成「磁碟片圖示＋儲存」。`,
     "   - 【畫面控制項規則】整個資料頁不要使用瀏覽器或系統原生的下拉選單（select／Picker）與原生勾選框（checkbox），一律用自訂元件：下拉用自訂的彈出清單（可搜尋），勾選用和文字同樣大小的自訂方框（打勾圖示與文字等高），建議清單與多項輸入也都是自訂元件。不要為了省事改回原生控制項。",
     "   - 以手機閱讀舒適度優先排版：單欄、觸控區域至少 44 px；配色採亮色系，沿用 H-Global1985 標誌的色系（深綠、橄欖綠、橘、黃、鮭粉、暖白），不使用星空特效。",
@@ -115,7 +118,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "6. 沒有保存任何 Amway 資料，日誌沒有 Token、信箱、姓名（三、7）。",
     "7. 對會員顯示的品牌與用語（三、8）；隱私權政策與刪除帳號入口（三、9）。",
     "8. 共用登入（三、2）：手機用共用 Keychain 群組保存 sso_token，啟動與回到前景時 exchange／status；網頁版登入後 adopt、載入頁面時 check、登出走 /auth/sso/logout；登出按鈕寫「登出所有 App」。（2026-11-10.3 新增）",
-    "9. 會員資料頁（三、5）：App 內原地修改、關聯詞、多項欄位確認符號、學歷分列（空白的碩士、博士列會自動消失）、會員編號提示與公開網址格式、Amway 勾選立即生效、地區教育中心的條件式關聯詞、不使用原生下拉與勾選框、亮色系配色。（2026-11-11.1 新增，.2 補充）",
+    "9. 會員資料頁（三、5）：一律公開欄位只顯示「公開」不能切換、名字旁的系統／中心／獎銜方框、電腦版 Enter 不動作、地區教育中心點開顯示全部、App 內原地修改、關聯詞、多項欄位確認符號、學歷分列（空白的碩士、博士列會自動消失）、會員編號提示與公開網址格式、Amway 勾選立即生效、地區教育中心的條件式關聯詞、不使用原生下拉與勾選框、亮色系配色。（2026-11-11.1 新增，.2 補充）",
     "10. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");

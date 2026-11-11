@@ -64,6 +64,21 @@ export async function ensureMemberNumber(db: D1Database, memberId: string, count
   return [entry];
 }
 
+/**
+ * A new random number for the member (country code + 0 + digits, longer when the space is crowded): used every time
+ * 「我是Amway會員」 is turned off, because only Amway members keep a number of their own choosing.
+ */
+export async function resetRandomNumber(db: D1Database, memberId: string, now: Date, requestId: string): Promise<MemberNumberEntry[]> {
+  const current = await readNumbers(db, memberId);
+  const member = await db.prepare("SELECT registration_country FROM members WHERE id = ?").bind(memberId).first<{ registration_country: string }>();
+  const entry = await newRandomNumber(db, current[0]?.country ?? member?.registration_country ?? "TW");
+  await db.batch([
+    ...replaceNumbersStatements(db, memberId, [entry], now),
+    auditStatement(db, { actorType: "member", actorId: memberId, action: "member_number.reset", targetType: "member", targetId: memberId, result: "success", requestId }, now),
+  ]);
+  return [entry];
+}
+
 /** Number of self-service member number changes in the last 24 hours. */
 export async function selfChangesLastDay(db: D1Database, memberId: string, now: Date): Promise<{ count: number; oldest: string | null }> {
   const since = taipeiIso(new Date(now.getTime() - 24 * 3600 * 1000));

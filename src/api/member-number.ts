@@ -56,6 +56,8 @@ export async function putMemberNumbers(c: C, deps: Deps): Promise<Response> {
   // A bound couple shares one list: write it to both.
   await db.batch([
     ...replaceNumbersStatements(db, memberId, v.value, now),
+    // From now on the "recommended to change" reminder stays away for good.
+    db.prepare("UPDATE members SET number_customized = 1 WHERE id = ?").bind(memberId),
     ...(spouseId ? replaceNumbersStatements(db, spouseId, v.value, now) : []),
     auditStatement(
       db,
