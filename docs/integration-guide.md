@@ -55,6 +55,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **Fail closed**：查不到、逾時、非 200 一律視為不符合。
 - 快取最長 1 日，只能放記憶體或短時效快取服務，不寫入資料庫。
 - `reason` 只供內部記錄，不可顯示給會員。
+- `GET /v1/eligibility/context`（需要 `amway.read`）→ `{member_id, roles:[{role,label}], hglobal_verified, center:{key,label}|null}`：登入者**自己**的職務、是否為已驗證的寰宇、已核准的中心。給需要「依中心／職務分派工作」的 App 使用（例如課程報名由同中心窗口審核）；比較中心一律用 `center.key`。非 200 一律視為沒有職務、未驗證。**例外（業主 2026-11-12）**：App 可以把 `center.label` 保存在它為該會員建立的紀錄上（例如報名紀錄），只用於分派審核與對帳；其餘 Amway 資料仍不得保存。
 
 ## 6. 資料與文字規則
 - Amway 相關資料（會員編號、獎銜、上手、資格結果）不得被 App 或 App 後端保存，也不得寫入日誌或分析工具。
