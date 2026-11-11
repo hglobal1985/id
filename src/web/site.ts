@@ -19,7 +19,7 @@ import { SITE_CSS } from "./assets/css";
 import { ME_JS } from "./assets/me";
 import { COMMON_JS } from "./assets/common";
 import { NOTES_JS, SHARE_JS, SOCIAL_JS } from "./assets/notes";
-import { chartHtml } from "./chart";
+import { chartHtml, lifeTitle } from "./chart";
 import { lifeChartOf } from "../profile/astro";
 import { AMWAY_FIELDS } from "../amway/fields";
 import { approvedRankLabel, listOptions, readAmwayFields } from "../db/amway";
@@ -287,7 +287,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         const birthday = str("birthday");
         const chart = birthday && pub("derived") ? lifeChartOf(birthday) : null;
         const links = await listLinks(db, id);
-        return { m, id, indexable: m?.search_indexable === 1, items, edu, amway, chart, badges: await heroBadges(db, id, true), links };
+        return { m, id, birthday: pub("birthday") ? birthday : null, indexable: m?.search_indexable === 1, items, edu, amway, chart, badges: await heroBadges(db, id, true), links };
       }),
     );
     const nameOf = (p: (typeof profiles)[number]) => {
@@ -321,7 +321,6 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       { block: "contact", html: byGroup("contact") },
     ];
     // 生日 and 生命靈數 share one block (same as on the edit page).
-    const birthdayRows = byGroup("birthday");
     const rows = rowBlocks.sort((a, b) => place(a.block) - place(b.block)).map((b) => b.html).join("");
     const amwayRows = p.amway.map((a) => row(a.label, escapeHtml(a.text))).join("");
     // Social links: one icon per link under the name, centered, 5 per row (7 and smaller when there are more than two rows).
@@ -341,15 +340,13 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       (owner ? `${tabs}<div class="pagebar">${edit}${share}<a class="button wide" href="/${encodeURIComponent(number)}">預覽公開頁</a></div>` : tabs) +
       `<section class="card"><div class="hero">${avatar}<div class="hero-main"><div class="nameline"><h1 class="nm nm-${nameSize(nameOf(p))}">${escapeHtml(nameOf(p))}</h1>${p.badges.length ? `<span class="badges">${p.badges.map((b) => `<span class="rank k-${b.kind} rk${b.size}" title="${{ system: "系統", center: "中心", rank: "獎銜" }[b.kind]}：${escapeHtml(b.text)}">${escapeHtml(b.text)}</span>`).join("")}</span>` : ""}</div><div class="sub"><span class="help">會員編號</span><span class="help">${escapeHtml(number)}</span></div></div></div>` + socials +
       (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
-      `${rows || (amwayRows || birthdayRows || p.chart || socials ? "" : '<p class="help">還沒有公開的資料。</p>')}</section>` +
+      `${rows || (amwayRows || p.chart || socials ? "" : '<p class="help">還沒有公開的資料。</p>')}</section>` +
       [
         { block: "amway", html: amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "" },
         {
+          // One block: 「xxx的生命靈數（x年x月x日）」 — the birthday row and the small 生命靈數 label are not repeated.
           block: "birthday",
-          html:
-            birthdayRows || p.chart
-              ? `<section class="card"><h2>生日與生命靈數</h2>${birthdayRows}${p.chart ? `<div class="row"><div class="row-head"><label>生命靈數</label></div>${chartHtml(p.chart, !!viewer)}</div>` : ""}</section>`
-              : "",
+          html: p.chart ? `<section class="card"><h2>${escapeHtml(lifeTitle(nameOf(p), p.birthday))}</h2>${chartHtml(p.chart, owner)}</section>` : "",
         },
       ]
         .sort((a, b) => place(a.block) - place(b.block))

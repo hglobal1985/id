@@ -50,6 +50,12 @@ const LINE_LEGEND: readonly { icon: string; text: string }[] = [
   { icon: `<line x1="3" y1="21" x2="21" y2="3" ${BLUE}/>`, text: "斜線：你如何追求人生目標？" },
 ];
 
+/** 「xxx的生命靈數（x年x月x日）」: the date only when the member made the birthday public (the chart itself is always public). */
+export function lifeTitle(name: string, birthday: string | null): string {
+  const m = birthday ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthday) : null;
+  return m ? `${name}的生命靈數（${m[1]}年${Number(m[2])}月${Number(m[3])}日）` : `${name}的生命靈數`;
+}
+
 /** The whole card body (numbers are integers and the zodiac name is a fixed string: nothing here is member text). */
 /** `legend`: the explanations under the grid are for signed-in members only; the clean public page leaves them out. */
 export function chartHtml(c: LifeChart, legendOn = false): string {

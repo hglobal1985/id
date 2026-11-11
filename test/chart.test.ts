@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lifeChartOf } from "../src/profile/astro";
-import { chartHtml } from "../src/web/chart";
+import { chartHtml, lifeTitle } from "../src/web/chart";
 
 describe("life number chart: 主線 and 副線", () => {
   it("主線: a row, column or diagonal whose three numbers all carry a circle; 副線: the short diagonals around the centre with both numbers circled", () => {
@@ -31,5 +31,13 @@ describe("life number chart: 主線 and 副線", () => {
     expect(withLegend).not.toContain("特殊連線");
     expect(withLegend).not.toMatch(/[（(]/);
     expect(withLegend).toContain('stroke-dasharray="2.4 2.4"'); // the 副線 mark is dashed
+  });
+});
+
+describe("block title", () => {
+  it("xxx的生命靈數（x年x月x日）, with the date only when it may be shown", () => {
+    expect(lifeTitle("小美", "1985-07-03")).toBe("小美的生命靈數（1985年7月3日）");
+    expect(lifeTitle("小美", "2001-12-31")).toBe("小美的生命靈數（2001年12月31日）");
+    expect(lifeTitle("小美", null)).toBe("小美的生命靈數");
   });
 });
