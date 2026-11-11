@@ -188,6 +188,14 @@
           "label_when_amway": {
             "type": "string"
           },
+          "help_when_amway": {
+            "type": "string",
+            "description": "member_number: note beside the field when 我是Amway會員 is on"
+          },
+          "help_when_not_amway": {
+            "type": "string",
+            "description": "member_number: note beside the field when 我是Amway會員 is off (the number is random and cannot be changed)"
+          },
           "max_items_when_amway": {
             "type": "integer"
           },
@@ -756,6 +764,10 @@
           "enabled": {
             "type": "boolean"
           },
+          "hglobal": {
+            "type": "boolean",
+            "description": "The training system (effective or pending) is a term marked as H-Global1985: the education center field applies."
+          },
           "fields": {
             "type": "object",
             "additionalProperties": {
@@ -802,6 +814,7 @@
         },
         "required": [
           "enabled",
+          "hglobal",
           "fields"
         ]
       },

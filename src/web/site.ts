@@ -10,13 +10,20 @@ import { readProfile } from "../db/profile";
 import { getActiveBinding, otherSide } from "../db/spouse";
 import { publicItems } from "../profile/public";
 import { escapeHtml } from "./pages";
-import { APPS_PATH, SITE_CSP, sitePage, type NavUser, type SiteNav } from "./layout";
+import { APPS_PATH, NOTIFICATIONS_PATH, SITE_CSP, sitePage, type NavUser, type SiteNav } from "./layout";
 import { initialsOf, tileClass } from "./initials";
 import { listApps } from "../db/apps";
 import { PRIVACY_SECTIONS, PRIVACY_TITLE, PRIVACY_VERSION, type PrivacySection } from "./privacy";
 import { POLICY_SECTIONS, POLICY_TITLE, POLICY_UPDATED } from "./privacy-policy";
 import { SITE_CSS } from "./assets/css";
 import { ME_JS } from "./assets/me";
+import { COMMON_JS } from "./assets/common";
+import { NOTES_JS, SHARE_JS } from "./assets/notes";
+import { chartHtml } from "./chart";
+import { lifeChartOf } from "../profile/astro";
+import { AMWAY_FIELDS } from "../amway/fields";
+import { listOptions, readAmwayFields } from "../db/amway";
+import { readNumbers } from "../db/member-numbers";
 import { ADMIN_JS } from "./assets/admin";
 
 type C = Context<AppBindings>;
@@ -54,8 +61,12 @@ async function navUser(db: D1Database, memberId: string): Promise<NavUser> {
 async function navFor(c: C, deps: Deps, path: string): Promise<SiteNav> {
   const s = await currentSession(c, deps);
   if (!s) return { signedIn: false, path };
-  const [user, roles] = await Promise.all([navUser(c.env.DB, s.member_id), rolesOf(c.env.DB, s.member_id)]);
-  return { signedIn: true, staff: roles.length > 0, user, path };
+  const [user, roles, unread] = await Promise.all([
+    navUser(c.env.DB, s.member_id),
+    rolesOf(c.env.DB, s.member_id),
+    c.env.DB.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").bind(s.member_id).first<{ n: number }>(),
+  ]);
+  return { signedIn: true, staff: roles.length > 0, user, path, unread: unread?.n ?? 0 };
 }
 
 function asset(c: C, body: string, type: string) {
@@ -68,6 +79,9 @@ function asset(c: C, body: string, type: string) {
 export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.get("/assets/site.css", (c) => asset(c, SITE_CSS, "text/css; charset=utf-8"));
   app.get("/assets/me.js", (c) => asset(c, ME_JS, "text/javascript; charset=utf-8"));
+  app.get("/assets/common.js", (c) => asset(c, COMMON_JS, "text/javascript; charset=utf-8"));
+  app.get("/assets/notifications.js", (c) => asset(c, NOTES_JS, "text/javascript; charset=utf-8"));
+  app.get("/assets/share.js", (c) => asset(c, SHARE_JS, "text/javascript; charset=utf-8"));
   app.get("/assets/admin.js", (c) => asset(c, ADMIN_JS, "text/javascript; charset=utf-8"));
 
   app.get("/", async (c) => {
@@ -90,10 +104,24 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return c.body(row.data, 200);
   });
 
+  // /me opens the member's own public page (the page visitors see); editing is on /me/edit.
   app.get("/me", async (c) => {
     const s = await currentSession(c, deps);
     if (!s) return c.redirect("/login?return_to=%2Fme", 302);
-    return page(c, sitePage({ title: "基本資料", nav: await navFor(c, deps, "/me"), body: '<div id="app"><p class="help">載入中…</p></div>', script: "/assets/me.js" }));
+    const first = (await readNumbers(c.env.DB, s.member_id))[0];
+    return c.redirect(first ? `/${encodeURIComponent(first.number)}` : "/me/edit", 302);
+  });
+
+  app.get("/me/edit", async (c) => {
+    const s = await currentSession(c, deps);
+    if (!s) return c.redirect("/login?return_to=%2Fme%2Fedit", 302);
+    return page(c, sitePage({ title: "編輯基本資料", nav: await navFor(c, deps, "/me"), body: '<div id="app"><p class="help">載入中…</p></div>', script: ["/assets/common.js", "/assets/me.js"] }));
+  });
+
+  app.get(NOTIFICATIONS_PATH, async (c) => {
+    const s = await currentSession(c, deps);
+    if (!s) return c.redirect("/login?return_to=%2Fnotifications", 302);
+    return page(c, sitePage({ title: "站內通知", nav: await navFor(c, deps, NOTIFICATIONS_PATH), body: '<div id="app"><p class="help">載入中…</p></div>', script: ["/assets/common.js", "/assets/notifications.js"] }));
   });
 
   app.get("/admin", async (c) => {
@@ -178,11 +206,37 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const nav = await navFor(c, deps, "/");
     if (!ids.length) return page(c, sitePage({ title: "找不到會員", nav, body: '<section class="card"><h2>找不到此會員</h2><p>網址可能已經變更。</p></section>' }), 404);
     const pick = Math.min(Math.max(Number(c.req.query("m") ?? 0) || 0, 0), ids.length - 1);
+    const viewer = await currentSession(c, deps);
+    const options = await listOptions(db);
+    const EDU = [
+      { label: "大學", school: "university", dept: "university_dept" },
+      { label: "碩士", school: "grad_school", dept: "grad_dept" },
+      { label: "博士", school: "phd_school", dept: "phd_dept" },
+    ];
+    const eduKeys = new Set(EDU.flatMap((l) => [l.school, l.dept]));
     const profiles = await Promise.all(
       ids.map(async (id) => {
         const m = await getMember(db, id);
         const { values, visibility } = await readProfile(db, id);
-        return { m, items: publicItems(values, visibility, m?.display_name ?? null) };
+        const items = publicItems(values, visibility, m?.display_name ?? null);
+        const pub = (k: string, dflt: "public" | "private" = "private") => (visibility.get(k) ?? dflt) === "public";
+        const str = (k: string) => (typeof values.get(k)?.value === "string" ? (values.get(k)?.value as string) : "");
+        // Education: one line per level, shown when the school or the department is public.
+        const edu = EDU.map((l) => ({ label: l.label, text: [pub(l.school) ? str(l.school) : "", pub(l.dept) ? str(l.dept) : ""].filter(Boolean).join("　") })).filter((l) => l.text);
+        // Amway area: only when the member turned it on; reviewed values only when approved.
+        const amway: { label: string; text: string }[] = [];
+        if (m?.amway_enabled === 1) {
+          const rows = await readAmwayFields(db, id);
+          for (const f of AMWAY_FIELDS) {
+            const row = rows.get(f.key);
+            if (!pub(f.key) || !row || typeof row.value !== "string" || !(row.value_approved || row.status === "not_required")) continue;
+            const label = f.type === "select" ? (options.get(f.key)?.find((o) => o.value === row.value)?.label ?? "") : row.value;
+            if (label) amway.push({ label: f.label, text: label });
+          }
+        }
+        const birthday = str("birthday");
+        const chart = birthday && pub("derived") ? lifeChartOf(birthday) : null;
+        return { m, id, items, edu, amway, chart };
       }),
     );
     const nameOf = (p: (typeof profiles)[number]) => {
@@ -194,18 +248,30 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
         ? `<div class="tabs">${profiles.map((p, i) => `<a href="/${encodeURIComponent(number)}?m=${i}"${i === pick ? ' class="on"' : ""}>${escapeHtml(nameOf(p))}</a>`).join("")}</div>`
         : "";
     const p = profiles[pick] as (typeof profiles)[number];
-    const avatar = p.m?.avatar_url ? `<img class="avatar md" src="${escapeHtml(p.m.avatar_url)}" alt="">` : `<span class="avatar md" aria-hidden="true">${escapeHtml(initialsOf(nameOf(p)))}</span>`;
-    const rows = p.items
-      .filter((i) => i.key !== "display_name")
-      .map((i) => {
-        let v: string;
-        if (Array.isArray(i.value)) v = i.value.map(escapeHtml).join("、");
-        else if (i.type === "url") v = `<a href="${escapeHtml(i.value)}" rel="nofollow noopener noreferrer" target="_blank">${escapeHtml(i.value)}</a>`;
-        else v = escapeHtml(i.value).replace(/\n/g, "<br>");
-        return `<div class="row"><label>${escapeHtml(i.label)}</label><div>${v}</div></div>`;
-      })
-      .join("");
-    const body = `${tabs}<section class="card"><div class="hero">${avatar}<div><h1>${escapeHtml(nameOf(p))}</h1><span class="badge">${escapeHtml(number)}</span></div></div>${rows}</section>`;
-    return page(c, sitePage({ title: nameOf(p), nav, body }));
+    const avatar = p.m?.avatar_url ? `<img class="avatar lg" src="${escapeHtml(p.m.avatar_url)}" alt="">` : `<span class="avatar lg" aria-hidden="true">${escapeHtml(initialsOf(nameOf(p)))}</span>`;
+    const value = (i: { type: string; value: string | string[] }) => {
+      if (Array.isArray(i.value)) return `<div class="chips">${i.value.map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>`;
+      if (i.type === "url") return `<a href="${escapeHtml(i.value)}" rel="nofollow noopener noreferrer" target="_blank">${escapeHtml(i.value)}</a>`;
+      return escapeHtml(i.value).replace(/\n/g, "<br>");
+    };
+    const motto = p.items.find((i) => i.key === "motto");
+    const row = (label: string, html: string) => `<div class="row"><div class="row-head"><label>${escapeHtml(label)}</label></div><div class="value">${html}</div></div>`;
+    const rows =
+      p.items
+        .filter((i) => i.key !== "display_name" && i.key !== "motto" && !eduKeys.has(i.key))
+        .map((i) => row(i.label, value(i)))
+        .join("") + p.edu.map((l) => row(l.label, escapeHtml(l.text))).join("");
+    const amwayRows = p.amway.map((a) => row(a.label, escapeHtml(a.text))).join("");
+    const mine = viewer?.member_id === p.id;
+    const share = `<button type="button" class="small" id="share" data-label="分享"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>分享</button>`;
+    const edit = mine ? `<a class="button small primary" href="/me/edit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>編輯</a>` : "";
+    const body =
+      `${tabs}<div class="pagebar"><span></span><div class="tools">${share}${edit}</div></div>` +
+      `<section class="card"><div class="hero">${avatar}<div><h1>${escapeHtml(nameOf(p))}</h1><div class="sub"><span class="help">會員</span><span class="badge num">${escapeHtml(number)}</span></div></div></div>` +
+      (motto && typeof motto.value === "string" ? `<p class="motto">${escapeHtml(motto.value)}</p>` : "") +
+      `${rows || '<p class="help">還沒有公開的資料。</p>'}</section>` +
+      (amwayRows ? `<section class="card"><h2>Amway</h2>${amwayRows}</section>` : "") +
+      (p.chart ? `<section class="card"><h2>生命靈數</h2>${chartHtml(p.chart)}</section>` : "");
+    return page(c, sitePage({ title: nameOf(p), nav, body, script: "/assets/share.js" }));
   });
 }

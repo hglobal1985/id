@@ -6,6 +6,7 @@ export const SITE_CSP =
   "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 export const APPS_PATH = "/apps";
+export const NOTIFICATIONS_PATH = "/notifications";
 
 export interface NavUser {
   name: string;
@@ -19,6 +20,8 @@ export interface SiteNav {
   user?: NavUser | null;
   /** Current path, to highlight the active menu item. */
   path?: string;
+  /** Unread in-site notifications (the bell). */
+  unread?: number;
 }
 
 const DOTS = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">${[4, 12, 20]
@@ -28,6 +31,14 @@ const DOTS = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"
 /** The 9-dot button: a plain link to the Apps page. */
 export function appLauncher(on = false): string {
   return `<a class="launcher${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${APPS_PATH}" aria-label="H-Global1985 Apps" title="H-Global1985 Apps">${DOTS}</a>`;
+}
+
+const BELL = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15L6 17z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 21h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+
+/** The bell: a plain link to the notifications page, with the number of unread ones. */
+export function bellLink(unread: number, on = false): string {
+  const label = unread > 0 ? `站內通知（${unread} 則未讀）` : "站內通知";
+  return `<a class="bell${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${NOTIFICATIONS_PATH}" aria-label="${label}" title="${label}">${BELL}${unread > 0 ? `<span class="dot">${unread > 99 ? "99+" : unread}</span>` : ""}</a>`;
 }
 
 /** The round picture: the member's photo, or two initials. `size` is a class (sm, md, lg or empty), never an inline style. */
@@ -46,6 +57,7 @@ function memberNav(nav: SiteNav): string {
   return `<nav class="starnav" aria-label="主選單">
   <a class="me${path === "/me" ? " on" : ""}" href="/me">${avatarBubble(u, "sm", u.name)}<span>${escapeHtml(u.name)}</span></a>
   ${nav.staff ? `<a href="/admin"${on("/admin")}>後台</a>` : ""}
+  ${bellLink(nav.unread ?? 0, path === NOTIFICATIONS_PATH)}
   ${appLauncher(path === APPS_PATH)}
   <a href="/logout">登出</a>
 </nav>`;
@@ -61,7 +73,7 @@ function adminBar(nav: SiteNav): string {
 </header>`;
 }
 
-export function sitePage(opts: { title: string; body: string; script?: string; nav?: SiteNav; admin?: boolean }): string {
+export function sitePage(opts: { title: string; body: string; script?: string | string[]; nav?: SiteNav; admin?: boolean }): string {
   const nav: SiteNav = opts.nav ?? { signedIn: false };
   const header = opts.admin ? adminBar(nav) : memberNav(nav);
   return `<!doctype html>
@@ -77,7 +89,7 @@ export function sitePage(opts: { title: string; body: string; script?: string; n
 ${header}
 <main class="wrap">${opts.body}</main>
 <footer class="foot"><a href="/privacy">隱私權政策</a><a href="/privacy/amway">完整隱私說明</a></footer>
-${opts.script ? `<script src="${escapeHtml(opts.script)}" defer></script>` : ""}
+${[opts.script ?? []].flat().map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("\n")}
 </body>
 </html>`;
 }

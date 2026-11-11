@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-10.3";
-export const HANDOFF_UPDATED = "2026-11-10 19:10（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-11.1";
+export const HANDOFF_UPDATED = "2026-11-11 10:58（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -70,7 +70,16 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `   - 共用登入（網頁版，同一個瀏覽器內連動）：瀏覽器不能跨網站共用儲存，改由中央會員記住這個瀏覽器，用整頁導向詢問。（1）登入完成後：POST ${origin}/v1/auth/sso/start → POST ${origin}/v1/auth/sso/web-code {"sso_token"} → {"code"}（單次、2 分鐘）→ 整頁導向 ${origin}/auth/sso/adopt?c=<code>&app_id=${id}&return=<回傳頁>，回到 <回傳頁>#sso_adopted=1。（2）每次載入頁面（自己加 5 分鐘節流）：先 POST /v1/auth/nonce 取得 nonce 並存 sessionStorage，整頁導向 ${origin}/auth/sso/check?app_id=${id}&nonce=<SHA-256 十六進位小寫>&return=<回傳頁>&state=<隨機字串> → 回到 <回傳頁>#sso_code=…&sso_member=…&state=…（沒人登入是 #sso_none=1&state=…）。核對 state；sso_member 與目前登入的會員相同就不用動；不同或尚未登入就 POST ${origin}/v1/auth/sso/web-exchange {"app_id":"${id}","code":"<sso_code>","nonce":"<原值>"}（回應與 Google 登入相同）；收到 sso_none 而自己是登入狀態就登出。（3）登出：清除本機 Token 後整頁導向 ${origin}/auth/sso/logout?app_id=${id}&return=<回傳頁>，會登出這個瀏覽器所有 H-Global1985 網頁版。回傳頁必須在登記的網頁版來源底下、不能帶 #；讀完 # 之後的結果立刻用 history.replaceState 清掉。限制：網頁版只在同一個瀏覽器內連動，手機 App 與網頁版之間不連動；網頁版在下一次載入頁面時才會跟上登出或換人。`,
     `3. 會員身分：只用登入回應的 user.member_id（也是 Access Token 的 sub）當會員的主鍵。不可以用信箱、姓名或會員編號辨識或合併會員；會員編號可能重複，也可能被會員修改。App 自己的資料庫只存 member_id 當外鍵，不複製會員主檔。`,
     `4. App 後端驗證會員：用 GET ${origin}/oauth/jwks 的公鑰驗證 Access Token（RS256，標頭 typ 為 at+jwt）：iss 必須是 ${origin}、aud 必須是 ${origin}、app_id 必須是 "${id}"、檢查 exp。快取 JWKS，遇到不認得的 kid 就重新抓取。需要即時確認停用或登出時，改用這個 Token 呼叫中央會員的任一 API（例如 GET ${origin}/v1/me/profile），401 就當作未登入。`,
-    `5. 會員資料：GET ${origin}/v1/me/profile（需要 profile.read）讀取會員允許這款 App 看到的基本資料。會員要修改基本資料時，用瀏覽器開啟 ${origin}/me，不要在 App 內重做編輯畫面，也不要另存一份會員資料。`,
+    `5. 會員資料（App 內原地修改）：GET ${origin}/v1/profile/field-definitions 取得欄位定義，GET ${origin}/v1/me/profile 取得會員目前的值；每個欄位用 PUT ${origin}/v1/me/profile/fields/<field_key>（body {"value":…}，null 清除）單獨儲存，公開／隱藏用 PUT ${origin}/v1/me/profile/visibility。所有 App 都擁有全部權限範圍，不需要另外申請。畫面請完全依欄位定義產生，不要寫死欄位、名稱或選項；不認得的欄位類型顯示「請更新 App」。`,
+    "   - 欄位型態：text、textarea、url、email、phone、date 用一般輸入框；tags 是多項輸入（職業、公司／單位、興趣與專長、使用語言），值是文字陣列；select 是固定選項；country（居住國家／地區）是手動輸入並從建議中選擇。每個欄位旁都要有「公開／隱藏」切換（眼睛圖示），聯絡與地區、生日、Amway 欄位預設全部隱藏。",
+    `   - 關聯詞：定義裡有 suggest 的欄位（職業、公司／單位、興趣與專長、大學／碩士／博士的校名與系名、直銷商培訓系統、上手鑽石、上手白金、皇冠大使）是「直接打字＋關聯詞」：會員自由輸入，輸入時呼叫 GET ${origin}/v1/vocab/suggestions?pool=<suggest>&q=<已輸入的字> 顯示建議（只要包含輸入的任一個字就會出現，不分順序），點選後填入；不用強迫會員一定要選。推薦人沒有關聯詞。`,
+    `   - 多項欄位（tags）：輸入時遇到 , ; : - # * / \\ ' ， 、 ； ： 。 . 或空白字元或按 Enter，就確認為一個項目（變成可移除的標籤）。`,
+    "   - 學歷：大學、碩士、博士各一列，每列「校名＋系名」放在同一行，只顯示「大學」「碩士」「博士」三個名稱（不要顯示欄位全名）。碩士、博士預設整列隱藏：大學列下方放「新增碩士學歷」按鈕，按了才顯示碩士列；有碩士列才出現「新增博士學歷」。已經有資料的列一律顯示。欄位定義的 row 資訊（key、label、optional_after）就是用來分列的。",
+    "   - 會員編號（member_number）：國家選單照欄位定義 options 的順序（台灣、鄰近國家，其餘依國際電話區碼）。尚未勾選「我是Amway會員」時，欄位旁顯示「隨機產生，不可修改」且不提供編輯；勾選後改顯示「建議修改會員編號」並可編輯（文字取自欄位定義的 help_when_not_amway／help_when_amway）。",
+    `   - 勾選「我是Amway會員」：PUT ${origin}/v1/me/amway/enabled {"enabled":true|false}，打勾或取消立即生效，不要有二次確認，也沒有同意畫面或隱私說明確認頁；打勾後立刻顯示 Amway 欄位（GET ${origin}/v1/amway/field-definitions 與 GET ${origin}/v1/me/amway），每個 Amway 欄位也有「公開／隱藏」切換。教育中心只在 GET /v1/me/amway 的 hglobal 為 true 時顯示。`,
+    `   - 其他：座右銘欄位要有「隨機提案」按鈕（GET ${origin}/v1/profile/suggestions/motto，只填入輸入框，由會員自己儲存）；頭像用 POST ${origin}/v1/me/profile/avatar 直接送圖片位元組（先縮成約 256 px 的方形 JPEG，不超過 128 KB），或 POST ${origin}/v1/me/profile/avatar/google 使用 Google 頭像；生日設定後 GET /v1/me/profile 的 life_chart 提供生命靈數九宮格的繪圖資料。每個欄位的編輯按鈕，在編輯狀態要原地變成「磁碟片圖示＋儲存」。`,
+    "   - 【畫面控制項規則】整個資料頁不要使用瀏覽器或系統原生的下拉選單（select／Picker）與原生勾選框（checkbox），一律用自訂元件：下拉用自訂的彈出清單（可搜尋），勾選用和文字同樣大小的自訂方框（打勾圖示與文字等高），建議清單與多項輸入也都是自訂元件。不要為了省事改回原生控制項。",
+    "   - 以手機閱讀舒適度優先排版：單欄、觸控區域至少 44 px；配色採亮色系，沿用 H-Global1985 標誌的色系（深綠、橄欖綠、橘、黃、鮭粉、暖白），不使用星空特效。",
     "6. 資格查詢（哪些內容只給符合資格的會員看）：",
     `   - POST ${origin}/v1/eligibility/check，body {"rule":{"audience":"hglobal_verified"|"everyone","min_rank":"<獎銜代碼，選填，只能搭配 hglobal_verified>"}} → {"allowed":true|false,"reason":"…"}。列表頁一次查多筆用 POST ${origin}/v1/eligibility/check-batch，body {"rules":[…最多 50 筆]}，回傳 results 與 rules 順序相同。兩支都需要 amway.read。`,
     `   - 獎銜代碼不要寫死：一律從 GET ${origin}/v1/amway/field-definitions 取得（rank 欄位的選項，由低到高）。`,
@@ -79,7 +88,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - reason 只給 App 內部記錄用，絕對不要顯示給會員。不符合資格時只顯示一般的說明（例如「此內容需要符合資格才能觀看」）。",
     "7. Amway 資料不得被 App 保存：會員編號、獎銜、上手、資格查詢結果等 Amway 相關資料，App 與 App 後端都不可以寫入資料庫、檔案、日誌、分析工具或錯誤回報；需要時即時向中央會員查詢。日誌也不可以記錄 Token、信箱、姓名。",
     "8. 對會員顯示的文字：品牌只用 starry.phd、H-Global1985、Amway 這三個寫法，不要使用它們的中文名稱。畫面上不要提到其他系統的名稱，需要時一律寫「合作營運單位」。",
-    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy 與「完整隱私說明」${origin}/privacy/amway。App Store 與 Google Play 要求 App 內有刪除帳號入口：放一個按鈕用瀏覽器開啟 ${origin}/me，會員在那裡申請刪除。`,
+    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy 與「完整隱私說明」${origin}/privacy/amway。App Store 與 Google Play 要求 App 內有刪除帳號入口：放一個按鈕用瀏覽器開啟 ${origin}/me/edit，會員在那裡申請刪除。`,
     "10. 網頁版網址：每一頁都要有自己的網址路徑，用 History API 切換；重新整理、上一頁、分享網址都停留在同一頁。需要登入的頁面，未登入時先記下目前路徑，登入完成後導回原本那一頁（回傳網址必須在已登記的網頁版來源底下）。",
     "",
     "## 四、規則",
@@ -106,7 +115,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "6. 沒有保存任何 Amway 資料，日誌沒有 Token、信箱、姓名（三、7）。",
     "7. 對會員顯示的品牌與用語（三、8）；隱私權政策與刪除帳號入口（三、9）。",
     "8. 共用登入（三、2）：手機用共用 Keychain 群組保存 sso_token，啟動與回到前景時 exchange／status；網頁版登入後 adopt、載入頁面時 check、登出走 /auth/sso/logout；登出按鈕寫「登出所有 H-Global1985 App」。（2026-11-10.3 新增）",
-    "9. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "9. 會員資料頁（三、5）：App 內原地修改、關聯詞、多項欄位確認符號、學歷分列、會員編號提示、Amway 勾選立即生效、不使用原生下拉與勾選框、亮色系配色。（2026-11-11.1 新增）",
+    "10. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

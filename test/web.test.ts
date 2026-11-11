@@ -74,15 +74,23 @@ describe("pages", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("/login?return_to=%2Fme");
     const a = await person("a", "甲");
+    // /me opens the member's own public page; the edit page is /me/edit.
     res = await req(a, "GET", "/me");
+    expect(res.status).toBe(302);
+    const own = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
+    expect(res.headers.get("location")).toBe(`/${own}`);
+    expect((await req(null, "GET", "/me/edit")).headers.get("location")).toBe("/login?return_to=%2Fme%2Fedit");
+    res = await req(a, "GET", "/me/edit");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
-    expect(await res.text()).toContain('src="/assets/me.js"');
+    const editHtml = await res.text();
+    expect(editHtml).toContain('src="/assets/common.js"');
+    expect(editHtml).toContain('src="/assets/me.js"');
     expect((await req(a, "GET", "/admin")).status).toBe(403);
     const s = await person("s", "秘書", ["secretary"]);
     expect(await (await req(s, "GET", "/admin")).text()).toContain('src="/assets/admin.js"');
     expect((await req(a, "GET", "/")).headers.get("location")).toBe("/me");
-    for (const p of ["/assets/me.js", "/assets/admin.js", "/assets/site.css"]) expect((await req(null, "GET", p)).status).toBe(200);
+    for (const p of ["/assets/me.js", "/assets/admin.js", "/assets/site.css", "/assets/common.js", "/assets/notifications.js", "/assets/share.js"]) expect((await req(null, "GET", p)).status).toBe(200);
   });
 
   it("the full privacy page shows sections 1–8 and none of the document's internal notes", async () => {
@@ -113,7 +121,7 @@ describe("pages", () => {
 
   it("member-facing site pages never name the other system in Chinese", async () => {
     const a = await person("a", "甲");
-    for (const p of ["/", "/me", "/assets/me.js", "/assets/admin.js"]) {
+    for (const p of ["/", "/me/edit", "/assets/me.js", "/assets/admin.js", "/assets/common.js", "/assets/notifications.js"]) {
       const t = await (await req(p === "/" ? null : a, "GET", p)).text();
       for (const banned of ["繁星", "安麗", "回聲"]) expect(t, p).not.toContain(banned);
     }
@@ -133,6 +141,43 @@ describe("public profile /<member number>", () => {
     expect(html).not.toContain("secret@example.com");
     expect((await req(null, "GET", "/TW0000000")).status).toBe(404);
     expect((await req(null, "GET", "/nothing-lowercase")).status).toBe(404);
+  });
+
+  it("the public page has 分享 for everyone and 編輯 only for its owner; it shows public Amway fields, education lines and the 九宮格 when made public", async () => {
+    const a = await person("a", "王小明");
+    const o = await person("o", "他人");
+    const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
+    await req(a, "PUT", "/v1/me/profile/fields/university", { value: "政治大學" });
+    await req(a, "PUT", "/v1/me/profile/fields/university_dept", { value: "資訊管理學系" });
+    await req(a, "PUT", "/v1/me/profile/fields/occupation", { value: ["工程師", "老師"] });
+    await req(a, "PUT", "/v1/me/profile/fields/birthday", { value: "1990-07-23" });
+    await req(a, "PUT", "/v1/me/profile/fields/motto", { value: "慢慢來" });
+    let html = await (await req(null, "GET", `/${n}`)).text();
+    expect(html).toContain('id="share"');
+    expect(html).not.toContain('href="/me/edit"'); // not signed in
+    expect(html).not.toContain("政治大學"); // education starts hidden
+    expect(html).not.toContain("九宮格");
+    expect(html).toContain("慢慢來"); // the motto is public by default
+    expect(await (await req(o, "GET", `/${n}`)).text()).not.toContain('href="/me/edit"');
+    // The owner sees the edit button; making things public shows them.
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
+    await req(a, "PUT", "/v1/me/amway/fields/upline_diamond", { value: "陳大華" });
+    await req(a, "PUT", "/v1/me/amway/fields/referrer", { value: "秘密推薦人" });
+    await req(a, "PUT", "/v1/me/profile/visibility", { fields: { university: "public", university_dept: "public", occupation: "public", derived: "public", upline_diamond: "public" } });
+    html = await (await req(a, "GET", `/${n}`)).text();
+    expect(html).toContain('href="/me/edit"');
+    expect(html).toContain("大學");
+    expect(html).toContain("政治大學　資訊管理學系");
+    expect(html).toContain('<span class="chip">工程師</span>');
+    expect(html).toContain("上手鑽石");
+    expect(html).toContain("陳大華");
+    expect(html).not.toContain("秘密推薦人"); // Amway fields are hidden until the member makes them public
+    expect(html).toContain("彩色九宮格");
+    expect(html).toContain("星座：獅子座");
+    expect(html).not.toMatch(/ style="/);
+    // Turning the Amway area off hides it from visitors, whatever the field switches say.
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: false });
+    expect(await (await req(null, "GET", `/${n}`)).text()).not.toContain("陳大華");
   });
 
   it("bound spouses share one URL with a switcher", async () => {
@@ -206,10 +251,15 @@ describe("data deletion", () => {
 describe("member center template (same layout as starry.phd)", () => {
   it("shows the main menu with name and App launcher when signed in, a brand bar when not", async () => {
     const a = await person("a", "王小明");
-    const me = await (await req(a, "GET", "/me")).text();
+    const me = await (await req(a, "GET", "/me/edit")).text();
     expect(me).toContain('class="starnav"');
+    expect(me).toContain('href="/notifications"'); // the bell
     expect(me).toContain("王小明");
     expect(me).toContain("王小"); // initials bubble
+    const bell = await (await req(a, "GET", "/privacy")).text();
+    expect(bell).not.toContain('class="dot"'); // no unread notifications yet
+    db.raw.prepare("INSERT INTO notifications (id, member_id, kind, payload, created_at) VALUES ('n1', ?, 'spouse.unbound', '{}', '2026-11-11T00:00:00+08:00')").run(a.id);
+    expect(await (await req(a, "GET", "/privacy")).text()).toContain('<span class="dot">1</span>');
     expect(me).toContain('href="/apps"');
     expect(me).toContain('href="/logout"');
     const guest = await (await req(null, "GET", "/privacy")).text();
@@ -237,7 +287,7 @@ describe("member center template (same layout as starry.phd)", () => {
     const html = await (await req(s, "GET", "/admin")).text();
     expect(html).toContain('class="topbar"');
     expect(html).toContain('<body class="admin">');
-    for (const p of ["/me", "/admin", "/apps", "/privacy"]) expect(await (await req(s, "GET", p)).text(), p).not.toMatch(/ style="/);
+    for (const p of ["/me/edit", "/notifications", "/admin", "/apps", "/privacy"]) expect(await (await req(s, "GET", p)).text(), p).not.toMatch(/ style="/);
   });
 });
 
