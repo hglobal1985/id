@@ -109,7 +109,16 @@ button[disabled]{opacity:.5;cursor:default}
 .nameline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}.nameline h1{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;min-width:0}
 .nm-0{font-size:1.4rem}.nm-1{font-size:1.15rem}.nm-2{font-size:.95rem}.nm-3{font-size:.8rem}
 .hero .sub{flex-wrap:nowrap;white-space:nowrap;min-width:0}.hero .sub .badge{overflow:hidden;text-overflow:ellipsis}
-.badges{display:inline-flex;flex-wrap:wrap;gap:4px}
+.badges{display:inline-flex;flex-wrap:wrap;gap:4px;max-width:100%}
+/* beside the picture the boxes fit their text and every box uses the same font size (no shrinking) */
+.hero .rank:is(.rk0,.rk1,.rk2,.rk3){width:auto;max-width:100%;height:auto;min-height:1.5rem;padding:2px 9px;font-size:.78rem;text-overflow:ellipsis}
+/* picture cropper */
+.crop-back{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.crop-box{background:var(--card,#fff);border-radius:16px;padding:16px;max-width:340px;width:100%;box-shadow:var(--shadow)}
+.crop-box h2{margin:0 0 8px;font-size:1.05rem}
+.crop-cv{display:block;width:100%;aspect-ratio:1;border-radius:12px;touch-action:none;cursor:grab;background:#222}
+.crop-zoom{width:100%;margin:12px 0 4px}
+.crop-box .actions{margin-top:10px}
 .rank.k-system{background:var(--green-soft);color:var(--green-d);border-color:#bcd8c6}.rank.k-center{background:#f4f1dc;color:#6b5b12;border-color:#ddd4a0}.hero h1{margin:0 0 4px;word-break:break-word}.hero .sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pagebar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
 .pagebar .tools{display:flex;gap:8px}
