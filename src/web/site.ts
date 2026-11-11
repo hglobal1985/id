@@ -124,7 +124,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
 
   app.get("/", async (c) => {
     if (await currentSession(c, deps)) return c.redirect("/my", 302);
-    return page(c, sitePage({ title: "會員中心", nav: { signedIn: false }, body: '<section class="card"><h1>會員中心</h1><p>登入後可以管理您的基本資料。</p><p><a class="button primary" href="/login">使用 Google 帳號登入</a></p></section>' }));
+    return page(c, sitePage({ title: "會員中心", nav: { signedIn: false }, noFooter: true, body: '<section class="card"><h1>會員中心</h1><p>登入後可以管理您的基本資料。</p><p><a class="button primary" href="/login">使用 Google 帳號登入</a></p></section>' }));
   });
 
   app.get("/logout", (c) => c.redirect("/oauth/logout", 302));

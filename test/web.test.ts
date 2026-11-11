@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { loginPage, messagePage } from "../src/web/pages";
+import { messagePage } from "../src/web/pages";
 import { createApp } from "../src/app";
 import { createTestD1, type TestD1 } from "./helpers/d1.mjs";
 import { createSession, upsertMemberByGoogle } from "../src/db/identity";
@@ -125,12 +125,14 @@ describe("pages", () => {
     expect(old.status).toBe(301);
     expect(old.headers.get("location")).toBe("/privacy#full");
     expect(html).toContain("Amway 會員資料之蒐集與跨系統利用告知");
-    // Every page ends with the privacy link and the credit line; the clean public profile has neither.
-    const foot = await (await req(null, "GET", "/")).text();
+    // Pages end with the privacy link and the credit line; the signed-out home page and the clean public profile have neither.
+    const home = await (await req(null, "GET", "/")).text();
+    expect(home).not.toContain("隱私權政策");
+    expect(home).not.toContain("網站設計 杜杜龍");
+    const foot = await (await req(null, "GET", "/privacy")).text();
     expect(foot).toContain('<a href="/privacy">隱私權政策</a><span class="credit">網站設計 杜杜龍</span>');
     expect(foot).not.toContain("/privacy/amway");
     expect(messagePage("x", "y")).toContain("網站設計 杜杜龍");
-    expect(loginPage("/x")).toContain("網站設計 杜杜龍");
   });
 
   it("member-facing site pages never name the other system in Chinese", async () => {
