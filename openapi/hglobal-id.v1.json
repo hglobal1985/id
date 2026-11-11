@@ -4065,7 +4065,7 @@
         "tags": [
           "admin"
         ],
-        "summary": "Delete a member (anonymizes and closes the account at once; head office; needs a sign-in within 10 minutes)",
+        "summary": "Delete a member (anonymizes and closes the account at once; head office)",
         "security": [
           {
             "session": []
