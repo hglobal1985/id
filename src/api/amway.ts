@@ -4,12 +4,12 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { getMember } from "../db/identity";
-import { listOptions, readAmwayFields, setAmwayEnabled, writeAmwayField } from "../db/amway";
-import { canonicalTerms, hglobalNorms, recordTerms } from "../db/vocab";
+import { isHglobalMember, listOptions, readAmwayFields, setAmwayEnabled, writeAmwayField } from "../db/amway";
+import { canonicalTerms, recordTerms } from "../db/vocab";
 import { readProfile } from "../db/profile";
 import { isPool } from "../vocab/terms";
 import { loadLayout } from "../db/layout";
-import { AMWAY_FIELDS, HGLOBAL, getAmwayField, systemKey, validateAmwayValue, type AmwayValue } from "../amway/fields";
+import { AMWAY_FIELDS, getAmwayField, validateAmwayValue, type AmwayValue } from "../amway/fields";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
 
@@ -45,7 +45,7 @@ const meRoute = createRoute({
         z
           .object({
             enabled: z.boolean(),
-            hglobal: z.boolean().openapi({ description: "The training system (effective or pending) is a term marked as H-Global1985: the education center field applies." }),
+            hglobal: z.boolean().openapi({ description: "The training system (effective or pending) is a term marked as H-Global1985: the regional education center offers its own related words (field definition suggest_when_hglobal)." }),
             fields: z.record(FieldStateSchema.extend({ visibility: z.enum(["public", "private"]) })),
           })
           .openapi("MyAmway"),
@@ -124,6 +124,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           ...(f.max_length ? { max_length: f.max_length } : {}),
           ...(f.type !== "text" ? { options: options.get(f.key) ?? [] } : {}),
           ...(f.suggest ? { suggest: f.suggest } : {}),
+          ...(f.suggest_when_hglobal ? { suggest_when_hglobal: true } : {}),
           visible_when: f.visible_when,
           read_only: false,
           scope: "amway.write",
@@ -147,9 +148,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       const vis = visibility.get(f.key) ?? "private";
       fields[f.key] = r ? { value: r.value, pending_value: r.pending_value, status: r.status, updated_at: r.updated_at, visibility: vis } : { value: null, pending_value: null, status: "not_required", updated_at: null, visibility: vis };
     }
-    const hg = await hglobalNorms(c.env.DB);
-    const sys = rows.get("education_system");
-    const hglobal = systemKey(sys?.value ?? null, hg) === HGLOBAL || systemKey(sys?.pending_value ?? null, hg) === HGLOBAL;
+    const hglobal = await isHglobalMember(c.env.DB, memberId);
     return c.json({ enabled: member?.amway_enabled === 1, hglobal, fields }, 200);
   });
 
@@ -178,7 +177,8 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (!v.ok) return c.json(errorBody("invalid_field", v.message, c.get("requestId"), { field_key, reason: v.reason }), 422);
     // Free-text fields: an existing spelling in the vocabulary wins, and the typed word is remembered.
     const pool = def.suggest && isPool(def.suggest) ? def.suggest : null;
-    if (pool && typeof v.value === "string") {
+    // The regional center vocabulary belongs to H-Global1985 members only; for everyone else the field is plain text.
+    if (pool && typeof v.value === "string" && (!def.suggest_when_hglobal || (await isHglobalMember(c.env.DB, memberId)))) {
       v.value = (await canonicalTerms(c.env.DB, pool, [v.value]))[0] ?? v.value;
       await recordTerms(c.env.DB, pool, [v.value], deps.now());
     }

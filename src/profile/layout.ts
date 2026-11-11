@@ -4,9 +4,24 @@
 import { fieldDefinitions } from "./definitions";
 import { AMWAY_FIELDS } from "../amway/fields";
 
-export const LAYOUT_GROUPS = ["basic", "contact", "amway"] as const;
+export const LAYOUT_GROUPS = ["blocks", "basic", "contact", "amway"] as const;
 export type LayoutGroup = (typeof LAYOUT_GROUPS)[number];
-export const LAYOUT_GROUP_LABELS: Record<LayoutGroup, string> = { basic: "基本資料", contact: "聯絡與地區", amway: "Amway 專區" };
+export const LAYOUT_GROUP_LABELS: Record<LayoutGroup, string> = { blocks: "大區塊（整個區塊的上下順序）", basic: "基本資料", contact: "聯絡與地區", amway: "Amway 專區" };
+
+/** The big blocks of the member pages, in the built-in order. The learning-style blocks below them are fixed. */
+export const BLOCKS: readonly { key: string; label: string; order: number }[] = [
+  { key: "avatar", label: "頭像", order: 10 },
+  { key: "amway", label: "Amway 專區（含會員編號）", order: 20 },
+  { key: "basic", label: "基本資料", order: 30 },
+  { key: "education", label: "學歷", order: 40 },
+  { key: "contact", label: "聯絡與地區", order: 50 },
+  { key: "birthday", label: "生日", order: 60 },
+  { key: "life", label: "生命靈數", order: 70 },
+];
+/** Block places are stored under this prefix so they never collide with field keys. */
+export const BLOCK_PREFIX = "block.";
+
+export const BLOCK_KEYS = BLOCKS.map((b) => b.key);
 
 export interface LayoutItem {
   key: string;
@@ -15,7 +30,9 @@ export interface LayoutItem {
 
 /** The built-in order of one group. */
 export function defaultLayout(group: LayoutGroup): LayoutItem[] {
-  if (group === "amway") return AMWAY_FIELDS.slice().sort((a, b) => a.order - b.order).map((f) => ({ key: f.key, label: f.label }));
+  if (group === "blocks") return BLOCKS.map((b) => ({ key: b.key, label: b.label }));
+  // The member number sits at the top of the Amway block unless the administrator moves it.
+  if (group === "amway") return [{ key: "member_number", label: "會員編號" }, ...AMWAY_FIELDS.slice().sort((a, b) => a.order - b.order).map((f) => ({ key: f.key, label: f.label }))];
   return fieldDefinitions()
     .filter((f) => f.group === group)
     .sort((a, b) => a.order - b.order)

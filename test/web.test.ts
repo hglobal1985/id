@@ -180,6 +180,29 @@ describe("public profile /<member number>", () => {
     expect(await (await req(null, "GET", `/${n}`)).text()).not.toContain("陳大華");
   });
 
+  it("the public address is the country code and the number joined (TW9475831); older number-only addresses forward to it", async () => {
+    const a = await person("a", "甲");
+    await req(a, "PUT", "/v1/me/profile/fields/member_number", { value: [{ country: "TW", number: "9475831" }] });
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
+    const res = await req(a, "PUT", "/v1/me/profile/fields/member_number", { value: [{ country: "TW", number: "9475831" }] });
+    expect(((await res.json()) as { public_url: string }).public_url).toBe(`${ISSUER}/TW9475831`);
+    const page = await req(null, "GET", "/TW9475831");
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("TW9475831");
+    const old = await req(null, "GET", "/9475831");
+    expect(old.status).toBe(302);
+    expect(old.headers.get("location")).toBe("/TW9475831");
+    expect((await req(null, "GET", "/tw9475831")).status).toBe(200);
+    expect((await req(a, "GET", "/me")).headers.get("location")).toBe("/TW9475831");
+    // Numbers the system generated already carry the country code: no doubled prefix.
+    const b = await person("b", "乙");
+    const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(b.id)?.number as string;
+    expect(n).toMatch(/^TW0\d{6}$/);
+    expect((await req(b, "GET", "/me")).headers.get("location")).toBe(`/${n}`);
+    const prof = (await (await req(b, "GET", "/v1/me/profile")).json()) as { fields: { member_number: { public_url: string } } };
+    expect(prof.fields.member_number.public_url).toBe(`${ISSUER}/${n}`);
+  });
+
   it("bound spouses share one URL with a switcher", async () => {
     const a = await person("a", "甲");
     const b = await person("b", "乙");
@@ -192,59 +215,52 @@ describe("public profile /<member number>", () => {
   });
 });
 
-describe("data deletion", () => {
-  it("only on the member site, after a recent sign-in; can be cancelled", async () => {
+describe("account deletion (immediate)", () => {
+  it("only on the member site, after a recent sign-in; the old request mechanism and 刪除 Amway 資料 are gone", async () => {
     const a = await person("a", "甲");
     const t = await issueTokens(env, defaultDeps, ISSUER, { clientId: "elearning", memberId: a.id, sessionId: db.raw.prepare("SELECT id FROM login_sessions").get()?.id as string, scope: "openid profile.read", authTime: 0 });
-    const viaApp = await app.request("/v1/me/deletion-requests", { method: "POST", headers: { authorization: `Bearer ${t.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ scope: "account" }) }, env);
+    const viaApp = await app.request("/v1/me/delete-account", { method: "POST", headers: { authorization: `Bearer ${t.access_token}` } }, env);
     expect(viaApp.status).toBe(403);
-
-    let res = await req(a, "POST", "/v1/me/deletion-requests", { scope: "amway" });
-    expect(res.status).toBe(200);
-    const r = (await res.json()) as { id: string; due_at: string; status: string };
-    expect(r.status).toBe("requested");
-    expect(Date.parse(r.due_at) - now.getTime()).toBeGreaterThan(14.9 * 86400 * 1000);
-    expect((await req(a, "POST", `/v1/me/deletion-requests/${r.id}/cancel`)).status).toBe(200);
-
+    const sec = await person("sec", "秘書", ["secretary"]);
+    for (const [who, method, path] of [[a, "POST", "/v1/me/deletion-requests"], [a, "GET", "/v1/me/deletion-requests"], [sec, "GET", "/v1/admin/deletion-requests"], [sec, "GET", "/v1/admin/amway/options"], [sec, "PUT", "/v1/admin/amway/options"]] as const) {
+      expect((await req(who, method, path, method !== "GET" ? { scope: "amway" } : undefined)).status, path).toBe(404);
+    }
     now = new Date(now.getTime() + 11 * 60 * 1000);
-    res = await req(a, "POST", "/v1/me/deletion-requests", { scope: "account" });
+    const res = await req(a, "POST", "/v1/me/delete-account");
     expect(res.status).toBe(401);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe("reauth_required");
+    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(a.id)?.status).toBe("active");
   });
 
-  it("an administrator carries out account deletion: anonymized, signed out, Google account released", async () => {
+  it("takes effect at once: anonymized, Amway data removed, signed out everywhere, Google account released", async () => {
     const a = await person("a", "甲");
-    const sec = await person("sec", "秘書", ["secretary"]);
     await req(a, "PUT", "/v1/me/profile/fields/bio", { value: "hello" });
-    const r = (await (await req(a, "POST", "/v1/me/deletion-requests", { scope: "account" })).json()) as { id: string };
-    const list = (await (await req(sec, "GET", "/v1/admin/deletion-requests")).json()) as { requests: { id: string; display_name: string }[] };
-    expect(list.requests[0]).toMatchObject({ id: r.id, display_name: "甲" });
-    const rv = await person("rv", "審核員", ["reviewer"]);
-    expect((await req(rv, "POST", `/v1/admin/deletion-requests/${r.id}/complete`)).status).toBe(403);
-    expect((await req(sec, "POST", `/v1/admin/deletion-requests/${r.id}/complete`)).status).toBe(200);
-
-    const m = db.raw.prepare("SELECT status, google_sub, google_email, display_name FROM members WHERE id = ?").get(a.id);
-    expect(m).toEqual({ status: "deleted", google_sub: `deleted:${a.id}`, google_email: null, display_name: null });
-    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM profile_field_values WHERE member_id = ?").get(a.id)?.n).toBe(0);
-    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM member_numbers WHERE member_id = ?").get(a.id)?.n).toBe(0);
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
+    await req(a, "PUT", "/v1/me/amway/fields/referrer", { value: "王" });
+    const res = await req(a, "POST", "/v1/me/delete-account");
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { deleted: boolean }).deleted).toBe(true);
+    const m = db.raw.prepare("SELECT status, google_sub, google_email, display_name, amway_enabled FROM members WHERE id = ?").get(a.id);
+    expect(m).toEqual({ status: "deleted", google_sub: `deleted:${a.id}`, google_email: null, display_name: null, amway_enabled: 0 });
+    for (const table of ["profile_field_values", "member_numbers", "amway_field_values", "notifications"]) {
+      expect(db.raw.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE member_id = ?`).get(a.id)?.n, table).toBe(0);
+    }
     expect((await req(a, "GET", "/v1/me/profile")).status).toBe(401);
-    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'deletion.complete'").get()?.n).toBe(1);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'account.delete'").get()?.n).toBe(1);
     // The same Google account can sign up again as a new member.
     const again = await upsertMemberByGoogle(db, { sub: "a", emailVerified: true }, "TW", now, "req");
     expect(again.created).toBe(true);
   });
 
-  it("Amway deletion removes the Amway data and turns the area off", async () => {
-    const a = await person("a", "甲");
+  it("the last super administrator cannot delete the account", async () => {
     const sa = await person("sa", "超管", ["super_admin"]);
-    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
-    await req(a, "PUT", "/v1/me/amway/fields/referrer", { value: "王" });
-    const r = (await (await req(a, "POST", "/v1/me/deletion-requests", { scope: "amway" })).json()) as { id: string };
-    expect((await req(sa, "POST", `/v1/admin/deletion-requests/${r.id}/complete`)).status).toBe(200);
-    const s = (await (await req(a, "GET", "/v1/me/amway")).json()) as { enabled: boolean; fields: { referrer: { value: unknown } } };
-    expect(s.enabled).toBe(false);
-    expect(s.fields.referrer.value).toBeNull();
-    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(a.id)?.status).toBe("active");
+    const res = await req(sa, "POST", "/v1/me/delete-account");
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("last_super_admin");
+    const sa2 = await person("sa2", "超管二", ["super_admin"]);
+    expect((await req(sa, "POST", "/v1/me/delete-account")).status).toBe(200);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM staff_roles WHERE role = 'super_admin'").get()?.n).toBe(1);
+    expect(sa2.id).toBeTruthy();
   });
 });
 
@@ -252,6 +268,8 @@ describe("member center template (same layout as starry.phd)", () => {
   it("shows the main menu with name and App launcher when signed in, a brand bar when not", async () => {
     const a = await person("a", "王小明");
     const me = await (await req(a, "GET", "/me/edit")).text();
+    expect(me).toContain("<title>會員中心</title>");
+    expect(me).not.toMatch(/H-Global1985|hglobal|寰宇/i);
     expect(me).toContain('class="starnav"');
     expect(me).toContain('href="/notifications"'); // the bell
     expect(me).toContain("王小明");
@@ -261,10 +279,28 @@ describe("member center template (same layout as starry.phd)", () => {
     db.raw.prepare("INSERT INTO notifications (id, member_id, kind, payload, created_at) VALUES ('n1', ?, 'spouse.unbound', '{}', '2026-11-11T00:00:00+08:00')").run(a.id);
     expect(await (await req(a, "GET", "/privacy")).text()).toContain('<span class="dot">1</span>');
     expect(me).toContain('href="/apps"');
-    expect(me).toContain('href="/logout"');
+    expect(me).not.toContain('href="/logout"'); // 登出 lives first in the launcher page (the 9 dots)
+    const apps = await (await req(a, "GET", "/apps")).text();
+    expect(apps.indexOf('href="/logout"')).toBeGreaterThan(-1);
+    expect(apps.indexOf('href="/logout"')).toBeLessThan(apps.indexOf("lc-row", apps.indexOf('href="/logout"') + 10));
+    expect(await (await req(null, "GET", "/apps")).text()).not.toContain('href="/logout"');
     const guest = await (await req(null, "GET", "/privacy")).text();
     expect(guest).toContain("guest-brand");
     expect(guest).not.toContain("starnav");
+  });
+
+  it("the main menu cuts a long name to 4 Chinese characters and shows the reviewed rank in a small box (創辦人 → F)", async () => {
+    const a = await person("a", "王大明明明明");
+    await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
+    const code = db.raw.prepare("SELECT value FROM amway_options WHERE field_key = 'rank' AND label = '創辦人執行專才鑽石'").get()?.value as string;
+    await req(a, "PUT", "/v1/me/amway/fields/rank", { value: code });
+    // No review is needed unless the training system is H-Global1985, and an unreviewed rank is not shown.
+    expect(await (await req(a, "GET", "/privacy")).text()).not.toContain('class="rank');
+    db.raw.prepare("UPDATE amway_field_values SET value_approved = 1 WHERE member_id = ? AND field_key = 'rank'").run(a.id);
+    const html = await (await req(a, "GET", "/privacy")).text();
+    expect(html).toContain('<span class="nm">王大明明…</span>');
+    expect(html).toMatch(/<span class="rank rk2" title="F執行專才鑽石">F執行專才鑽石<\/span>/);
+    expect(html).not.toContain("創辦人");
   });
 
   it("/apps lists registered Apps with their web link; paused ones have no link and stopped ones are hidden", async () => {
@@ -347,7 +383,7 @@ describe("back office overview", () => {
     const o = (await (await req(r, "GET", "/v1/admin/overview")).json()) as { members: { total: number }; lights: { key: string; color: string }[]; apps: { total: number } };
     expect(o.members.total).toBe(2);
     expect(o.apps.total).toBeGreaterThanOrEqual(1);
-    expect(o.lights.map((l) => l.key)).toEqual(["apps", "reviews", "deletions", "invalid_apps"]);
+    expect(o.lights.map((l) => l.key)).toEqual(["apps", "reviews", "invalid_apps"]);
     expect(o.lights.every((l) => l.color === "green")).toBe(true);
   });
 });

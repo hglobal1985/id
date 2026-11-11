@@ -41,8 +41,8 @@ export const ADMIN_JS = String.raw`
   }
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
-    ["", "總覽", overview], ["review", "審核", reviews], ["members.read", "會員", members], ["options.manage", "選項", options],
-    ["vocab.manage", "詞庫", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["deletion.execute", "刪除申請", deletions], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
+    ["", "總覽", overview], ["members.read", "會員", members],
+    ["vocab.manage", "詞庫", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -53,7 +53,7 @@ export const ADMIN_JS = String.raw`
   }
   // Staff may open the overview without any special permission; every other tab needs its permission.
   function allowed(t) { return t[0] === "" || me.permissions.indexOf(t[0]) >= 0; }
-  var PRIMARY = ["總覽", "審核", "會員", "App"];
+  var PRIMARY = ["總覽", "會員", "App"];
   function buildMenu() {
     var menu = document.getElementById("menu"); if (!menu) return;
     menu.textContent = "";
@@ -78,7 +78,7 @@ export const ADMIN_JS = String.raw`
       pane.appendChild(el("div", { class: "lights" }, b.lights.map(function (l) { return el("div", { class: "light " + l.color }, [el("i"), el("div", {}, [el("b", { text: l.label }), el("span", { text: l.text })])]); })));
       pane.appendChild(el("div", { class: "stats" }, [
         stat(b.members.total, "會員"), stat(b.members.new_7d, "近 7 天新會員"), stat(b.members.active_7d, "近 7 天登入"),
-        stat(b.active_sessions, "App 目前登入數"), stat(b.pending_reviews, "待審核", b.pending_reviews ? "warn" : ""), stat(b.open_deletions, "待處理刪除申請", b.open_deletions ? "warn" : ""),
+        stat(b.active_sessions, "App 目前登入數"), stat(b.pending_reviews, "待審核（到通知頁處理）", b.pending_reviews ? "warn" : ""),
         stat(b.apps.active + "／" + b.apps.total, "App 正常／全部", b.apps.killed ? "bad" : b.apps.paused ? "warn" : "")
       ]));
     });
@@ -86,21 +86,6 @@ export const ADMIN_JS = String.raw`
   function card(title, kids) { return el("section", { class: "card" }, [el("h2", { text: title })].concat(kids)); }
   function m() { return el("div", { class: "msg" }); }
   function say(box, ok, t) { box.className = "msg " + (ok ? "ok" : "bad"); box.textContent = t; }
-
-  function reviews() {
-    api("GET", "/v1/admin/reviews").then(function (r) {
-      var list = r.body.reviews;
-      pane.appendChild(card("待審核（" + list.length + "）", list.length ? list.map(function (x) {
-        var box = m();
-        function decide(d) { return function () { api("POST", "/v1/admin/reviews/" + x.id + "/decision", { decision: d }).then(function (res) { if (res.status === 200) { pane.textContent = ""; reviews(); } else say(box, false, errText(res)); }); }; }
-        return el("div", { class: "row" }, [
-          el("strong", { text: (x.display_name || "會員") + (x.member_number ? "（" + x.member_number.number + "）" : "") }),
-          el("div", { text: x.field_label + "：" + show(x.current_value, x.field_key) + " → " + show(x.requested_value, x.field_key) }),
-          el("div", { class: "help", text: x.created_at }),
-          el("div", { class: "inline" }, [el("button", { class: "primary", text: "核准", onclick: decide("approve") }), el("button", { class: "danger", text: "駁回", onclick: decide("reject") }), box])]);
-      }) : [el("p", { class: "help", text: "目前沒有待審核的申請。" })]));
-    });
-  }
 
   function members() {
     var q = el("input", { type: "text", placeholder: "會員編號、姓名或會員識別碼" }), out = el("div");
@@ -117,38 +102,21 @@ export const ADMIN_JS = String.raw`
       var adjustable = ["education_system", "education_center", "rank", "upline_diamond", "upline_platinum", "upline_crown_ambassador"];
       var rows = defs.filter(function (f) { return adjustable.indexOf(f.key) >= 0; }).map(function (f) {
         var st = d.amway[f.key], box = m();
-        var sel = el("select", {}, [el("option", { value: "", text: "（無）" })].concat((f.options || []).map(function (o) { return el("option", { value: o.value, text: o.label }); })));
-        var cur = st ? st.value : null; sel.value = cur ? (typeof cur === "string" ? cur : cur.option) : "";
-        var custom = el("input", { type: "text", placeholder: "其他：請填寫" }); custom.value = cur && cur.custom_text ? cur.custom_text : "";
-        return el("div", { class: "row" }, [el("label", { text: f.label + "：" + show(cur) + (st && st.pending_value ? "（待審：" + show(st.pending_value) + "）" : "") }),
-          el("div", { class: "inline" }, [sel, f.type === "select_or_custom" ? custom : null, el("button", { text: "代調整", onclick: function () {
-            var v = sel.value === "" ? null : (f.type === "select_or_custom" ? { option: sel.value, custom_text: sel.value === "other" ? custom.value : null } : sel.value);
-            api("PUT", "/v1/admin/members/" + id + "/amway/" + f.key, { value: v }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已調整並通知會員" : errText(res)); });
+        var cur = st ? st.value : null, ctl;
+        if (f.type === "select") {
+          ctl = el("select", {}, [el("option", { value: "", text: "（無）" })].concat((f.options || []).map(function (o) { return el("option", { value: o.value, text: o.label }); })));
+          ctl.value = cur || "";
+        } else { ctl = el("input", { type: "text", maxlength: f.max_length || 50 }); ctl.value = cur || ""; }
+        return el("div", { class: "row" }, [el("label", { text: f.label + "：" + show(cur, f.key) + (st && st.pending_value ? "（待審：" + show(st.pending_value, f.key) + "）" : "") }),
+          el("div", { class: "inline" }, [ctl, el("button", { text: "代調整", onclick: function () {
+            api("PUT", "/v1/admin/members/" + id + "/amway/" + f.key, { value: ctl.value.trim() === "" ? null : ctl.value.trim() }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已調整並通知會員" : errText(res)); });
           } }), box])]);
       });
       pane.appendChild(card(d.display_name || "會員", [
         el("p", { class: "mono", text: d.member_id }),
-        el("p", { text: "編號：" + d.member_numbers.map(function (n) { return n.country + " " + n.number; }).join("、") }),
+        el("p", { text: "編號：" + d.member_numbers.map(function (n) { return n.number.indexOf(n.country) === 0 ? n.number : n.country + n.number; }).join("、") }),
         el("p", { text: "Amway：" + (d.amway_enabled ? "已勾選" : "未勾選") + (d.spouse ? "；夫妻：" + (d.spouse.display_name || "會員") : "") })
       ].concat(rows)));
-    });
-  }
-
-  function options() {
-    api("GET", "/v1/admin/amway/options").then(function (r) {
-      var b = r.body;
-      b.fields.forEach(function (f) {
-        var list = b.options.filter(function (o) { return o.field_key === f.key; });
-        var v = el("input", { type: "text", placeholder: "代碼" }), l = el("input", { type: "text", placeholder: "顯示名稱" }), s = el("input", { type: "text", placeholder: "排序（數字）" }), box = m();
-        pane.appendChild(card(f.label, [el("table", {}, [el("tr", {}, [el("th", { text: "代碼" }), el("th", { text: "名稱" }), el("th", { text: "排序" }), el("th", { text: "狀態" })])].concat(list.map(function (o) {
-          return el("tr", {}, [el("td", { class: "mono", text: o.value }), el("td", { text: o.label }), el("td", { text: String(o.sort_order) }), el("td", {}, [el("button", { text: o.active ? "停用" : "啟用", onclick: function () {
-            api("PUT", "/v1/admin/amway/options", { field_key: f.key, value: o.value, label: o.label, sort_order: o.sort_order, active: !o.active }).then(function (res) { if (res.status === 200) { pane.textContent = ""; options(); } else say(box, false, errText(res)); });
-          } })])]);
-        }))), f.key === "rank" ? el("p", { class: "help", text: "排序即獎銜階梯，由低到高。" }) : null,
-        el("div", { class: "inline" }, [v, l, s, el("button", { class: "primary", text: "新增或更新", onclick: function () {
-          api("PUT", "/v1/admin/amway/options", { field_key: f.key, value: v.value, label: l.value, sort_order: Number(s.value), active: true }).then(function (res) { if (res.status === 200) { pane.textContent = ""; options(); } else say(box, false, errText(res)); });
-        } }), box])]));
-      });
     });
   }
 
@@ -231,21 +199,6 @@ export const ADMIN_JS = String.raw`
           api("PUT", "/v1/admin/profile-layout", { order: null }).then(function (res) { if (res.status === 200) { pane.textContent = ""; layoutTab(); } else say(box, false, errText(res)); });
         } }), box
       ]));
-    });
-  }
-
-  function deletions() {
-    api("GET", "/v1/admin/deletion-requests").then(function (r) {
-      var list = r.body.requests;
-      pane.appendChild(card("資料刪除申請（" + list.length + "）", list.length ? list.map(function (x) {
-        var box = m();
-        return el("div", { class: "row" }, [el("strong", { text: (x.display_name || "會員") + "：" + (x.scope === "account" ? "刪除帳號" : "刪除 Amway 資料") }),
-          el("div", { class: "help", text: "申請 " + x.requested_at.slice(0, 10) + "，期限 " + x.due_at.slice(0, 10) }),
-          el("div", { class: "inline" }, [el("button", { class: "danger", text: "執行刪除", onclick: function () {
-            if (!confirm("刪除後無法復原。確定執行嗎？")) return;
-            api("POST", "/v1/admin/deletion-requests/" + x.id + "/complete").then(function (res) { if (res.status === 200) { pane.textContent = ""; deletions(); } else say(box, false, errText(res)); });
-          } }), box])]);
-      }) : [el("p", { class: "help", text: "目前沒有待處理的申請。" })]));
     });
   }
 

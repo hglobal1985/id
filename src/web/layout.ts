@@ -1,6 +1,7 @@
 // Shared page shell for the member site and the back office (same template as the starry.phd member center).
 // All dynamic text is escaped; scripts and styles are same-origin files.
 import { escapeHtml } from "./pages";
+import { clipName, type RankBadge } from "./nav-text";
 
 export const SITE_CSP =
   "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
@@ -12,6 +13,8 @@ export interface NavUser {
   name: string;
   initials: string;
   avatar_url: string | null;
+  /** The reviewed rank (already shortened for the menu), shown in a small box beside the name. */
+  rank?: RankBadge | null;
 }
 
 export interface SiteNav {
@@ -30,7 +33,7 @@ const DOTS = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"
 
 /** The 9-dot button: a plain link to the Apps page. */
 export function appLauncher(on = false): string {
-  return `<a class="launcher${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${APPS_PATH}" aria-label="H-Global1985 Apps" title="H-Global1985 Apps">${DOTS}</a>`;
+  return `<a class="launcher${on ? " on" : ""}"${on ? ' aria-current="page"' : ""} href="${APPS_PATH}" aria-label="Apps" title="Apps">${DOTS}</a>`;
 }
 
 const BELL = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15L6 17z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 21h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
@@ -50,22 +53,21 @@ export function avatarBubble(user: { initials: string; avatar_url: string | null
 }
 
 function memberNav(nav: SiteNav): string {
-  if (!nav.signedIn) return `<a class="guest-brand" href="/">✦ H-Global1985</a>`;
+  if (!nav.signedIn) return `<a class="guest-brand" href="/">會員中心</a>`;
   const path = nav.path ?? "";
   const on = (href: string) => (path === href || path.startsWith(`${href}/`) ? ' class="on" aria-current="page"' : "");
   const u = nav.user ?? { name: "我", initials: "H", avatar_url: null };
   return `<nav class="starnav" aria-label="主選單">
-  <a class="me${path === "/me" ? " on" : ""}" href="/me">${avatarBubble(u, "sm", u.name)}<span>${escapeHtml(u.name)}</span></a>
+  <a class="me${path === "/me" ? " on" : ""}" href="/me" title="${escapeHtml(u.name)}">${avatarBubble(u, "sm", u.name)}<span class="nm">${escapeHtml(clipName(u.name, 4))}</span>${u.rank ? `<span class="rank rk${u.rank.size}" title="${escapeHtml(u.rank.text)}">${escapeHtml(u.rank.text)}</span>` : ""}</a>
   ${nav.staff ? `<a href="/admin"${on("/admin")}>後台</a>` : ""}
   ${bellLink(nav.unread ?? 0, path === NOTIFICATIONS_PATH)}
   ${appLauncher(path === APPS_PATH)}
-  <a href="/logout">登出</a>
 </nav>`;
 }
 
 function adminBar(nav: SiteNav): string {
   return `<header class="topbar">
-  <a class="brand" href="/admin">H-Global1985 後台</a>
+  <a class="brand" href="/admin">後台</a>
   ${appLauncher()}
   <input type="checkbox" id="menu-toggle" class="menu-toggle" aria-label="開關選單">
   <label for="menu-toggle" class="burger" aria-hidden="true">☰</label>
@@ -82,7 +84,7 @@ export function sitePage(opts: { title: string; body: string; script?: string | 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${escapeHtml(opts.title)} · H-Global1985</title>
+<title>會員中心</title>
 <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body${opts.admin ? ' class="admin"' : ""}>

@@ -5,8 +5,34 @@ export const NOTES_JS = String.raw`
   "use strict";
   var HG = window.HG, el = HG.el, api = HG.api, root = document.getElementById("app");
   function when(iso) { return (iso || "").slice(0, 16).replace("T", " "); }
+  // Staff who may review: pending requests are decided right here (no separate back-office page).
+  function reviewCard(reload) {
+    return api("GET", "/v1/admin/me").then(function (me) {
+      if (me.status !== 200 || me.body.permissions.indexOf("review") < 0) return null;
+      return Promise.all([api("GET", "/v1/admin/reviews"), api("GET", "/v1/amway/field-definitions")]).then(function (x) {
+        if (x[0].status !== 200) return null;
+        var labels = {};
+        ((x[1].body && x[1].body.fields) || []).forEach(function (f) { labels[f.key] = {}; (f.options || []).forEach(function (o) { labels[f.key][o.value] = o.label; }); });
+        function show(v, key) { if (v === null || v === undefined) return "（無）"; return (labels[key] && labels[key][v]) || String(v); }
+        var list = x[0].body.reviews;
+        var items = list.map(function (r) {
+          var box = HG.msg();
+          function decide(d) { return function () { api("POST", "/v1/admin/reviews/" + r.id + "/decision", { decision: d }).then(function (res) { if (res.status === 200) reload(); else HG.say(box, false, HG.errText(res)); }); }; }
+          var num = r.member_number ? (r.member_number.number.indexOf(r.member_number.country) === 0 ? r.member_number.number : r.member_number.country + r.member_number.number) : "";
+          return el("div", { class: "note-item unread" }, [
+            el("strong", { text: (r.display_name || "會員") + (num ? "（" + num + "）" : "") + "：" + r.field_label }),
+            el("div", { text: "原本：" + show(r.current_value, r.field_key) + " → 申請：" + show(r.requested_value, r.field_key) }),
+            el("div", { class: "when", text: when(r.created_at) }),
+            el("div", { class: "actions" }, [el("button", { type: "button", class: "small primary", text: "核准", onclick: decide("approve") }), el("button", { type: "button", class: "small danger", text: "駁回", onclick: decide("reject") }), box])
+          ]);
+        });
+        return el("section", { class: "card" }, [el("h2", { text: "待審核（" + list.length + "）" })].concat(items.length ? items : [el("p", { class: "help", text: "目前沒有待審核的申請。" })]));
+      });
+    });
+  }
   function load() {
-    api("GET", "/v1/me/notifications").then(function (r) {
+    Promise.all([api("GET", "/v1/me/notifications"), reviewCard(load)]).then(function (all) {
+      var r = all[0], rc = all[1];
       if (r.status === 401) { location.href = "/login?return_to=%2Fnotifications"; return; }
       var list = r.body.notifications, unread = r.body.unread, m = HG.msg();
       root.textContent = "";
@@ -14,6 +40,7 @@ export const NOTES_JS = String.raw`
         api("POST", "/v1/me/notifications/read-all").then(function (x) { if (x.status === 200) load(); else HG.say(m, false, HG.errText(x)); });
       } }) : null]));
       root.appendChild(m);
+      if (rc) root.appendChild(rc);
       if (!list.length) { root.appendChild(el("section", { class: "card" }, [el("p", { class: "help", text: "目前沒有通知。" })])); return; }
       root.appendChild(el("section", { class: "card" }, list.map(function (x) {
         return el("div", { class: "note-item" + (x.read ? "" : " unread") }, [
@@ -38,7 +65,7 @@ export const SHARE_JS = String.raw`
   var btn = document.getElementById("share");
   if (!btn) return;
   btn.addEventListener("click", function () {
-    var data = { title: document.title, url: location.href };
+    var data = { title: btn.getAttribute("data-title") || document.title, url: location.href };
     if (navigator.share) { navigator.share(data).catch(function () {}); return; }
     var done = function (t) { var old = btn.getAttribute("data-label") || ""; btn.lastChild.textContent = t; setTimeout(function () { btn.lastChild.textContent = old; }, 1800); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(function () { done("已複製連結"); }, function () { done("請手動複製網址"); });

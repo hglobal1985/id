@@ -1,7 +1,7 @@
 // Saved field order (see profile/layout.ts).
 import { taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
-import { LAYOUT_GROUPS, type LayoutGroup } from "../profile/layout";
+import { BLOCK_PREFIX, LAYOUT_GROUPS, type LayoutGroup } from "../profile/layout";
 
 export async function loadLayout(db: D1Database): Promise<Map<string, number>> {
   const r = await db.prepare("SELECT field_key, sort_order FROM profile_layout").all<{ field_key: string; sort_order: number }>();
@@ -14,7 +14,7 @@ export async function saveLayout(db: D1Database, order: Record<LayoutGroup, stri
   const stmts: D1PreparedStatement[] = [db.prepare("DELETE FROM profile_layout")];
   if (order) {
     for (const g of LAYOUT_GROUPS) {
-      order[g].forEach((key, i) => stmts.push(db.prepare("INSERT INTO profile_layout (field_key, sort_order, updated_at, updated_by) VALUES (?, ?, ?, ?)").bind(key, (i + 1) * 10, ts, actor.memberId)));
+      order[g].forEach((key, i) => stmts.push(db.prepare("INSERT INTO profile_layout (field_key, sort_order, updated_at, updated_by) VALUES (?, ?, ?, ?)").bind(g === "blocks" ? BLOCK_PREFIX + key : key, (i + 1) * 10, ts, actor.memberId)));
     }
   }
   stmts.push(auditStatement(db, { actorType: "staff", actorId: actor.memberId, action: order ? "layout.save" : "layout.reset", targetType: "profile_layout", result: "success", requestId: actor.requestId }, actor.now));

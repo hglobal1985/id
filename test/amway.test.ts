@@ -73,7 +73,7 @@ describe("definitions", () => {
     expect(f.education_system?.options).toBeUndefined();
     expect(f.upline_diamond).toMatchObject({ type: "text", suggest: "upline_diamond" });
     expect(f.upline_crown_ambassador?.label).toBe("皇冠大使");
-    expect(f.education_center?.visible_when).toEqual({ field: "education_system", equals: "hglobal" });
+    expect(f.education_center).toMatchObject({ type: "text", label: "地區教育中心", suggest: "education_center", suggest_when_hglobal: true, visible_when: null });
     expect(Object.keys(f)).not.toContain("amway_id");
   });
 
@@ -133,7 +133,6 @@ describe("fields and review", () => {
     for (const [k, v, reason] of [
       ["rank", "99", "not_an_option"],
       ["upline_platinum", { option: "other", custom_text: "x" }, "type"],
-      ["education_center", "c_taipei", "not_applicable"],
       ["referrer", "x".repeat(51), "too_long"],
     ] as [string, unknown, string][]) {
       res = await put(m, k, v);
@@ -148,7 +147,7 @@ describe("fields and review", () => {
     await enable(m);
     let res = await put(m, "education_system", "H-Global1985");
     expect(await res.json()).toMatchObject({ value: null, pending_value: "H-Global1985", status: "pending" });
-    expect((await put(m, "education_center", "c_taipei")).status).toBe(200); // allowed while hglobal is pending
+    expect((await put(m, "education_center", "台北中心")).status).toBe(200);
     res = await put(m, "rank", "12");
     expect(await res.json()).toMatchObject({ value: null, pending_value: "12", status: "pending" });
     expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_system", "rank"]);

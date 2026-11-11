@@ -140,7 +140,8 @@ async function signInAndGetCode(jar: Jar, extra: Record<string, string> = {}) {
     expect(res.status).toBe(200);
     const page = await res.text();
     expect(page).toContain("使用 Google 帳號登入");
-    expect(page).toContain("H-Global1985");
+    expect(page).toContain("會員中心");
+    expect(page).not.toMatch(/H-Global1985|hglobal|寰宇/i);
     const start = /href="([^"]+)"/.exec(page.slice(page.indexOf("<main>")))?.[1]?.replace(/&amp;/g, "&") ?? "";
     res = await req(start, {}, jar);
     expect(res.status).toBe(302);
@@ -544,7 +545,7 @@ describe("logout", () => {
 });
 
 describe("pages", () => {
-  it("member-facing pages use only the H-Global1985 brand", async () => {
+  it("member-facing pages show no brand names (the title is 會員中心)", async () => {
     const jar = new Jar();
     let res = await req("/login", {}, jar);
     jar.take(res);

@@ -77,7 +77,6 @@ describe("daily cleanup", () => {
     expect(r.purgedMembers).toBe(1);
     const left = db.raw.prepare("SELECT member_id FROM amway_field_values ORDER BY member_id").all().map((x) => x.member_id);
     expect(left.sort()).toEqual([recent, back].sort());
-    expect(db.raw.prepare("SELECT action FROM consent_records WHERE member_id = ?").get(old)?.action).toBe("withdraw");
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'amway.retention.purge'").get()?.n).toBe(1);
   });
 

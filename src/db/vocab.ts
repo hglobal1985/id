@@ -2,7 +2,7 @@
 // (edit, merge, delete). Values members already saved are rewritten when a term is edited or merged.
 import { taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
-import { POOLS, TERM_MAX_LENGTH, normTerm, rankTerms, type PoolKey } from "../vocab/terms";
+import { ORDERED_POOLS, POOLS, TERM_MAX_LENGTH, normTerm, rankTerms, type PoolKey } from "../vocab/terms";
 
 export interface TermRow {
   term: string;
@@ -15,19 +15,24 @@ interface Row {
   norm: string;
   uses: number;
   hglobal: number;
+  sort_order?: number;
 }
 
 const toRow = (r: Row): TermRow => ({ term: r.term, uses: r.uses, hglobal: r.hglobal === 1 });
 
 export async function listTerms(db: D1Database, pool: PoolKey): Promise<TermRow[]> {
-  const r = await db.prepare("SELECT term, norm, uses, hglobal FROM vocab_terms WHERE pool = ? ORDER BY uses DESC, term LIMIT 2000").bind(pool).all<Row>();
+  const ordered = ORDERED_POOLS.includes(pool);
+  const r = await db
+    .prepare(`SELECT term, norm, uses, hglobal, sort_order FROM vocab_terms WHERE pool = ? ORDER BY ${ordered ? "CASE WHEN sort_order > 0 THEN sort_order ELSE 1000000 END, uses DESC, term" : "uses DESC, term"} LIMIT 2000`)
+    .bind(pool)
+    .all<Row>();
   return (r.results ?? []).map(toRow);
 }
 
 /** Terms matching what was typed (any typed character, any order), best first. */
 export async function suggestTerms(db: D1Database, pool: PoolKey, query: string, limit = 8): Promise<string[]> {
-  const r = await db.prepare("SELECT term, norm, uses, hglobal FROM vocab_terms WHERE pool = ? ORDER BY uses DESC LIMIT 1000").bind(pool).all<Row>();
-  return rankTerms(r.results ?? [], query, limit).map((t) => t.term);
+  const r = await db.prepare("SELECT term, norm, uses, hglobal, sort_order FROM vocab_terms WHERE pool = ? ORDER BY uses DESC LIMIT 1000").bind(pool).all<Row>();
+  return rankTerms(r.results ?? [], query, limit, ORDERED_POOLS.includes(pool)).map((t) => t.term);
 }
 
 /** Spellings already in the pool win: "TAIPEI university" is saved as the existing "Taipei University". */
@@ -214,7 +219,9 @@ export async function addTerm(db: D1Database, pool: PoolKey, term: string, a: Ac
   if (!t || t.length > TERM_MAX_LENGTH) return false;
   const ts = taipeiIso(a.now);
   await db.batch([
-    db.prepare("INSERT OR IGNORE INTO vocab_terms (pool, norm, term, uses, hglobal, created_at, updated_at) VALUES (?, ?, ?, 0, 0, ?, ?)").bind(pool, normTerm(t), t, ts, ts),
+    db
+      .prepare("INSERT OR IGNORE INTO vocab_terms (pool, norm, term, uses, hglobal, sort_order, created_at, updated_at) VALUES (?, ?, ?, 0, 0, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM vocab_terms WHERE pool = ?), ?, ?)")
+      .bind(pool, normTerm(t), t, pool, ts, ts),
     audit(db, a, "vocab.add", pool),
   ]);
   return true;

@@ -44,6 +44,14 @@ export function validateMemberNumbers(raw: unknown, maxEntries: number): ListChe
   return { ok: true, value: out };
 }
 
+/**
+ * The member's public identifier: the ISO country code directly followed by the number, no space (TW9475831).
+ * Numbers the system generated already start with the country code (TW0112342) and are not prefixed twice.
+ */
+export function publicId(e: MemberNumberEntry): string {
+  return e.number.startsWith(e.country) ? e.number : `${e.country}${e.number}`;
+}
+
 export function entryKey(e: MemberNumberEntry): string {
   return `${e.country}:${e.number}`;
 }

@@ -91,15 +91,16 @@ describe("access control", () => {
 
   it("refuses cross-site state changes", async () => {
     const sa = await person("sa", "超管", ["super_admin"]);
-    const body = { field_key: "rank", value: "18", label: "18%", sort_order: 40, active: true };
-    expect((await admin(sa, "PUT", "/v1/admin/amway/options", body, { origin: "https://evil.example" })).status).toBe(403);
-    const noOrigin = await app.request("/v1/admin/amway/options", { method: "PUT", headers: { cookie: `__Host-hgid_session=${sa.cookie}`, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
+    const body = { order: null };
+    expect((await admin(sa, "PUT", "/v1/admin/profile-layout", body, { origin: "https://evil.example" })).status).toBe(403);
+    const noOrigin = await app.request("/v1/admin/profile-layout", { method: "PUT", headers: { cookie: `__Host-hgid_session=${sa.cookie}`, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
     expect(noOrigin.status).toBe(403);
-    expect((await admin(sa, "PUT", "/v1/admin/amway/options", body)).status).toBe(200);
+    expect((await admin(sa, "PUT", "/v1/admin/profile-layout", body)).status).toBe(200);
   });
 
   it("role matrix", () => {
-    expect(can(["reviewer"], "options.manage")).toBe(false);
+    expect(can(["reviewer"], "vocab.manage")).toBe(false);
+    expect(can(["secretary"], "layout.manage")).toBe(false);
     expect(can(["secretary"], "vocab.manage")).toBe(false);
     expect(can(["super_admin"], "vocab.manage")).toBe(true);
     expect(can(["secretary"], "staff.manage")).toBe(false);
@@ -118,7 +119,10 @@ describe("reviews", () => {
     const q = (await (await admin(rv, "GET", "/v1/admin/reviews")).json()) as { reviews: { id: string; display_name: string; field_label: string; requested_value: unknown }[] };
     expect(q.reviews).toHaveLength(1);
     expect(q.reviews[0]).toMatchObject({ display_name: "小美", field_label: "直銷商培訓系統", requested_value: "H-Global1985" });
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").get(rv.id)?.n).toBe(1);
     expect((await admin(rv, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(200);
+    // Deciding finishes the reviewers' "waiting for review" notice.
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").get(rv.id)?.n).toBe(0);
     expect((await admin(rv, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(404);
     const state = (await (await member(m, "GET", "/v1/me/amway")).json()) as { fields: { education_system: { status: string } } };
     expect(state.fields.education_system.status).toBe("approved");
@@ -135,7 +139,7 @@ describe("reviews", () => {
     expect(res.status).toBe(404);
     res = await admin(rv, "PUT", `/v1/admin/members/${m.id}/amway/rank`, { value: "99" });
     expect(res.status).toBe(422);
-    expect((await admin(rv, "PUT", "/v1/admin/amway/options", { field_key: "rank", value: "18", label: "18%", sort_order: 40, active: true })).status).toBe(403);
+    expect((await admin(rv, "GET", "/v1/admin/vocab")).status).toBe(403);
   });
 
   it("finds members by number, name or id", async () => {
@@ -155,16 +159,43 @@ describe("reviews", () => {
 });
 
 describe("options and vocabularies", () => {
-  it("secretaries maintain the rank and center options", async () => {
+  it("the rank ladder and the old options page are gone from the back office", async () => {
     const sec = await person("sec", "秘書", ["secretary"]);
-    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "rank", value: "12a", label: "12%初階", sort_order: 10, active: true })).status).toBe(200);
-    // Free-text fields have no option list.
-    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "education_system", value: "x", label: "x", sort_order: 1, active: true })).status).toBe(422);
-    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "upline_platinum", value: "x", label: "x", sort_order: 1, active: true })).status).toBe(422);
-    expect((await admin(sec, "PUT", "/v1/admin/amway/options", { field_key: "referrer", value: "a", label: "a", sort_order: 1, active: true })).status).toBe(422);
+    expect((await admin(sec, "GET", "/v1/admin/amway/options")).status).toBe(404);
     const m = await amwayMember("m", "小美");
     const defs = (await (await member(m, "GET", "/v1/amway/field-definitions")).json()) as { fields: { key: string; options?: { value: string }[] }[] };
-    expect(defs.fields.find((f) => f.key === "rank")?.options?.map((o) => o.value)).toEqual(["12a", "12", "15"]);
+    expect(defs.fields.find((f) => f.key === "rank")?.options?.map((o) => o.value)).toEqual(["12", "15"]);
+    expect(defs.fields.find((f) => f.key === "education_center")?.options).toBeUndefined();
+  });
+
+  it("the regional education center: plain text for everyone, the 寰宇 vocabulary (managed in 詞庫) only for H-Global1985 members", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const a = await amwayMember("a", "甲");
+    const b = await amwayMember("b", "乙");
+    // The owner's list is seeded in his order; 無 first.
+    const terms = (await (await admin(sa, "GET", "/v1/admin/vocab/education_center")).json()) as { terms: { term: string }[] };
+    expect(terms.terms.slice(0, 4).map((t) => t.term)).toEqual(["無", "飛登", "南京", "自強"]);
+    expect(terms.terms.map((t) => t.term)).toEqual(expect.arrayContaining(["員林", "馬來西亞", "越南"]));
+    expect(terms.terms).toHaveLength(29);
+    const sug = async (m: P, q: string) => ((await (await member(m, "GET", `/v1/vocab/suggestions?pool=education_center&q=${encodeURIComponent(q)}`)).json()) as { suggestions: string[] }).suggestions;
+    expect(await sug(a, "中")).toEqual(expect.arrayContaining(["中山", "台中", "中國"]));
+    expect((await sug(a, "中"))[0]).toBe("中山"); // list order, not alphabetical or by use
+    // Anyone may type any text; only H-Global1985 members add to the vocabulary.
+    expect((await member(a, "PUT", "/v1/me/amway/fields/education_center", { value: "我的自訂中心" })).status).toBe(200);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'education_center' AND term = '我的自訂中心'").get()?.n).toBe(0);
+    expect(((await (await member(a, "GET", "/v1/me/amway")).json()) as { hglobal: boolean }).hglobal).toBe(false);
+    // 寰宇 means H-Global1985: it needs review and unlocks the vocabulary.
+    expect(((await (await member(b, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" })).json()) as { status: string }).status).toBe("pending");
+    expect(((await (await member(b, "GET", "/v1/me/amway")).json()) as { hglobal: boolean }).hglobal).toBe(true);
+    expect((await member(b, "PUT", "/v1/me/amway/fields/education_center", { value: "新北中心" })).status).toBe(200);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'education_center' AND term = '新北中心'").get()?.n).toBe(1);
+    // The super admin adds, edits and deletes the center terms; members' values follow edits.
+    expect((await admin(sa, "POST", "/v1/admin/vocab/education_center/rename", { from: "新北中心", to: "新北" })).status).toBe(200);
+    expect(((await (await member(b, "GET", "/v1/me/amway")).json()) as { fields: { education_center: { value: string } } }).fields.education_center.value).toBe("新北");
+    await admin(sa, "POST", "/v1/admin/vocab/education_center/add", { term: "新加坡" });
+    const after = (await (await admin(sa, "GET", "/v1/admin/vocab/education_center")).json()) as { terms: { term: string }[] };
+    expect(after.terms[29]?.term).toBe("新加坡"); // admin-ordered terms first, then what members typed
+    expect(after.terms.at(-1)?.term).toBe("新北");
   });
 
   it("only the super admin curates vocabularies: edit, merge and delete follow into members' saved values", async () => {
@@ -223,9 +254,11 @@ describe("profile field order", () => {
     const m = await amwayMember("m", "小美");
     expect((await admin(sec, "GET", "/v1/admin/profile-layout")).status).toBe(403);
     const v = (await (await admin(sa, "GET", "/v1/admin/profile-layout")).json()) as { groups: { group: string; fields: { key: string }[] }[]; customized: boolean };
-    expect(v.groups.map((g) => g.group)).toEqual(["basic", "contact", "amway"]);
+    expect(v.groups.map((g) => g.group)).toEqual(["blocks", "basic", "contact", "amway"]);
+    expect(v.groups[0]!.fields.map((f) => f.key)).toEqual(["avatar", "amway", "basic", "education", "contact", "birthday", "life"]);
+    expect(v.groups[3]!.fields[0]).toMatchObject({ key: "member_number", label: "會員編號" });
     expect(v.customized).toBe(false);
-    const basic = v.groups[0]!.fields.map((f) => f.key);
+    const basic = v.groups[1]!.fields.map((f) => f.key);
     expect(basic.slice(0, 3)).toEqual(["display_name", "nickname", "motto"]);
 
     // Must list every field of every group exactly once.
@@ -233,9 +266,12 @@ describe("profile field order", () => {
     expect((await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, basic: order.basic!.slice(1) } })).status).toBe(422);
     expect((await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, contact: [...order.contact!.slice(1), "bogus"] } })).status).toBe(422);
     expect((await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, basic: [...order.basic!.slice(0, 2), ...order.basic!.slice(2).reverse()] } })).status).toBe(200);
-    await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, basic: ["interests", ...order.basic!.filter((k) => k !== "interests")], amway: [...order.amway!].reverse() } });
+    await admin(sa, "PUT", "/v1/admin/profile-layout", { order: { ...order, blocks: [...order.blocks!].reverse(), basic: ["interests", ...order.basic!.filter((k) => k !== "interests")], amway: [...order.amway!].reverse() } });
 
-    const defs = (await (await member(m, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; group: string; order: number }[] };
+    const defs = (await (await member(m, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; group: string; order: number }[]; blocks: { key: string; order: number }[] };
+    // Big blocks (the whole sections) move too, and the member number is part of the Amway order.
+    expect(defs.blocks.slice().sort((a, b) => a.order - b.order).map((b) => b.key)).toEqual(["life", "birthday", "contact", "education", "basic", "amway", "avatar"]);
+    expect(defs.fields.find((f) => f.key === "member_number")!.order).toBeGreaterThan(defs.fields.find((f) => f.key === "interests")!.order - 1000);
     const byOrder = defs.fields.filter((f) => f.group === "basic").sort((a, b) => a.order - b.order).map((f) => f.key);
     expect(byOrder[0]).toBe("interests");
     const adef = (await (await member(m, "GET", "/v1/amway/field-definitions")).json()) as { fields: { key: string; order: number }[] };
@@ -263,7 +299,7 @@ describe("staff management and audit", () => {
     const m = await person("m", "新秘書");
     let res = await admin(sa, "PUT", `/v1/admin/staff/${m.id}`, { roles: ["secretary"] });
     expect(res.status).toBe(200);
-    expect(((await (await admin(m, "GET", "/v1/admin/me")).json()) as { permissions: string[] }).permissions).toContain("options.manage");
+    expect(((await (await admin(m, "GET", "/v1/admin/me")).json()) as { permissions: string[] }).permissions).toContain("audit.read");
     res = await admin(sa, "PUT", `/v1/admin/staff/${sa.id}`, { roles: [] });
     expect(res.status).toBe(422);
     expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("last_super_admin");

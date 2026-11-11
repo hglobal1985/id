@@ -124,7 +124,7 @@ export function registerAccountRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     await c.env.DB.batch([
       auditStatement(c.env.DB, { actorType: "member", actorId: auth.memberId, action: "member.export", targetType: "member", targetId: auth.memberId, appId: null, result: "success", requestId: c.get("requestId") }, deps.now()),
     ]);
-    c.header("content-disposition", 'attachment; filename="h-global1985-my-data.json"');
+    c.header("content-disposition", 'attachment; filename="my-data.json"');
     return c.json(data, 200);
   });
 }

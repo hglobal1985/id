@@ -103,6 +103,13 @@ function supersedePending(db: D1Database, memberId: string, key: string, ts: str
     .bind(ts, memberId, key);
 }
 
+/** The member's training system (effective or pending) is a term marked as H-Global1985. */
+export async function isHglobalMember(db: D1Database, memberId: string): Promise<boolean> {
+  const [rows, hg] = await Promise.all([readAmwayFields(db, memberId), hglobalNorms(db)]);
+  const sys = rows.get("education_system");
+  return systemKey(sys?.value ?? null, hg) === HGLOBAL || systemKey(sys?.pending_value ?? null, hg) === HGLOBAL;
+}
+
 export function notificationStatement(db: D1Database, memberId: string, kind: string, payload: Record<string, string>, now: Date): D1PreparedStatement {
   return db
     .prepare("INSERT INTO notifications (id, member_id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)")
@@ -129,10 +136,6 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   const sys = rows.get("education_system");
   const hg = await hglobalNorms(db);
   const educationSystem = { effective: systemKey(sys?.value ?? null, hg), pending: systemKey(sys?.pending_value ?? null, hg) };
-
-  if (key === "education_center" && value !== null && educationSystem.effective !== HGLOBAL && educationSystem.pending !== HGLOBAL) {
-    return { ok: false, reason: "not_applicable", message: "教育體系為 H-Global1985 時才能選擇教育中心" };
-  }
 
   const current = rows.get(key);
   const holders = key === "rank" ? await rankHolders(db, memberId) : [memberId];
@@ -222,6 +225,8 @@ export async function decideReview(db: D1Database, requestId: string, decision: 
   await db.batch([
     db.prepare("UPDATE amway_review_requests SET status = ?, decided_at = ?, decided_by = ? WHERE id = ? AND status = 'pending'").bind(decision === "approve" ? "approved" : "rejected", ts, staffId, requestId),
     ...holders.map((h) => upsertRow(db, h, req.field_key, row, ts, staffId)),
+    // The reviewers' "waiting for review" notices for this request are done.
+    db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE kind = 'staff.review.requested' AND json_extract(payload, '$.request_id') = ?").bind(ts, requestId),
     notificationStatement(db, req.member_id, decision === "approve" ? "amway.review.approved" : "amway.review.rejected", { field_key: req.field_key }, ctx.now),
     auditStatement(db, { actorType: "staff", actorId: staffId, action: `amway.review.${decision}`, targetType: "member", targetId: req.member_id, result: "success", requestId: ctx.requestId, detail: { field_key: req.field_key, request_id: requestId } }, ctx.now),
   ]);

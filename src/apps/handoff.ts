@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-11.1";
-export const HANDOFF_UPDATED = "2026-11-11 10:58（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-11.2";
+export const HANDOFF_UPDATED = "2026-11-11 12:02（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -65,7 +65,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - Token：Access Token 15 分鐘，Refresh Token 30 天。手機把兩個 Token 存在系統安全儲存（Expo：expo-secure-store），不要放 AsyncStorage。網頁版 Access Token 只放記憶體，Refresh Token 放 sessionStorage，不要放 localStorage。",
     `   - 換發：每個請求帶 Authorization: Bearer <access_token>。收到 401 unauthenticated 時 POST ${origin}/v1/auth/refresh，body {"refresh_token"}，新的 refresh_token 要立刻覆蓋舊的。舊的再用一次會撤銷整個登入（401 refresh_reused），此時回到登入畫面。同一時間只讓一個請求執行換發（加鎖），避免並發換發被誤判為重用。403 app_unavailable 表示這款 App 被暫停，顯示維護畫面。429 rate_limited 依 Retry-After 稍後重試。`,
     `   - 登出：POST ${origin}/v1/auth/logout（帶 Access Token）結束這次登入，然後清除本機 Token。登出所有裝置與所有 App：POST ${origin}/v1/auth/logout-all。`,
-    "   - 共用登入（單一登入，必做）：所有 H-Global1985 App 的登入狀態共用——在任一款 App 登入，同一支手機上的其他 H-Global1985 App 自動登入；登出或換會員，所有 App 跟著變。登出按鈕文字請寫「登出所有 H-Global1985 App」。",
+    "   - 共用登入（單一登入，必做）：所有 H-Global1985 App 的登入狀態共用——在任一款 App 登入，同一支手機上的其他 H-Global1985 App 自動登入；登出或換會員，所有 App 跟著變。登出按鈕文字請寫「登出所有 App」。",
     `   - 共用登入（手機）：登入成功後 POST ${origin}/v1/auth/sso/start（帶 Access Token；body 可帶 {"previous_sso_token":"<共用儲存裡原有的>"}）→ {"sso_token"}，存進所有 H-Global1985 App 共用的儲存。iPhone（必做）：Keychain 群組固定為 $(AppIdentifierPrefix)com.hglobal1985.shared，鍵名 hglobal.sso（同一個 Apple 開發者帳號即可，業主不必在 Apple 後台另外設定；在專案的 keychain-access-groups 加上這個群組，並用支援 access group 的鑰匙圈套件）。Android 為選做，目前請略過，不要為此阻擋上架。App 啟動與每次回到前景：共用儲存裡有 sso_token 而自己還沒登入 → POST ${origin}/v1/auth/sso/exchange {"app_id":"${id}","sso_token","device_label"}（回應與 Google 登入相同）；自己已登入 → POST ${origin}/v1/auth/sso/status {"sso_token"} → {"active","member_id"}，active 為 false 或 member_id 與自己不同就清除本機 Token（不同會員時再用 exchange 換成新會員）。登出：POST ${origin}/v1/auth/sso/logout {"sso_token"}（登出這支裝置上所有 App，可重複呼叫），再清除共用儲存與本機 Token。401 invalid_sso 表示共用登入已失效：清掉共用儲存，回到登入畫面。`,
     `   - 共用登入（網頁版，同一個瀏覽器內連動）：瀏覽器不能跨網站共用儲存，改由中央會員記住這個瀏覽器，用整頁導向詢問。（1）登入完成後：POST ${origin}/v1/auth/sso/start → POST ${origin}/v1/auth/sso/web-code {"sso_token"} → {"code"}（單次、2 分鐘）→ 整頁導向 ${origin}/auth/sso/adopt?c=<code>&app_id=${id}&return=<回傳頁>，回到 <回傳頁>#sso_adopted=1。（2）每次載入頁面（自己加 5 分鐘節流）：先 POST /v1/auth/nonce 取得 nonce 並存 sessionStorage，整頁導向 ${origin}/auth/sso/check?app_id=${id}&nonce=<SHA-256 十六進位小寫>&return=<回傳頁>&state=<隨機字串> → 回到 <回傳頁>#sso_code=…&sso_member=…&state=…（沒人登入是 #sso_none=1&state=…）。核對 state；sso_member 與目前登入的會員相同就不用動；不同或尚未登入就 POST ${origin}/v1/auth/sso/web-exchange {"app_id":"${id}","code":"<sso_code>","nonce":"<原值>"}（回應與 Google 登入相同）；收到 sso_none 而自己是登入狀態就登出。（3）登出：清除本機 Token 後整頁導向 ${origin}/auth/sso/logout?app_id=${id}&return=<回傳頁>，會登出這個瀏覽器所有 H-Global1985 網頁版。回傳頁必須在登記的網頁版來源底下、不能帶 #；讀完 # 之後的結果立刻用 history.replaceState 清掉。限制：網頁版只在同一個瀏覽器內連動，手機 App 與網頁版之間不連動；網頁版在下一次載入頁面時才會跟上登出或換人。`,
     `3. 會員身分：只用登入回應的 user.member_id（也是 Access Token 的 sub）當會員的主鍵。不可以用信箱、姓名或會員編號辨識或合併會員；會員編號可能重複，也可能被會員修改。App 自己的資料庫只存 member_id 當外鍵，不複製會員主檔。`,
@@ -75,8 +75,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `   - 關聯詞：定義裡有 suggest 的欄位（職業、公司／單位、興趣與專長、大學／碩士／博士的校名與系名、直銷商培訓系統、上手鑽石、上手白金、皇冠大使）是「直接打字＋關聯詞」：會員自由輸入，輸入時呼叫 GET ${origin}/v1/vocab/suggestions?pool=<suggest>&q=<已輸入的字> 顯示建議（只要包含輸入的任一個字就會出現，不分順序），點選後填入；不用強迫會員一定要選。推薦人沒有關聯詞。`,
     `   - 多項欄位（tags）：輸入時遇到 , ; : - # * / \\ ' ， 、 ； ： 。 . 或空白字元或按 Enter，就確認為一個項目（變成可移除的標籤）。`,
     "   - 學歷：大學、碩士、博士各一列，每列「校名＋系名」放在同一行，只顯示「大學」「碩士」「博士」三個名稱（不要顯示欄位全名）。碩士、博士預設整列隱藏：大學列下方放「新增碩士學歷」按鈕，按了才顯示碩士列；有碩士列才出現「新增博士學歷」。已經有資料的列一律顯示。欄位定義的 row 資訊（key、label、optional_after）就是用來分列的。",
-    "   - 會員編號（member_number）：國家選單照欄位定義 options 的順序（台灣、鄰近國家，其餘依國際電話區碼）。尚未勾選「我是Amway會員」時，欄位旁顯示「隨機產生，不可修改」且不提供編輯；勾選後改顯示「建議修改會員編號」並可編輯（文字取自欄位定義的 help_when_not_amway／help_when_amway）。",
-    `   - 勾選「我是Amway會員」：PUT ${origin}/v1/me/amway/enabled {"enabled":true|false}，打勾或取消立即生效，不要有二次確認，也沒有同意畫面或隱私說明確認頁；打勾後立刻顯示 Amway 欄位（GET ${origin}/v1/amway/field-definitions 與 GET ${origin}/v1/me/amway），每個 Amway 欄位也有「公開／隱藏」切換。教育中心只在 GET /v1/me/amway 的 hglobal 為 true 時顯示。`,
+    "   - 會員編號（member_number）與公開網址：公開網址是 ${origin}/<國碼二碼緊接編號>，例如 TW9475831（二碼國碼＋編號，中間沒有空格）；欄位值的 country、number 組成這個代碼（編號本身已含國碼的不重複加）。國家選單照欄位定義 options 的順序（台灣、鄰近國家，其餘依國際電話區碼）。尚未勾選「我是Amway會員」時，欄位旁顯示「隨機產生，不可修改」且不提供編輯；勾選後改顯示「建議修改會員編號」並可編輯（文字取自欄位定義的 help_when_not_amway／help_when_amway）。",
+    `   - 勾選「我是Amway會員」：PUT ${origin}/v1/me/amway/enabled {"enabled":true|false}，打勾或取消立即生效，不要有二次確認，也沒有同意畫面或隱私說明確認頁；打勾後立刻顯示 Amway 欄位（GET ${origin}/v1/amway/field-definitions 與 GET ${origin}/v1/me/amway），每個 Amway 欄位也有「公開／隱藏」切換。「地區教育中心」（education_center）永遠顯示、是自由輸入的文字；只有 GET /v1/me/amway 的 hglobal 為 true（直銷商培訓系統填了代表 H-Global1985 的詞，例如「寰宇」）時，才依欄位定義的 suggest_when_hglobal 顯示專屬關聯詞，不是的話維持純文字、不要有關聯詞。`,
     `   - 其他：座右銘欄位要有「隨機提案」按鈕（GET ${origin}/v1/profile/suggestions/motto，只填入輸入框，由會員自己儲存）；頭像用 POST ${origin}/v1/me/profile/avatar 直接送圖片位元組（先縮成約 256 px 的方形 JPEG，不超過 128 KB），或 POST ${origin}/v1/me/profile/avatar/google 使用 Google 頭像；生日設定後 GET /v1/me/profile 的 life_chart 提供生命靈數九宮格的繪圖資料。每個欄位的編輯按鈕，在編輯狀態要原地變成「磁碟片圖示＋儲存」。`,
     "   - 【畫面控制項規則】整個資料頁不要使用瀏覽器或系統原生的下拉選單（select／Picker）與原生勾選框（checkbox），一律用自訂元件：下拉用自訂的彈出清單（可搜尋），勾選用和文字同樣大小的自訂方框（打勾圖示與文字等高），建議清單與多項輸入也都是自訂元件。不要為了省事改回原生控制項。",
     "   - 以手機閱讀舒適度優先排版：單欄、觸控區域至少 44 px；配色採亮色系，沿用 H-Global1985 標誌的色系（深綠、橄欖綠、橘、黃、鮭粉、暖白），不使用星空特效。",
@@ -87,8 +87,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 快取：查詢結果最多快取 1 日，只能放記憶體或短時效快取服務，不可以寫進 App 的資料庫或檔案；會員登出時清除。",
     "   - reason 只給 App 內部記錄用，絕對不要顯示給會員。不符合資格時只顯示一般的說明（例如「此內容需要符合資格才能觀看」）。",
     "7. Amway 資料不得被 App 保存：會員編號、獎銜、上手、資格查詢結果等 Amway 相關資料，App 與 App 後端都不可以寫入資料庫、檔案、日誌、分析工具或錯誤回報；需要時即時向中央會員查詢。日誌也不可以記錄 Token、信箱、姓名。",
-    "8. 對會員顯示的文字：品牌只用 starry.phd、H-Global1985、Amway 這三個寫法，不要使用它們的中文名稱。畫面上不要提到其他系統的名稱，需要時一律寫「合作營運單位」。",
-    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy 與「完整隱私說明」${origin}/privacy/amway。App Store 與 Google Play 要求 App 內有刪除帳號入口：放一個按鈕用瀏覽器開啟 ${origin}/me/edit，會員在那裡申請刪除。`,
+    "8. 對會員顯示的文字：品牌只用 starry.phd、Amway 這兩個寫法，不要使用它們的中文名稱；畫面上不要出現「寰宇」「H-Global1985」「hglobal」字樣（App 選單裡的選項與隱私權文件除外），網頁標題統一寫「會員中心」。不要提到其他系統的名稱，需要時一律寫「合作營運單位」。",
+    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy 與「完整隱私說明」${origin}/privacy/amway。App Store 與 Google Play 要求 App 內有刪除帳號入口：放一個按鈕用瀏覽器開啟 ${origin}/me/edit，會員在那裡按「刪除帳號」（重新登入確認後立即生效，沒有申請流程，也沒有「刪除 Amway 資料」）。`,
     "10. 網頁版網址：每一頁都要有自己的網址路徑，用 History API 切換；重新整理、上一頁、分享網址都停留在同一頁。需要登入的頁面，未登入時先記下目前路徑，登入完成後導回原本那一頁（回傳網址必須在已登記的網頁版來源底下）。",
     "",
     "## 四、規則",
@@ -114,8 +114,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "5. 資格查詢 fail closed、快取最長 1 日且不落地、獎銜代碼來自 field-definitions、reason 不顯示給會員（三、6）。",
     "6. 沒有保存任何 Amway 資料，日誌沒有 Token、信箱、姓名（三、7）。",
     "7. 對會員顯示的品牌與用語（三、8）；隱私權政策與刪除帳號入口（三、9）。",
-    "8. 共用登入（三、2）：手機用共用 Keychain 群組保存 sso_token，啟動與回到前景時 exchange／status；網頁版登入後 adopt、載入頁面時 check、登出走 /auth/sso/logout；登出按鈕寫「登出所有 H-Global1985 App」。（2026-11-10.3 新增）",
-    "9. 會員資料頁（三、5）：App 內原地修改、關聯詞、多項欄位確認符號、學歷分列、會員編號提示、Amway 勾選立即生效、不使用原生下拉與勾選框、亮色系配色。（2026-11-11.1 新增）",
+    "8. 共用登入（三、2）：手機用共用 Keychain 群組保存 sso_token，啟動與回到前景時 exchange／status；網頁版登入後 adopt、載入頁面時 check、登出走 /auth/sso/logout；登出按鈕寫「登出所有 App」。（2026-11-10.3 新增）",
+    "9. 會員資料頁（三、5）：App 內原地修改、關聯詞、多項欄位確認符號、學歷分列（空白的碩士、博士列會自動消失）、會員編號提示與公開網址格式、Amway 勾選立即生效、地區教育中心的條件式關聯詞、不使用原生下拉與勾選框、亮色系配色。（2026-11-11.1 新增，.2 補充）",
     "10. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
