@@ -91,7 +91,7 @@ export function sitePage(opts: { title: string; body: string; script?: string | 
 <body${opts.admin ? ' class="admin"' : ""}>
 ${header}
 <main class="wrap">${opts.body}</main>
-${opts.bare ? "" : '<footer class="foot"><a href="/privacy">隱私權政策</a><a href="/privacy/amway">完整隱私說明</a></footer>'}
+${opts.bare ? "" : '<footer class="foot"><a href="/privacy">隱私權政策</a><span class="credit">網站設計 杜杜龍</span></footer>'}
 ${[opts.script ?? []].flat().map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("\n")}
 </body>
 </html>`;

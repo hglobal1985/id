@@ -7,7 +7,7 @@ import { bearerAuth, missingScope } from "./auth";
 import { can } from "../admin/roles";
 import { resolveIssuer } from "../oidc/config";
 import { sniffImage } from "../db/profile";
-import { addLink, addPlatform, deletePlatform, listLinks, listPlatforms, removeLink, renamePlatform, reorderPlatforms, setLinkIcon, setPlatformIcon } from "../db/social";
+import { addLink, addPlatform, deletePlatform, listLinks, listPlatforms, removeLink, renamePlatform, reorderPlatforms, setLinkIcon, setPlatformIcon, updateLink } from "../db/social";
 import { LINK_ICON_MAX_BYTES, PLATFORM_ICON_MAX_BYTES, cleanLabel, platformKeyOf, validateSocialUrl } from "../social/rules";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -49,6 +49,15 @@ const addRoute = createRoute({
   security,
   request: { body: { required: true, content: json(z.object({ platform_key: z.string().max(40), url: z.string().max(400), label: z.string().max(60).optional() })) } },
   responses: { 200: { description: "Added", content: json(LinkSchema) }, ...common, 422: err("invalid_field"), 409: err("too_many (at most 30 links)") },
+});
+const updateRoute = createRoute({
+  method: "put",
+  path: "/v1/me/social-links/{id}",
+  tags: ["social"],
+  summary: "Change the address and the shown name of one of my social links (an empty label shows the platform name)",
+  security,
+  request: { params: IdParam, body: { required: true, content: json(z.object({ url: z.string().max(400), label: z.string().max(60).optional() })) } },
+  responses: { 200: { description: "Saved", content: json(LinkSchema) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
 });
 const iconRoute = createRoute({
   method: "put",
@@ -174,6 +183,21 @@ export function registerSocialRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) 
         : (c.json(errorBody("invalid_field", "沒有這個社群平台", c.get("requestId"), { field_key: "platform_key", reason: "unknown" }), 422) as never);
     }
     const link = (await shape(c, memberId)).find((l) => l.id === r.id);
+    return c.json(link as z.infer<typeof LinkSchema>, 200);
+  });
+
+  app.openapi(updateRoute, async (c) => {
+    const denied = missingScope(c, ["profile.basic.write"]);
+    if (denied) return denied as never;
+    const { url, label } = c.req.valid("json");
+    const u = validateSocialUrl(url);
+    if (!u.ok) return c.json(errorBody("invalid_field", u.message, c.get("requestId"), { field_key: "url", reason: "format" }), 422) as never;
+    const cleanedLabel = label === undefined || label.trim() === "" ? null : cleanLabel(label);
+    if (label !== undefined && label.trim() !== "" && cleanedLabel === null) return c.json(errorBody("invalid_field", "名稱最多 30 字", c.get("requestId"), { field_key: "label", reason: "format" }), 422) as never;
+    const { id } = c.req.valid("param");
+    const { memberId } = c.get("auth");
+    if (!(await updateLink(c.env.DB, memberId, id, u.url, cleanedLabel, deps.now(), c.get("requestId")))) return c.json(errorBody("not_found", "找不到這個連結", c.get("requestId")), 404) as never;
+    const link = (await shape(c, memberId)).find((l) => l.id === id);
     return c.json(link as z.infer<typeof LinkSchema>, 200);
   });
 

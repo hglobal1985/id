@@ -30,6 +30,7 @@ export const ME_JS = String.raw`
   function shownName() { var f = S.profile.fields.display_name; return (f && f.value) || ""; }
   function numbers() { return S.profile.fields.member_number.value || []; }
   function isAmway() { return !!S.amway.enabled; }
+  function publicPath() { var u = S.profile.fields.member_number.public_url; try { return u ? new URL(u).pathname : "/"; } catch (e) { return "/"; } }
   function ownPage() { var u = S.profile.fields.member_number.public_url; try { return u ? "/my" + new URL(u).pathname : "/my"; } catch (e) { return "/my"; } }
 
   // Public / hidden switch for one or more visibility keys; saves at once.
@@ -228,9 +229,10 @@ export const ME_JS = String.raw`
     var row = el("div", { class: "socials" + (dense ? " dense" : "") });
     links.forEach(function (l) {
       var name = l.label || l.platform_name || "連結";
-      var copy = el("button", { type: "button", class: "soc-copy", title: "點一下複製連結", text: name, onclick: function () {
-        function done(t) { copy.textContent = t; setTimeout(function () { copy.textContent = name; }, 1500); }
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(l.url).then(function () { done("已複製"); }, function () { done("請手動複製"); }); else done("請手動複製");
+      // In edit mode the name under the icon opens this link for editing (copying is on the public page).
+      var copy = el("button", { type: "button", class: "soc-copy", title: "點一下編輯這個連結", text: name, onclick: function () {
+        if (panel) { panel.remove(); panel = null; }
+        panel = editPanel(l, function () { panel = null; }); box.appendChild(panel); panel.scrollIntoView({ block: "nearest" });
       } });
       row.appendChild(el("div", { class: "soc" }, [
         el("a", { class: "soc-link", href: l.url, target: "_blank", rel: "noopener noreferrer nofollow", title: name }, [el("img", { class: "soc-ico", src: l.icon_url, alt: name })]), copy,
@@ -241,7 +243,25 @@ export const ME_JS = String.raw`
     });
     row.appendChild(el("div", { class: "soc" }, [el("button", { type: "button", class: "soc-plus", "aria-label": "新增連結", onclick: function () { if (panel) { panel.remove(); panel = null; } else { panel = addPanel(function () { panel = null; }); box.appendChild(panel); } } }, [HG.icon("plus")]), el("span", { class: "soc-tag", text: "新增連結" })]));
     box.appendChild(row);
+    HG.fitLabels(row);
     return box;
+  }
+  // Edit one link: the address and the shown name (the platform stays; remove and add again to change it).
+  function editPanel(l, onClose) {
+    var m = msg();
+    var url = el("input", { type: "url", value: l.url, "aria-label": "網址" });
+    var label = el("input", { type: "text", maxlength: 30, value: l.label || "", placeholder: "顯示名稱（不填就顯示：" + (l.platform_name || "平台名稱") + "）", "aria-label": "名稱" });
+    var panel = el("div", { class: "soc-panel" }, [
+      el("label", { text: "編輯連結：" + (l.platform_name || "") }), url, el("div", { class: "gap" }), label, el("div", { class: "actions" }, [
+        el("button", { type: "button", class: "primary", text: "儲存", onclick: function () {
+          api("PUT", "/v1/me/social-links/" + encodeURIComponent(l.id), { url: url.value.trim(), label: label.value.trim() }).then(function (r) {
+            if (r.status !== 200) { say(m, false, errText(r)); return; }
+            refreshSocial();
+          });
+        } }),
+        el("button", { type: "button", text: "取消", onclick: function () { panel.remove(); onClose(); } }), m])
+    ]);
+    return panel;
   }
   function addPanel(onClose) {
     var m = msg(), key = S.platforms.length ? S.platforms[0].key : "", iconBlob = null;
@@ -467,7 +487,7 @@ export const ME_JS = String.raw`
 
   function searchCard() {
     var m = msg();
-    var box = HG.checkbox("是否同意公開給搜尋引擎？", S.indexing, function (on) {
+    var box = HG.checkbox("是否同意讓搜尋引擎為你打知名度？", S.indexing, function (on) {
       S.indexing = on;
       api("PUT", "/v1/me/search-indexing", { allowed: on }).then(function (r) {
         if (r.status !== 200) { S.indexing = !on; swap("search"); HG.toast(errText(r)); }
@@ -478,24 +498,28 @@ export const ME_JS = String.raw`
   }
 
   // ---- life number chart (same drawing data as the starry.phd member center) ----
-  var CHART_ROWS = [[1, 4, 7], [2, 5, 8], [3, 6, 9]];
-  function cell(n, r) {
-    var rings = [], i;
-    for (i = 0; i < r.black; i++) rings.push("rg-black");
-    if (r.birthday) rings.push("rg-birthday");
-    if (r.zodiac) rings.push("rg-zodiac");
-    for (i = 0; i < r.talent; i++) rings.push("rg-talent");
-    if (!rings.length && !r.life) return el("div", { class: "ln-cell ln-empty" }, [el("span", { class: "ln-n", text: String(n) })]);
-    // From the inside out: the number, the red triangle (innermost), then the circles.
-    var inner = el("span", { class: "ln-n" + (rings.length ? "" : " ln-red"), text: String(n) });
-    if (r.life) {
-      var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      s.setAttribute("viewBox", "0 0 100 90"); s.setAttribute("preserveAspectRatio", "none"); s.setAttribute("aria-hidden", "true");
-      s.innerHTML = '<polygon points="50,5 96,85 4,85" fill="none" stroke="#e5303a" stroke-width="5" stroke-linejoin="round"/>';
-      inner = el("span", { class: "ln-tri" }, [s, inner]);
-    }
-    rings.forEach(function (c, k) { inner = el("span", { class: "ln-ring " + c + (k === 0 && r.life ? " ln-ring-t" : "") }, [inner]); });
-    return el("div", { class: "ln-cell" }, [inner]);
+  // One SVG with fixed geometry (same as src/web/chart.ts): each number has its own 100x80 cell, so any number of circles
+  // or a triangle never moves anything. Outward from the middle: the red triangle behind the number, then the circles.
+  var RING_COLOR = { black: "#0f172a", birthday: "#f5b400", zodiac: "#8b2fe0", talent: "#7ccf1b" };
+  function centre(n) { return { x: 50 + 100 * Math.floor((n - 1) / 3), y: 40 + 80 * ((n - 1) % 3) }; }
+  function chartCell(n, r) {
+    var kinds = [], i;
+    for (i = 0; i < r.black; i++) kinds.push("black");
+    if (r.birthday) kinds.push("birthday");
+    if (r.zodiac) kinds.push("zodiac");
+    for (i = 0; i < r.talent; i++) kinds.push("talent");
+    var c = centre(n), r0 = r.life ? 26 : 15, step = kinds.length > 1 ? Math.min(4.5, (37 - r0) / (kinds.length - 1)) : 0, out = "";
+    for (i = kinds.length - 1; i >= 0; i--) out += '<circle cx="' + c.x + '" cy="' + c.y + '" r="' + (r0 + i * step).toFixed(2) + '" fill="#f6f8f4" stroke="' + RING_COLOR[kinds[i]] + '" stroke-width="2.5"/>';
+    if (r.life) out += '<polygon points="' + c.x + "," + (c.y - 18) + " " + (c.x - 19) + "," + (c.y + 14) + " " + (c.x + 19) + "," + (c.y + 14) + '" fill="#e5303a" stroke="#e5303a" stroke-width="3" stroke-linejoin="round"/>';
+    var fill = r.life ? "#ffffff" : kinds.length ? "#0f172a" : "#c3cbbf";
+    return out + '<text x="' + c.x + '" y="' + (c.y + (r.life ? 5 : 1)) + '" dy=".35em" text-anchor="middle" font-size="' + (r.life ? 22 : 24) + '" fill="' + fill + '">' + n + "</text>";
+  }
+  function chartSvg(c) {
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"), html = "";
+    s.setAttribute("class", "ln-svg"); s.setAttribute("viewBox", "0 0 300 240"); s.setAttribute("role", "img"); s.setAttribute("aria-label", "彩色九宮格");
+    (c.lines || []).forEach(function (l) { var a = centre(l[0]), b = centre(l[2]); html += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"/>'; });
+    for (var n = 1; n <= 9; n++) html += chartCell(n, c.rings[n]);
+    s.innerHTML = html; return s;
   }
   function svgIcon(cls, html) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -506,23 +530,14 @@ export const ME_JS = String.raw`
     var c = S.profile.life_chart; if (!c) return null;
     function item(cls, label, value, badge) { return el("div", { class: "ln-item " + cls }, [el("span", { text: label }), el("span", { class: "ln-badge " + badge, text: String(value) })]); }
     function legend(cls, text) { return el("div", {}, [el("span", { class: "ln-dot " + cls }), el("span", { text: text })]); }
-    var cells = [];
-    CHART_ROWS.forEach(function (row) { row.forEach(function (n) { cells.push(cell(n, c.rings[n])); }); });
-    var lines = c.lines || [];
-    if (lines.length) {
-      var lay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      lay.setAttribute("class", "ln-lines"); lay.setAttribute("viewBox", "0 0 3 3"); lay.setAttribute("preserveAspectRatio", "none"); lay.setAttribute("aria-hidden", "true");
-      lay.innerHTML = lines.map(function (l) { function x(n) { return Math.floor((n - 1) / 3) + 0.5; } function y(n) { return ((n - 1) % 3) + 0.5; } return '<line x1="' + x(l[0]) + '" y1="' + y(l[0]) + '" x2="' + x(l[2]) + '" y2="' + y(l[2]) + '"/>'; }).join("");
-      cells.unshift(lay);
-    }
     return el("div", { class: "row" }, [
       el("div", { class: "row-head" }, [el("label", { text: "生命靈數" }), el("div", { class: "row-tools" }, [lockedPill()])]),
       el("div", { class: "ln-card" }, [
         el("div", { class: "ln-head" }, [item("z", "星座：" + c.zodiac_name, c.zodiac_number, "ln-b-zodiac"), item("b", "生日數：", c.birthday_number, "ln-b-birthday"), item("t", "天賦數：", c.talent_numbers.length ? c.talent_numbers.join("、") : "—", "ln-b-talent"), item("l", "加總命數：", c.life_number, "ln-b-life")]),
-        el("div", { class: "ln-grid", role: "img", "aria-label": "彩色九宮格" }, cells),
+        chartSvg(c),
         el("div", { class: "ln-legend" }, [
           legend("rg-black", "先天數生日數字"), legend("rg-birthday", "生日數"), legend("rg-zodiac", "星座數"), legend("rg-talent", "天賦數"),
-          el("div", {}, [HG.icon("tri", "ln-dot-tri"), el("span", { text: "加總命數" })]),
+          el("div", {}, [svgIcon("ln-dot-tri", '<polygon points="12,3 22,21 2,21" fill="#e5303a" stroke="#e5303a" stroke-width="2" stroke-linejoin="round"/>'), el("span", { text: "加總命數" })]),
           el("div", {}, [svgIcon("ln-dot-tri", '<line x1="2" y1="12" x2="22" y2="12" stroke="#2563eb" stroke-width="3.7" stroke-linecap="round"/>'), el("span", { text: "特殊連線" })])])
       ])
     ]);
@@ -570,7 +585,7 @@ export const ME_JS = String.raw`
 
   function render() {
     root.textContent = "";
-    root.appendChild(el("div", { class: "pagebar" }, [el("a", { class: "button small", href: ownPage(), text: "← 回到我的頁面" })]));
+    root.appendChild(el("div", { class: "pagebar" }, [el("a", { class: "button small", href: ownPage(), text: "← 回到我的頁面" }), el("div", { class: "tools" }, [el("a", { class: "button small", href: publicPath(), text: "預覽公開頁" })])]));
     function basicCard() { return card("基本資料", S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField)); }
     function contactCard() {
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
