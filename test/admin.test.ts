@@ -113,12 +113,12 @@ describe("reviews", () => {
   it("reviewers are notified, see the queue and decide; the member is notified", async () => {
     const rv = await person("rv", "審核員", ["reviewer"]);
     const m = await amwayMember("m", "小美");
-    await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
+    await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" });
     expect(db.raw.prepare("SELECT kind FROM notifications WHERE member_id = ?").all(rv.id).map((r) => r.kind)).toEqual(["staff.review.requested"]);
 
     const q = (await (await admin(rv, "GET", "/v1/admin/reviews")).json()) as { reviews: { id: string; display_name: string; field_label: string; requested_value: unknown }[] };
     expect(q.reviews).toHaveLength(1);
-    expect(q.reviews[0]).toMatchObject({ display_name: "小美", field_label: "直銷商培訓系統", requested_value: "H-Global1985" });
+    expect(q.reviews[0]).toMatchObject({ display_name: "小美", field_label: "直銷商培訓系統", requested_value: "寰宇" });
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE member_id = ? AND read_at IS NULL").get(rv.id)?.n).toBe(1);
     expect((await admin(rv, "POST", `/v1/admin/reviews/${q.reviews[0]?.id}/decision`, { decision: "approve" })).status).toBe(200);
     // Deciding finishes the reviewers' "waiting for review" notice.
@@ -253,9 +253,10 @@ describe("profile field order", () => {
     const sec = await person("sec", "秘書", ["secretary"]);
     const m = await amwayMember("m", "小美");
     expect((await admin(sec, "GET", "/v1/admin/profile-layout")).status).toBe(403);
-    const v = (await (await admin(sa, "GET", "/v1/admin/profile-layout")).json()) as { groups: { group: string; fields: { key: string }[] }[]; customized: boolean };
+    const v = (await (await admin(sa, "GET", "/v1/admin/profile-layout")).json()) as { groups: { group: string; fields: { key: string; label: string }[] }[]; customized: boolean };
     expect(v.groups.map((g) => g.group)).toEqual(["blocks", "basic", "contact", "amway"]);
-    expect(v.groups[0]!.fields.map((f) => f.key)).toEqual(["avatar", "amway", "basic", "education", "contact", "birthday", "life"]);
+    expect(v.groups[0]!.fields.map((f) => f.key)).toEqual(["avatar", "amway", "basic", "education", "contact", "birthday"]);
+    expect(v.groups[0]!.fields.at(-1)?.label).toBe("生日與生命靈數"); // one block for the birthday and the chart
     expect(v.groups[3]!.fields[0]).toMatchObject({ key: "member_number", label: "會員編號" });
     expect(v.customized).toBe(false);
     const basic = v.groups[1]!.fields.map((f) => f.key);
@@ -270,7 +271,7 @@ describe("profile field order", () => {
 
     const defs = (await (await member(m, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; group: string; order: number }[]; blocks: { key: string; order: number }[] };
     // Big blocks (the whole sections) move too, and the member number is part of the Amway order.
-    expect(defs.blocks.slice().sort((a, b) => a.order - b.order).map((b) => b.key)).toEqual(["life", "birthday", "contact", "education", "basic", "amway", "avatar"]);
+    expect(defs.blocks.slice().sort((a, b) => a.order - b.order).map((b) => b.key)).toEqual(["birthday", "contact", "education", "basic", "amway", "avatar"]);
     expect(defs.fields.find((f) => f.key === "member_number")!.order).toBeGreaterThan(defs.fields.find((f) => f.key === "interests")!.order - 1000);
     const byOrder = defs.fields.filter((f) => f.group === "basic").sort((a, b) => a.order - b.order).map((f) => f.key);
     expect(byOrder[0]).toBe("interests");

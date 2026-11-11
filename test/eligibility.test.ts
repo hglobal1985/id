@@ -60,7 +60,7 @@ const check = async (m: M, rule: unknown) => (await (await call(m, "/v1/eligibil
 async function verifiedMember(sub: string, rank: string): Promise<M> {
   const m = await member(sub);
   await put(m, "/v1/me/amway/enabled", { enabled: true });
-  await put(m, "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
+  await put(m, "/v1/me/amway/fields/education_system", { value: "寰宇" });
   await put(m, "/v1/me/amway/fields/rank", { value: rank });
   for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff", ctx());
   return m;
@@ -77,7 +77,7 @@ describe("POST /v1/eligibility/check", () => {
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "amway_disabled" });
     await put(m, "/v1/me/amway/enabled", { enabled: true });
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "not_verified" });
-    await put(m, "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
+    await put(m, "/v1/me/amway/fields/education_system", { value: "寰宇" });
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: false, reason: "not_verified" }); // pending review
     for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff", ctx());
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: true, reason: "ok" });
@@ -118,7 +118,7 @@ describe("POST /v1/eligibility/check", () => {
 
   it("an approved hglobal stays verified while a change back to hglobal is re-sent", async () => {
     const m = await verifiedMember("d3", "12");
-    await put(m, "/v1/me/amway/fields/education_system", { value: "H-Global1985" });
+    await put(m, "/v1/me/amway/fields/education_system", { value: "寰宇" });
     expect(await check(m, { audience: "hglobal_verified" })).toEqual({ allowed: true, reason: "ok" });
   });
 

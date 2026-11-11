@@ -8,7 +8,7 @@ import { isHglobalMember, listOptions, readAmwayFields, setAmwayEnabled, writeAm
 import { canonicalTerms, recordTerms } from "../db/vocab";
 import { resetRandomNumber } from "../db/member-numbers";
 import { getActiveBinding, unbindSpouse } from "../db/spouse";
-import { isForcedPublic, visibilityOf } from "../profile/visibility";
+import { amwayDefault, isForcedPublic, visibilityOf } from "../profile/visibility";
 import { readProfile } from "../db/profile";
 import { isPool } from "../vocab/terms";
 import { loadLayout } from "../db/layout";
@@ -131,7 +131,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           visible_when: f.visible_when,
           read_only: false,
           scope: "amway.write",
-          visibility: isForcedPublic(f.key) ? { configurable: false, default: "public" } : { configurable: true, default: "private" },
+          visibility: isForcedPublic(f.key) ? { configurable: false, default: "public" } : { configurable: true, default: amwayDefault(f.key) },
           status_labels: { pending: "等待審核中", approved: "已審核", rejected: "未通過審核", not_required: "" },
         })),
       },
@@ -149,7 +149,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const fields: Record<string, { value: AmwayValue; pending_value: AmwayValue; status: string; updated_at: string | null; visibility: "public" | "private" }> = {};
     for (const f of AMWAY_FIELDS) {
       const r = rows.get(f.key);
-      const vis = visibilityOf(f.key, visibility.get(f.key), "private");
+      const vis = visibilityOf(f.key, visibility.get(f.key), amwayDefault(f.key));
       fields[f.key] = r ? { value: r.value, pending_value: r.pending_value, status: r.status, updated_at: r.updated_at, visibility: vis } : { value: null, pending_value: null, status: "not_required", updated_at: null, visibility: vis };
     }
     const hglobal = await isHglobalMember(c.env.DB, memberId);

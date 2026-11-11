@@ -15,8 +15,7 @@ export const BLOCKS: readonly { key: string; label: string; order: number }[] = 
   { key: "basic", label: "基本資料", order: 30 },
   { key: "education", label: "學歷", order: 40 },
   { key: "contact", label: "聯絡與地區", order: 50 },
-  { key: "birthday", label: "生日", order: 60 },
-  { key: "life", label: "生命靈數", order: 70 },
+  { key: "birthday", label: "生日與生命靈數", order: 60 },
 ];
 /** Block places are stored under this prefix so they never collide with field keys. */
 export const BLOCK_PREFIX = "block.";

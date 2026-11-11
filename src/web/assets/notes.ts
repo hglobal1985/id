@@ -64,6 +64,12 @@ export const SHARE_JS = String.raw`
   "use strict";
   var btn = document.getElementById("share");
   if (!btn) return;
+  // The share symbol follows the device: the box with an up arrow on iPhone, iPad and Mac, three dots on Android.
+  var ua = navigator.userAgent || "";
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1)) {
+    var svg = btn.querySelector("svg");
+    if (svg) svg.innerHTML = '<path d="M12 15V3.5M8 7l4-4 4 4M7.5 10H6a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18 10h-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+  }
   btn.addEventListener("click", function () {
     var data = { title: btn.getAttribute("data-title") || document.title, url: location.href };
     if (navigator.share) { navigator.share(data).catch(function () {}); return; }

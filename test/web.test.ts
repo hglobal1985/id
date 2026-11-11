@@ -333,6 +333,29 @@ describe("member center template (same layout as starry.phd)", () => {
     expect(await (await req(null, "GET", "/")).text()).not.toContain("推薦人甲");
   });
 
+  it("the name at the top stays on one line: long names take a smaller step; the 會員編號 line and the badges follow what is public", async () => {
+    const long = await person("l", "王小明明明明明明明明明明");
+    const short = await person("s", "王小明");
+    const num = (p: P) => db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(p.id)?.number as string;
+    expect(await (await req(null, "GET", `/${num(short)}`)).text()).toContain('<h1 class="nm nm-0">王小明</h1>');
+    expect(await (await req(null, "GET", `/${num(long)}`)).text()).toMatch(/<h1 class="nm nm-3">王小明明明明明明明明明明<\/h1>/);
+    // The Amway boxes beside the name follow the switches: hide the center and its box is gone for visitors.
+    await req(short, "PUT", "/v1/me/amway/enabled", { enabled: true });
+    await req(short, "PUT", "/v1/me/amway/fields/education_system", { value: "某系統" });
+    await req(short, "PUT", "/v1/me/amway/fields/education_center", { value: "南京 062" });
+    let html = await (await req(null, "GET", `/${num(short)}`)).text();
+    expect(html).toContain("某系統");
+    expect(html).toContain("南京 062");
+    expect(html).not.toContain("H-Global1985");
+    expect((await req(short, "PUT", "/v1/me/profile/visibility", { fields: { education_center: "private" } })).status).toBe(200);
+    html = await (await req(null, "GET", `/${num(short)}`)).text();
+    expect(html).toContain("某系統");
+    expect(html).not.toContain("南京 062");
+    // The owner still sees every box in the editor data.
+    const mine = (await (await req(short, "GET", "/v1/me/profile")).json()) as { badges: { kind: string }[] };
+    expect(mine.badges.map((b) => b.kind)).toEqual(["system", "center"]);
+  });
+
   it("/apps lists registered Apps with their web link; paused ones have no link and stopped ones are hidden", async () => {
     let html = await (await req(null, "GET", "/apps")).text();
     expect(html).toContain("寰宇行動大學");

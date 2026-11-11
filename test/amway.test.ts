@@ -109,22 +109,26 @@ describe("enable switch", () => {
     expect((await put(m, "referrer", "改")).status).toBe(403);
   });
 
-  it("some fields are always public (no switch, shown when filled); the others have a switch, private by default", async () => {
+  it("only the display name, the residence country and 生命靈數 are always public; every Amway field can be hidden at will (they start public, the crown ambassador starts hidden)", async () => {
     const m = await member("g-a", "甲", `${ALL} profile.visibility.write`);
     await enable(m);
     const s = await me(m);
     for (const k of ["education_system", "education_center", "rank", "referrer", "upline_platinum", "upline_diamond"]) expect(s.fields[k]?.visibility, k).toBe("public");
     expect(s.fields.upline_crown_ambassador?.visibility).toBe("private");
-    for (const k of ["rank", "referrer", "display_name", "country", "derived", "upline_diamond"]) {
+    for (const k of ["display_name", "country", "derived"]) {
       const res = await call(m, "PUT", "/v1/me/profile/visibility", { fields: { [k]: "private" } });
       expect(res.status, k).toBe(422);
       expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("always_public");
     }
-    expect((await call(m, "PUT", "/v1/me/profile/visibility", { fields: { upline_crown_ambassador: "public" } })).status).toBe(200);
-    expect((await me(m)).fields.upline_crown_ambassador?.visibility).toBe("public");
-    const defs = (await (await call(m, "GET", "/v1/amway/field-definitions")).json()) as { fields: { key: string; visibility: { configurable: boolean } }[] };
-    expect(defs.fields.find((f) => f.key === "rank")?.visibility.configurable).toBe(false);
-    expect(defs.fields.find((f) => f.key === "upline_crown_ambassador")?.visibility.configurable).toBe(true);
+    // The Amway fields have a switch.
+    expect((await call(m, "PUT", "/v1/me/profile/visibility", { fields: { rank: "private", referrer: "private", upline_crown_ambassador: "public" } })).status).toBe(200);
+    const after = await me(m);
+    expect(after.fields.rank?.visibility).toBe("private");
+    expect(after.fields.referrer?.visibility).toBe("private");
+    expect(after.fields.upline_crown_ambassador?.visibility).toBe("public");
+    const defs = (await (await call(m, "GET", "/v1/amway/field-definitions")).json()) as { fields: { key: string; visibility: { configurable: boolean; default: string } }[] };
+    expect(defs.fields.find((f) => f.key === "rank")?.visibility).toEqual({ configurable: true, default: "public" });
+    expect(defs.fields.find((f) => f.key === "upline_crown_ambassador")?.visibility).toEqual({ configurable: true, default: "private" });
     const pdefs = (await (await call(m, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; visibility: { configurable: boolean } }[] };
     expect(pdefs.fields.find((f) => f.key === "display_name")?.visibility.configurable).toBe(false);
     expect(pdefs.fields.find((f) => f.key === "country")?.visibility.configurable).toBe(false);
@@ -199,8 +203,8 @@ describe("fields and review", () => {
   it("choosing hglobal needs review; rank under hglobal keeps the old value while pending", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
-    let res = await put(m, "education_system", "H-Global1985");
-    expect(await res.json()).toMatchObject({ value: null, pending_value: "H-Global1985", status: "pending" });
+    let res = await put(m, "education_system", "寰宇");
+    expect(await res.json()).toMatchObject({ value: null, pending_value: "寰宇", status: "pending" });
     expect((await put(m, "education_center", "台北中心")).status).toBe(200);
     res = await put(m, "rank", "12");
     expect(await res.json()).toMatchObject({ value: null, pending_value: "12", status: "pending" });
@@ -208,7 +212,7 @@ describe("fields and review", () => {
 
     for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff-1", ctx());
     let s = await me(m);
-    expect(s.fields.education_system).toMatchObject({ value: "H-Global1985", status: "approved", pending_value: null });
+    expect(s.fields.education_system).toMatchObject({ value: "寰宇", status: "approved", pending_value: null });
     expect(s.fields.rank).toMatchObject({ value: "12", status: "approved" });
 
     // Changing an approved rank: old value stays during review; rejection keeps the old value.
@@ -234,8 +238,8 @@ describe("fields and review", () => {
   it("re-sending the same value is idempotent; going back to the effective value cancels the pending change", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
-    await put(m, "education_system", "H-Global1985");
-    await put(m, "education_system", "h-global1985"); // same term, different spelling
+    await put(m, "education_system", "寰宇");
+    await put(m, "education_system", " 寰宇 "); // same term, different spelling
     expect(await pendingReviews(db)).toHaveLength(1);
     await decideReview(db, (await pendingReviews(db))[0]!.id, "approve", "s", ctx());
     await put(m, "rank", "12");
@@ -304,24 +308,24 @@ describe("spouses share rank", () => {
 });
 
 describe("rules (unit)", () => {
-  const hg = new Set(["h-global1985"]);
+  const hg = new Set(["寰宇"]);
   it("review decisions", () => {
     const sys = getAmwayField("education_system")!;
     const rank = getAmwayField("rank")!;
-    expect(needsReview(sys, "H-Global1985", { effective: null, pending: null }, hg)).toBe(true);
-    expect(needsReview(sys, "  h-GLOBAL1985 ", { effective: null, pending: null }, hg)).toBe(true);
+    expect(needsReview(sys, "寰宇", { effective: null, pending: null }, hg)).toBe(true);
+    expect(needsReview(sys, "  寰宇 ", { effective: null, pending: null }, hg)).toBe(true);
     expect(needsReview(sys, "其他體系", { effective: null, pending: null }, hg)).toBe(false);
     expect(needsReview(rank, "12", { effective: "hglobal", pending: null }, hg)).toBe(true);
     expect(needsReview(rank, "12", { effective: null, pending: "hglobal" }, hg)).toBe(true);
     expect(needsReview(rank, "12", { effective: "sys_b", pending: null }, hg)).toBe(false);
     expect(needsReview(getAmwayField("upline_diamond")!, "某鑽石", { effective: "hglobal", pending: null }, hg)).toBe(false);
-    expect(systemKey("H-Global1985", hg)).toBe("hglobal");
+    expect(systemKey("寰宇", hg)).toBe("hglobal");
     expect(systemKey("其他", hg)).toBe("其他");
     expect(systemKey(null, hg)).toBeNull();
   });
   it("validation", () => {
     const sys = getAmwayField("education_system")!;
-    expect(validateAmwayValue(sys, "H-Global1985", [])).toEqual({ ok: true, value: "H-Global1985" });
+    expect(validateAmwayValue(sys, "寰宇", [])).toEqual({ ok: true, value: "寰宇" });
     expect(validateAmwayValue(sys, { option: "x", custom_text: null }, [])).toMatchObject({ ok: false, reason: "type" });
     expect(validateAmwayValue(sys, null, [])).toEqual({ ok: true, value: null });
     expect(validateAmwayValue(getAmwayField("referrer")!, "a\u0007", [])).toMatchObject({ ok: false, reason: "invalid_characters" });

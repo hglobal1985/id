@@ -149,4 +149,20 @@ describe("D1 migrations", () => {
     expect(db.prepare("SELECT custom FROM social_platforms WHERE key = 'custom'").get().custom).toBe(1);
     db.close();
   });
+
+  it("0019 shows the training system as 寰宇: H-Global1985 values and the suggestion term become 寰宇", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 19)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-11T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('m1','g1','active','${ts}','${ts}'), ('m2','g2','active','${ts}','${ts}')`);
+    const av = db.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, updated_at) VALUES (?, 'education_system', ?, ?, 'approved', ?)");
+    av.run("m1", JSON.stringify("H-Global1985"), null, ts);
+    av.run("m2", null, JSON.stringify("h-global1985"), ts);
+    db.exec(`UPDATE vocab_terms SET uses = 4 WHERE pool = 'education_system' AND norm = 'h-global1985'`);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0019"))), "utf8"));
+    expect(JSON.parse(db.prepare("SELECT value FROM amway_field_values WHERE member_id = 'm1'").get().value)).toBe("寰宇");
+    expect(JSON.parse(db.prepare("SELECT pending_value FROM amway_field_values WHERE member_id = 'm2'").get().pending_value)).toBe("寰宇");
+    expect(db.prepare("SELECT term, hglobal, uses FROM vocab_terms WHERE pool = 'education_system'").all()).toEqual([{ term: "寰宇", hglobal: 1, uses: 4 }]);
+    db.close();
+  });
 });
