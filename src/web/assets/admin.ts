@@ -395,17 +395,17 @@ export const ADMIN_JS = String.raw`
         var secretBox = el("div", { class: "help" });
         function shown(res) { if (res.status === 200 && res.body.secret) { secretBox.textContent = "金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.secret; } else if (res.status === 200 && res.body.client_secret) { secretBox.textContent = "服務金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.client_secret; } else if (!reauth(res)) say(box, false, errText(res)); }
         var chk = {};
-        var scopeRows = b.scopes.map(function (sc) {
-          var on = p.scopes.indexOf(sc) >= 0, c = cbox(sc, on, function (v) { chk[sc] = v; });
-          chk[sc] = on; return el("div", {}, [c]);
+        var scopeRows = p.scope_options.map(function (o) {
+          var on = p.scopes.indexOf(o.key) >= 0, c = cbox(o.label + "（" + o.key + "）", on, function (v) { chk[o.key] = v; });
+          chk[o.key] = on; return el("div", {}, [c]);
         });
-        var purposeRows = p.contact_purpose_options.map(function (pp) {
-          var on = p.contact_purposes.indexOf(pp) >= 0, c = cbox(pp, on, function (v) { chk["purpose:" + pp] = v; });
-          chk["purpose:" + pp] = on; return el("div", {}, [c]);
+        var purposeRows = p.contact_purpose_options.map(function (o) {
+          var on = p.contact_purposes.indexOf(o.key) >= 0, c = cbox(o.label + "（" + o.key + "）", on, function (v) { chk["purpose:" + o.key] = v; });
+          chk["purpose:" + o.key] = on; return el("div", {}, [c]);
         });
         function saveScopes() {
-          var scopes = b.scopes.filter(function (sc) { return chk[sc]; });
-          var purposes = p.contact_purpose_options.filter(function (pp) { return chk["purpose:" + pp]; });
+          var scopes = p.scope_options.map(function (o) { return o.key; }).filter(function (sc) { return chk[sc]; });
+          var purposes = p.contact_purpose_options.map(function (o) { return o.key; }).filter(function (pp) { return chk["purpose:" + pp]; });
           if (!p.scopes_restricted && !confirm("這會把「" + a.name + "」從「全部權限」改成只有勾選的權限，之後沒勾的功能會被拒絕。確定嗎？")) return;
           api("PUT", "/v1/admin/apps/" + id, { name: a.name, scopes: scopes, contact_purposes: purposes }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存（30 秒內生效）"); } else if (!reauth(res)) say(box, false, errText(res)); });
         }
@@ -438,7 +438,7 @@ export const ADMIN_JS = String.raw`
             p.service_credential ? el("button", { class: "danger", text: "撤銷", onclick: function () { if (confirm("撤銷後這款 App 不能再查詢，確定嗎？")) api("DELETE", "/v1/admin/apps/" + id + "/service-secret").then(function (res) { if (res.status === 200) say(box, true, "已撤銷"); else if (!reauth(res)) say(box, false, errText(res)); }); } }) : null
           ]),
           el("h3", { text: "權限範圍與聯絡信箱用途" }),
-          el("p", { class: "help", text: p.scopes_restricted ? "目前只有勾選的權限。" : "目前是舊制：這款 App 擁有全部權限（尚未收緊）。勾選後儲存，才會改成只有勾選的權限。" }),
+          el("p", { class: "help", text: p.scopes_restricted ? "這款 App 目前只有勾選的權限；沒勾的功能會被拒絕。" : "目前是舊制：這款 App 擁有全部權限（尚未收緊）。勾選後按儲存，才會改成只有勾選的權限；沒勾的功能之後會被拒絕。" }),
           el("div", {}, scopeRows),
           el("p", { class: "help", text: "允許查詢聯絡信箱的用途（沒勾＝不能查詢）：" }), el("div", {}, purposeRows),
           el("div", { class: "inline" }, [el("button", { class: "primary", text: "儲存權限與用途", onclick: saveScopes }), el("button", { text: "返回", onclick: reload }), box])

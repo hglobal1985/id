@@ -237,6 +237,19 @@ describe("restricted contact lookup (service credential)", () => {
   });
 });
 
+describe("plain-language labels", () => {
+  it("every scope and contact purpose has a Chinese explanation, and the platform page lists them with their codes", async () => {
+    const { SCOPE_LABELS, PURPOSE_LABELS, CONTACT_PURPOSES } = await import("../src/apps/registry");
+    for (const s of APP_SCOPES) expect(SCOPE_LABELS[s], s).toBeTruthy();
+    for (const p of CONTACT_PURPOSES) expect(PURPOSE_LABELS[p], p).toBeTruthy();
+    const sa = await person("sa", "管理", ["super_admin"]);
+    const r = (await (await req(sa, "GET", "/v1/admin/apps/learn/platform")).json()) as { scope_options: { key: string; label: string }[]; contact_purpose_options: { key: string; label: string }[] };
+    expect(r.scope_options.map((o) => o.key)).toEqual([...APP_SCOPES]);
+    expect(r.scope_options.every((o) => /[\u4e00-\u9fff]/.test(o.label))).toBe(true);
+    expect(r.contact_purpose_options.map((o) => o.key)).toEqual([...CONTACT_PURPOSES]);
+  });
+});
+
 describe("back-office script", () => {
   it("does not use the member pages' HG helpers (admin.js does not load common.js; a missing helper made 平台設定 do nothing)", async () => {
     const { ADMIN_JS } = await import("../src/web/assets/admin");
