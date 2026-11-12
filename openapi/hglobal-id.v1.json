@@ -836,6 +836,13 @@
           "enabled": {
             "type": "boolean"
           },
+          "hglobal_systems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Training-system words marked as H-Global1985 (the edit page switches the regional center to its list while one of them is chosen)"
+          },
           "hglobal": {
             "type": "boolean",
             "description": "The training system (effective or pending) is a term marked as H-Global1985: the regional education center offers its own related words (field definition suggest_when_hglobal)."
@@ -886,6 +893,7 @@
         },
         "required": [
           "enabled",
+          "hglobal_systems",
           "hglobal",
           "fields"
         ]

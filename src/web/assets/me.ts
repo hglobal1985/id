@@ -17,10 +17,12 @@ export const ME_JS = String.raw`
     return Promise.all([
       api("GET", "/v1/profile/field-definitions"), api("GET", "/v1/me/profile"),
       api("GET", "/v1/amway/field-definitions"), api("GET", "/v1/me/amway"),
-      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/sessions"), api("GET", "/v1/me/social-links"), api("GET", "/v1/social/platforms"), api("GET", "/v1/me/search-indexing")
+      api("GET", "/v1/me/spouse"), api("GET", "/v1/me/sessions"), api("GET", "/v1/me/social-links"), api("GET", "/v1/social/platforms"), api("GET", "/v1/me/search-indexing"),
+      api("GET", "/v1/vocab/suggestions?pool=education_system&q="), api("GET", "/v1/vocab/suggestions?pool=education_center&q=")
     ]).then(function (r) {
       if (r[1].status === 401) { location.href = "/login?return_to=%2Fmy%2Fedit"; return; }
       S = { defs: r[0].body, profile: r[1].body, adefs: r[2].body, amway: r[3].body, spouse: r[4].body, devices: (r[5].body && r[5].body.sessions) || [], social: (r[6].body && r[6].body.links) || [], platforms: (r[7].body && r[7].body.platforms) || [], indexing: !!(r[8].body && r[8].body.allowed) };
+      S.terms = { education_system: (r[9].body && r[9].body.suggestions) || [], education_center: (r[10].body && r[10].body.suggestions) || [] };
       S.def = {}; S.defs.fields.forEach(function (d) { S.def[d.key] = d; });
       render();
     });
@@ -540,7 +542,13 @@ export const ME_JS = String.raw`
       return !st || ((st.value === null || st.value === undefined) && (st.pending_value === null || st.pending_value === undefined));
     }).map(function (d) { return d.label; });
   }
-  function amwayFieldRow(d) {
+  // Is the training system chosen in the box (not yet saved) one of the words marked H-Global1985?
+  function systemIsHglobal() {
+    var r = AROWS.education_system, v = r ? r.value() : null, list = S.amway.hglobal_systems || [];
+    if (v === null || v === undefined) return !!S.amway.hglobal;
+    return list.some(function (t) { return t.trim().toLowerCase() === String(v).trim().toLowerCase(); });
+  }
+  function amwayFieldRow(d, override) {
     var st = S.amway.fields[d.key] || { value: null, pending_value: null, status: "not_required", visibility: "private" };
     var opts = d.options || [];
     function label(v) { var f = opts.filter(function (o) { return o.value === v; })[0]; return f ? f.label : v; }
@@ -553,7 +561,7 @@ export const ME_JS = String.raw`
       return null;
     }
     function editor() {
-      var cur = st.pending_value !== null && st.pending_value !== undefined ? st.pending_value : st.value;
+      var cur = override !== undefined ? override : (st.pending_value !== null && st.pending_value !== undefined ? st.pending_value : st.value);
       if (d.type === "select") {
         // 「無」 is a tick beside the drop-down (not an entry inside it): ticked = the value "none", the list is switched off.
         var hasNone = opts.some(function (o) { return o.value === "none"; }), noneOn = hasNone && cur === "none";
@@ -571,6 +579,23 @@ export const ME_JS = String.raw`
       // Training system and regional center: a tick for 無 (none) next to the box; the field is required, 無 counts as filled in.
       var canNone = d.key === "education_system" || d.key === "education_center", none = canNone && cur === "無";
       if (none) { input.value = ""; input.disabled = true; }
+      // Training system and regional center: a drop-down of the listed words with 「其他」; choosing 其他 opens a free text box.
+      var terms = (S.terms && S.terms[d.key]) || [], listed = canNone && terms.length > 0 && (d.key === "education_system" || systemIsHglobal());
+      if (listed) {
+        var OTHER = "__other", curText = none ? "" : (cur || ""), inList = curText && terms.indexOf(curText) >= 0;
+        var selStart = !curText ? "" : (inList ? curText : OTHER);
+        var topts = [{ value: "", label: "（未選擇）" }].concat(terms.map(function (t) { return { value: t, label: t }; }), [{ value: OTHER, label: "其他" }]);
+        var other = el("input", { type: "text", maxlength: d.max_length, placeholder: "請輸入自訂內容", "aria-label": d.label + "（其他）" });
+        other.value = selStart === OTHER ? curText : ""; other.hidden = selStart !== OTHER;
+        var dd2 = HG.dropdown({ options: topts, value: selStart, block: true, searchable: terms.length > 12, onchange: function (v) { other.hidden = v !== OTHER; if (v === OTHER) other.focus(); } });
+        var dbtn = dd2.el.querySelector(".dd-btn"); if (none) { dbtn.disabled = true; other.disabled = true; }
+        var noneTick2 = HG.checkbox("無", none, function (on) { none = on; dbtn.disabled = on; other.disabled = on; if (on) { dd2.set(""); other.hidden = true; other.value = ""; } });
+        return { node: el("div", {}, [el("div", { class: "with-none" }, [dd2.el, noneTick2]), other]), get: function () {
+          if (none) return "無";
+          var v = dd2.get();
+          return v === OTHER ? (other.value.trim() || null) : (v || null);
+        } };
+      }
       // The regional center offers its own related words only while the training system means H-Global1985.
       var useSuggest = d.suggest && (!d.suggest_when_hglobal || S.amway.hglobal);
       var field = useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest), undefined, { openOnFocus: d.key === "education_center" }) : input;
@@ -597,7 +622,19 @@ export const ME_JS = String.raw`
     });
   }
   // The rank can only be chosen once the training system and the regional center have a value (what is in the boxes counts).
+  // The regional center is a drop-down of its list while the chosen system is H-Global1985, a plain box otherwise.
+  var centerListed = null;
+  function syncCenterMode() {
+    var c = AROWS.education_center; if (!c || !c.ed) return;
+    var want = systemIsHglobal();
+    if (centerListed === null) { centerListed = want; return; }
+    if (want === centerListed) return;
+    centerListed = want;
+    var cd = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0];
+    if (cd) { var neu = amwayFieldRow(cd, c.value()); c.replaceWith(neu); }
+  }
   function updateRankLock() {
+    syncCenterMode();
     var r = AROWS.rank, a = AROWS.education_system, b = AROWS.education_center;
     if (!r || !r.ed || !r.ed.setLocked) return;
     r.ed.setLocked(!(a && b && a.value() && b.value()));
@@ -605,17 +642,11 @@ export const ME_JS = String.raw`
   // After one Amway field was saved: refresh the data and only the bits that depend on it (the editors stay as they are).
   var AROWS = {};
   function refreshAmwayData(savedKey) {
-    var wasHglobal = !!S.amway.hglobal;
     return Promise.all([api("GET", "/v1/me/amway"), api("GET", "/v1/me/profile")]).then(function (r) {
       if (r[0].status !== 200 || r[1].status !== 200) return;
       S.amway = r[0].body; S.profile = r[1].body; swap("avatar");
       Object.keys(AROWS).forEach(function (k) { AROWS[k].refreshStatus(); });
       var note = document.getElementById("amway-missing"); if (note) { var miss = amwayMissing(); note.textContent = miss.length ? "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" : ""; note.hidden = !miss.length; }
-      // The related words of the center depend on the training system: that one row is rebuilt when it changes meaning.
-      if (savedKey === "education_system" && wasHglobal !== !!S.amway.hglobal && AROWS.education_center) {
-        var cd = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0], old = AROWS.education_center;
-        if (cd) { var neu = amwayFieldRow(cd); old.replaceWith(neu); updateRankLock(); }
-      }
     });
   }
 
@@ -630,13 +661,13 @@ export const ME_JS = String.raw`
       });
     });
     var kids = [box, m];
-    AROWS = {};
+    AROWS = {}; centerListed = null;
     if (isAmway()) { var miss = amwayMissing(); kids.push(el("p", { id: "amway-missing", class: "help warn-note", hidden: !miss.length, text: miss.length ? "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" : "" })); }
     // The member number and the Amway fields in the order the administrator set; the number is always there.
     var items = [{ order: S.def.member_number.order, make: numberRow }];
     if (isAmway()) S.adefs.fields.forEach(function (d) { items.push({ order: d.order, make: function () { return amwayFieldRow(d); } }); });
     items.sort(function (a, b) { return a.order - b.order; }).forEach(function (it) { kids.push(it.make()); });
-    updateRankLock();
+    syncCenterMode(); updateRankLock();
     return el("section", { class: "card" }, kids);
   }
 
