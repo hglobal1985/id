@@ -133,8 +133,11 @@ button[disabled]{opacity:.5;cursor:default}
 .pagebar.float{position:sticky;top:73px;z-index:28;margin-bottom:6px;pointer-events:none}
 .pagebar.float>.button,.pagebar.float>button{pointer-events:auto;box-shadow:var(--shadow)}
 .pagebar.float>.wide{flex:1.6 1 0}
-button.gold,.button.gold{background:var(--yellow);border-color:var(--b-warn);color:#1d2a22;font-weight:700}
-button.gold:hover,.button.gold:hover{filter:brightness(.95)}
+/* 儲存 / 編輯 buttons everywhere (two colours reversed): 儲存 = bright yellow fill with a pale border; 編輯 = pale fill with a bright yellow border */
+button.btn-save,.button.btn-save{background:var(--yellow);border:2px solid var(--b-warn);color:#1d2a22;font-weight:700}
+button.btn-edit,.button.btn-edit{background:var(--orange-soft);border:2px solid var(--yellow);color:var(--fg);font-weight:600}
+button.btn-save:hover,.button.btn-save:hover{filter:brightness(.95)}
+button.btn-edit:hover,.button.btn-edit:hover{filter:brightness(.97)}
 .with-none{display:flex;align-items:center;gap:10px}.with-none>:first-child{flex:1 1 auto;min-width:0}.with-none>.chk{flex:none;min-height:44px}
 .motto-box{min-height:4.2em}
 .row-head .saved.warn{color:var(--warn)}

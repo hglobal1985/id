@@ -215,7 +215,7 @@ export const ADMIN_JS = String.raw`
           if (cur === "education_system") kids.push(el("button", { class: x.hglobal ? "primary" : "", text: x.hglobal ? "✓ 代表 H-Global1985" : "標示為 H-Global1985", onclick: function () {
             api("POST", "/v1/admin/vocab/education_system/hglobal", { term: x.term, hglobal: !x.hglobal }).then(done);
           } }));
-          kids.push(el("button", { text: "編輯", onclick: function () {
+          kids.push(el("button", { class: "btn-edit", text: "編輯", onclick: function () {
             var to = prompt("把「" + x.term + "」改成：", x.term); if (to === null || !to.trim() || to.trim() === x.term) return;
             api("POST", "/v1/admin/vocab/" + cur + "/rename", { from: x.term, to: to.trim() }).then(done);
           } }));
@@ -262,7 +262,7 @@ export const ADMIN_JS = String.raw`
         pane.appendChild(card(g.label, [list]));
       });
       pane.appendChild(el("div", { class: "actions" }, [
-        el("button", { type: "button", class: "primary", text: "儲存順序", onclick: function () {
+        el("button", { type: "button", class: "btn-save", text: "儲存順序", onclick: function () {
           var order = {}; groups.forEach(function (g) { order[g.group] = g.fields.map(function (f) { return f.key; }); });
           api("PUT", "/v1/admin/profile-layout", { order: order }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已儲存，全體會員立即套用" : errText(res)); });
         } }),
@@ -325,7 +325,7 @@ export const ADMIN_JS = String.raw`
       repaint();
       pane.appendChild(card1);
       pane.appendChild(el("div", { class: "actions" }, [
-        el("button", { type: "button", class: "primary", text: "儲存順序", onclick: function () { api("POST", "/v1/admin/social-platforms/reorder", { keys: list.map(function (p) { return p.key; }) }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已儲存順序" : errText(res)); }); } }),
+        el("button", { type: "button", class: "btn-save", text: "儲存順序", onclick: function () { api("POST", "/v1/admin/social-platforms/reorder", { keys: list.map(function (p) { return p.key; }) }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已儲存順序" : errText(res)); }); } }),
         add, el("button", { type: "button", text: "新增平台", onclick: function () { api("POST", "/v1/admin/social-platforms", { name: add.value }).then(done); } }), box
       ]));
     });
@@ -361,7 +361,7 @@ export const ADMIN_JS = String.raw`
         field("網頁版來源（一行一個）", web, "只填 https://網域，不含路徑。"), field("App 回傳網址（一行一個）", ret),
         field("額外的 Google 用戶端 ID", aud), field("最低版本", min, "低於這個版本的 App 會被要求更新。"),
         el("p", { class: "help", text: "權限範圍、聯絡信箱用途、webhook 與服務金鑰在「平台設定」。新 App 預設只有最小權限。" }),
-        el("div", { class: "inline" }, [el("button", { class: "primary", text: a ? "儲存" : "建立", onclick: save }), el("button", { text: "取消", onclick: reload }), box]),
+        el("div", { class: "inline" }, [el("button", { class: a ? "btn-save" : "primary", text: a ? "儲存" : "建立", onclick: save }), el("button", { text: "取消", onclick: reload }), box]),
         a ? el("div", { class: "help", text: "儲存需要 10 分鐘內登入過；會跳到登入頁再回來。" }) : null
       ]);
     }
@@ -433,7 +433,7 @@ export const ADMIN_JS = String.raw`
           p.signing_configured ? null : el("p", { class: "msg bad", text: "尚未設定簽章金鑰（Workers Secret WEBHOOK_SIGNING_KEY），目前不會送出任何事件。" }),
           field("網址", url, "會員資料變動或刪除時通知這個網址；空白＝移除。"),
           el("div", { class: "inline" }, [
-            el("button", { class: "primary", text: "儲存網址", onclick: function () { api("PUT", "/v1/admin/apps/" + id + "/webhook", { url: url.value.trim() || null }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存"); } else if (!reauth(res)) say(box, false, errText(res)); }); } }),
+            el("button", { class: "btn-save", text: "儲存網址", onclick: function () { api("PUT", "/v1/admin/apps/" + id + "/webhook", { url: url.value.trim() || null }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存"); } else if (!reauth(res)) say(box, false, errText(res)); }); } }),
             el("button", { text: "顯示金鑰", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: false }).then(shown); } }),
             el("button", { text: "重新產生金鑰", onclick: function () { if (confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: true }).then(shown); } }),
             el("button", { text: "送一則測試", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/test").then(function (res) { if (res.status === 200) say(box, res.body.status === "delivered", res.body.status === "delivered" ? "對方已收到（HTTP " + res.body.last_http_status + "）" : "沒有成功：" + (res.body.last_error || res.body.status)); else say(box, false, errText(res)); }); } })
@@ -454,7 +454,7 @@ export const ADMIN_JS = String.raw`
           el("p", { class: "help", text: "會員的「公開／隱藏」只管對外的公開頁；寰宇生態系內的 App 經你勾選後，可以讀取在這款 App 登入過的會員的這些欄位（隱藏的也可以），不必再問會員。沒勾＝不能讀。請先確認隱私權政策已寫明這項用途再勾選。" }),
           el("div", { class: "inline" }, [el("button", { text: "全部勾選", onclick: function () { setAllData(true); } }), el("button", { text: "全部取消", onclick: function () { setAllData(false); } })]),
           el("div", {}, dataRows),
-          el("div", { class: "inline" }, [el("button", { class: "primary", text: "儲存權限與用途", onclick: saveScopes }), el("button", { text: "返回", onclick: reload }), box])
+          el("div", { class: "inline" }, [el("button", { class: "btn-save", text: "儲存權限與用途", onclick: saveScopes }), el("button", { text: "返回", onclick: reload }), box])
         ]));
       });
     }
@@ -474,7 +474,7 @@ export const ADMIN_JS = String.raw`
           el("div", { class: "inline" }, [
             el("button", { text: "給開發 AI 的串接指令", onclick: function () { handoff(a); } }),
             b.can_manage ? el("button", { text: "平台設定", onclick: function () { platform(a, b); } }) : null,
-            b.can_manage ? el("button", { text: "編輯登記資料", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, a)); } }) : null,
+            b.can_manage ? el("button", { class: "btn-edit", text: "編輯登記資料", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, a)); } }) : null,
             a.status !== "active" ? el("button", { text: "恢復正常", onclick: setStatus(a, "active") }) : null,
             a.status !== "paused" ? el("button", { text: "一鍵暫停", onclick: setStatus(a, "paused") }) : null,
             a.status !== "killed" ? el("button", { class: "danger", text: "停用", onclick: setStatus(a, "killed") }) : null
@@ -534,7 +534,7 @@ export const ADMIN_JS = String.raw`
             var eff = effective();
             wrap.appendChild(el("ul", { class: "plain" }, (eff.length ? eff : ["（沒有任何權限）"]).map(function (t) { return el("li", { text: t }); })));
             if (d.diamond_rank) wrap.appendChild(el("p", { class: "help", text: "另外：本人已審核的獎銜達到鑽石級以上，不論職務都可查詢全部會員（只能查詢）。" }));
-            wrap.appendChild(el("div", { class: "actions" }, [el("button", { class: "primary", text: "儲存職務與權限", onclick: function () {
+            wrap.appendChild(el("div", { class: "actions" }, [el("button", { class: "btn-save", text: "儲存職務與權限", onclick: function () {
               var roles = cat.roles.filter(function (rl) { return roleSet[rl.role]; }).map(function (rl) { return rl.role; });
               var grants = Object.keys(extra).map(function (k) { var i = k.indexOf(":"); return { permission: k.slice(0, i), scope: k.slice(i + 1) }; }).filter(function (g) { return !inheritedBy(g.permission, g.scope).length; });
               api("PUT", "/v1/admin/staff/" + encodeURIComponent(id), { roles: roles, grants: grants }).then(function (res) {
@@ -562,7 +562,7 @@ export const ADMIN_JS = String.raw`
         return el("div", { class: "row" }, [el("strong", { text: s.display_name || s.member_id }),
           el("div", { class: "help", text: "職務：" + (s.roles.length ? s.roles.map(labelOf).join("、") : "（無）") + (s.center ? " 中心：" + s.center : "") }),
           s.grants.length ? el("div", { class: "help", text: "額外權限：" + s.grants.map(permText).join("、") }) : null,
-          el("button", { type: "button", class: "small", text: "編輯職務與權限", onclick: function () { choose(s.member_id, s.display_name || "會員"); } })]);
+          el("button", { type: "button", class: "small btn-edit", text: "編輯職務與權限", onclick: function () { choose(s.member_id, s.display_name || "會員"); } })]);
       })));
       pane.appendChild(card("給予職務與權限", [el("p", { class: "help", text: "搜尋會員、點選名字。職務與權限是兩件事：職務有預設權限，也可以另外特別開更多權限給這個人。" }), el("div", { class: "inline" }, [qi, el("button", { class: "primary", text: "搜尋", onclick: search })]), results, panel]));
       search();

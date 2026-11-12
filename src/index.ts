@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import type { Env } from "./env";
 import { runCleanup } from "./jobs/cleanup";
 import { deliverDue, purgeOldEvents } from "./db/webhooks";
+import { requeueUnreviewed } from "./jobs/requeue";
 
 const app = createApp();
 
@@ -16,6 +17,7 @@ export default {
         console.log(JSON.stringify({ job: "webhooks", delivered: r.delivered, retried: r.retried, failed: r.failed, paused: r.paused }));
       }),
     );
+    ctx.waitUntil(requeueUnreviewed(env.DB, now).then((n) => { if (n) console.log(JSON.stringify({ job: "requeue", requeued: n })); }, () => undefined));
     if (now.getUTCHours() === 19 && now.getUTCMinutes() < 5) {
       ctx.waitUntil(
         Promise.all([runCleanup(env.DB, now), purgeOldEvents(env.DB, now)]).then(([r, purged]) => {
