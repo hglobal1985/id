@@ -70,7 +70,16 @@ export const ME_JS = String.raw`
     var row = el("div", { class: "row" }), valueBox = el("div"), m = msg(), tools = el("div", { class: "row-tools" });
     var saved = el("span", { class: "saved", "aria-live": "polite" }), statusBox = el("div"), ed = null, last = "", timer = null, fade = null;
     function key(v) { return JSON.stringify(v); }
-    function paintStatus() { statusBox.textContent = ""; if (cfg.status) { var n = cfg.status(); if (n) statusBox.appendChild(n); } }
+    // The tag beside the title: 「必填」 while a required field is empty; 「審核通過」 while the value is the one a reviewer approved
+    // (same look); nothing otherwise.
+    var tag = el("span", { class: "req", hidden: true });
+    function paintTag() {
+      var v = ed ? ed.get() : null, empty = v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length), text = "";
+      if (cfg.required && empty) text = "必填";
+      else if (!empty && cfg.approvedFn && cfg.approvedFn(v)) text = "審核通過";
+      tag.textContent = text; tag.hidden = !text;
+    }
+    function paintStatus() { statusBox.textContent = ""; if (cfg.status) { var n = cfg.status(); if (n) statusBox.appendChild(n); } paintTag(); }
     function mark(text, cls) { saved.textContent = text; saved.className = "saved" + (cls ? " " + cls : ""); clearTimeout(fade); if (cls === "ok") fade = setTimeout(function () { saved.textContent = ""; }, 2500); }
     function dirty() { return !!ed && key(ed.get()) !== last; }
     function isEmpty(v) { return v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length); }
@@ -80,6 +89,7 @@ export const ME_JS = String.raw`
         row.touched = true;
         var v = ed.get();
         if (!isEmpty(v)) row.classList.remove("row-missing");
+        paintTag();
         if (key(v) !== last) { mark("尚未儲存", "warn"); m.textContent = ""; } else if (saved.className.indexOf("warn") >= 0) mark("", "");
         if (cfg.onChange) cfg.onChange(v);
       }, 250);
@@ -97,7 +107,7 @@ export const ME_JS = String.raw`
         mark("尚未儲存", "warn"); say(m, false, res ? errText(res) : "儲存失敗"); return { ok: false };
       });
     }
-    row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), cfg.required ? el("span", { class: "req", text: "必填" }) : null, saved, tools]));
+    row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), tag, saved, tools]));
     if (cfg.note) row.appendChild(el("div", {}, [el("span", { class: "note", text: cfg.note })]));
     if (cfg.help) row.appendChild(el("div", { class: "help", text: cfg.help }));
     if (cfg.forced) tools.appendChild(lockedPill());
@@ -566,7 +576,6 @@ export const ME_JS = String.raw`
     function status() {
       var cur = S.amway.fields[d.key] || st;
       if (cur.pending_value !== null && cur.pending_value !== undefined) return el("p", {}, [el("span", { class: "badge pending", text: d.status_labels.pending }), document.createTextNode(" " + (d.type === "select" ? label(cur.pending_value) : cur.pending_value))]);
-      if (cur.status === "approved" && d.status_labels.approved) return el("span", { class: "badge approved", text: d.status_labels.approved });
       if (cur.status === "rejected") return el("span", { class: "badge rejected", text: d.status_labels.rejected });
       return null;
     }
@@ -628,7 +637,12 @@ export const ME_JS = String.raw`
       return !!centerNow && centerNow !== "無";                                // the rank is reviewed together with a real center
     }
     function onChange(v) { updateRankLock(); warn.hidden = !reviewAgain(v); }
-    var r = makeRow({ label: d.label, required: REQUIRED.indexOf(d.key) >= 0, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: onChange, below: function () { return warn; } });
+    // 審核通過 tag: the reviewer approved exactly this value (the center and the rank).
+    function approvedFn(v) {
+      var cur = S.amway.fields[d.key];
+      return (d.key === "education_center" || d.key === "rank") && !!cur && cur.status === "approved" && cur.value !== null && JSON.stringify(v) === JSON.stringify(cur.value);
+    }
+    var r = makeRow({ label: d.label, required: REQUIRED.indexOf(d.key) >= 0, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: onChange, approvedFn: approvedFn, below: function () { return warn; } });
     AROWS[d.key] = r;
     return r;
   }
