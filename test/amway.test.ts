@@ -299,6 +299,20 @@ describe("fields and review", () => {
     expect(await requeueUnreviewed(db, new Date())).toBe(0); // nothing left to heal
   });
 
+  it("the training system and center lists come back whole when the query is empty, and /v1/me/amway names the words marked as 寰宇", async () => {
+    const m = await member("g-a", "甲");
+    await enable(m);
+    await put(m, "education_system", "其他體系B");
+    const sys = (await (await call(m, "GET", "/v1/vocab/suggestions?pool=education_system&q=")).json()) as { suggestions: string[] };
+    expect(sys.suggestions).toEqual(expect.arrayContaining(["寰宇", "其他體系B"]));
+    const ctr = (await (await call(m, "GET", "/v1/vocab/suggestions?pool=education_center&q=")).json()) as { suggestions: string[] };
+    expect(ctr.suggestions.length).toBeGreaterThan(0);
+    expect(((await (await call(m, "GET", "/v1/vocab/suggestions?pool=occupation&q=")).json()) as { suggestions: string[] }).suggestions).toEqual([]); // other pools still need a typed character
+    const me2 = (await (await call(m, "GET", "/v1/me/amway")).json()) as { hglobal_systems: string[] };
+    expect(me2.hglobal_systems).toContain("寰宇");
+    expect(me2.hglobal_systems).not.toContain("其他體系B");
+  });
+
   it("a value that skipped review earlier (staff included) goes through the standard review when it is sent again", async () => {
     const m = await member("g-a", "甲");
     await enable(m);

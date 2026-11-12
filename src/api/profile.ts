@@ -396,8 +396,8 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     if (denied) return denied as never;
     const { pool, q } = c.req.valid("query");
     if (!isPool(pool)) return invalid(c, "pool", "unknown_pool", `沒有這個詞庫（可用：${Object.keys(POOLS).join("、")}）`) as never;
-    // The regional center list shows in full when the field is opened (empty query); other vocabularies need a typed character.
-    const suggestions = q.trim() ? await suggestTerms(c.env.DB, pool, q) : pool === "education_center" ? await allTerms(c.env.DB, pool, 60) : [];
+    // The training system and regional center lists show in full when the query is empty (they feed the drop-downs); other vocabularies need a typed character.
+    const suggestions = q.trim() ? await suggestTerms(c.env.DB, pool, q) : (pool === "education_center" || pool === "education_system") ? await allTerms(c.env.DB, pool, 100) : [];
     return c.json({ pool, suggestions }, 200);
   });
 

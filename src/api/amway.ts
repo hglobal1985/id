@@ -48,6 +48,7 @@ const meRoute = createRoute({
         z
           .object({
             enabled: z.boolean(),
+            hglobal_systems: z.array(z.string()).openapi({ description: "Training-system words marked as H-Global1985 (the edit page switches the regional center to its list while one of them is chosen)" }),
             hglobal: z.boolean().openapi({ description: "The training system (effective or pending) is a term marked as H-Global1985: the regional education center offers its own related words (field definition suggest_when_hglobal)." }),
             fields: z.record(FieldStateSchema.extend({ visibility: z.enum(["public", "private"]) })),
           })
@@ -153,7 +154,8 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       fields[f.key] = r ? { value: r.value, pending_value: r.pending_value, status: r.status, updated_at: r.updated_at, visibility: vis } : { value: null, pending_value: null, status: "not_required", updated_at: null, visibility: vis };
     }
     const hglobal = await isHglobalMember(c.env.DB, memberId);
-    return c.json({ enabled: member?.amway_enabled === 1, hglobal, fields }, 200);
+    const hg = await c.env.DB.prepare("SELECT term FROM vocab_terms WHERE pool = 'education_system' AND hglobal = 1 ORDER BY term").all<{ term: string }>();
+    return c.json({ enabled: member?.amway_enabled === 1, hglobal, hglobal_systems: (hg.results ?? []).map((x) => x.term), fields }, 200);
   });
 
   app.openapi(enabledRoute, async (c) => {
