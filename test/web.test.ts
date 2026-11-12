@@ -187,7 +187,7 @@ describe("public profile /<member number>", () => {
     const mine = await (await req(a, "GET", `/my/${n}`)).text();
     expect(mine).toContain('id="share"');
     expect(mine).toContain(`/my/${n}/edit`);
-    expect(mine).toContain("預覽公開頁");
+    expect(mine).toContain(">預覽</a>");
     html = await (await req(a, "GET", `/${n}`)).text();
     expect(html).toContain("大學");
     expect(html).toContain("政治大學　資訊管理學系");
@@ -507,13 +507,14 @@ describe("birthday and 生命靈數 share one block; the pages' top buttons", ()
     expect(long).toMatch(/<h2 class="life-title lt-[1-4]">王大明明明明明明明明明明明生命靈數 1990年4月5日<\/h2>/);
   });
 
-  it("/my page: 編輯, 分享, 預覽公開頁 in that order; 分享 shares the public address", async () => {
+  it("/my page: 分享公開頁, 編輯, 預覽 in that order (floating, same places as the edit page); 分享公開頁 shares the public address", async () => {
     const a = await person("a", "甲");
     const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
     const html = await (await req(a, "GET", `/my/${n}`)).text();
-    const bar = html.slice(html.indexOf('<div class="pagebar">'));
-    expect(bar.indexOf("編輯")).toBeLessThan(bar.indexOf('id="share"'));
-    expect(bar.indexOf('id="share"')).toBeLessThan(bar.indexOf("預覽公開頁"));
+    const bar = html.slice(html.indexOf('<div class="pagebar float">'));
+    expect(bar.indexOf('id="share"')).toBeLessThan(bar.indexOf("編輯"));
+    expect(bar.indexOf("編輯")).toBeLessThan(bar.indexOf(">預覽</a>"));
+    expect(bar).toContain("分享公開頁");
     expect(bar).toContain(`data-url="http://localhost/${n}"`);
   });
 });

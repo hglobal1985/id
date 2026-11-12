@@ -786,7 +786,7 @@ export const ME_JS = String.raw`
 
   function render() {
     root.textContent = ""; ROWS = [];
-    // Three floating buttons that stay in place while the page scrolls under them: 儲存, 分享公開頁, 預覽.
+    // Three floating buttons (same places on the view page): 分享公開頁, 儲存 (編輯 on the view page), 預覽.
     var pubUrl = S.profile.fields.member_number.public_url;
     var shareBtn = el("button", { type: "button", class: "wide", onclick: function () {
       if (!pubUrl) return;
@@ -795,7 +795,7 @@ export const ME_JS = String.raw`
       else HG.toast("請手動複製網址");
     } }, [HG.shareIcon(), "分享公開頁"]);
     var saveBtn = el("button", { type: "button", class: "gold", text: "儲存", onclick: function () { saveAll(saveBtn); } });
-    root.appendChild(el("div", { class: "pagebar float" }, [saveBtn, shareBtn, el("a", { class: "button", href: publicPath(), text: "預覽" })]));
+    root.appendChild(el("div", { class: "pagebar float" }, [shareBtn, saveBtn, el("a", { class: "button", href: publicPath(), text: "預覽" })]));
     function basicCard() { return card("基本資料", [el("p", { class: "help", text: "公開＝任何人都看得到；隱藏＝不在公開頁顯示（寰宇生態系內的服務仍可能使用）。" })].concat(S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField))); }
     function contactCard() {
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
