@@ -1,10 +1,10 @@
-// General privacy policy (/privacy), approved by the owner 2026-11-10; real-name wording added 2026-11-12 (owner approved, ADR 0020). Separate from the Amway notice
+// General privacy policy (/privacy), approved by the owner 2026-11-10; real-name wording added 2026-11-12 (owner approved, ADR 0020); ecosystem-App use of hidden data added 2026-11-13 (owner approved, ADR 0022). Separate from the Amway notice
 // (/privacy/amway, src/web/privacy.ts). Do not edit the wording without the owner.
 // Text is escaped when rendered; the token {{amway}} becomes a link to /privacy/amway.
 import type { PrivacySection } from "./privacy";
 
 export const POLICY_TITLE = "隱私權政策";
-export const POLICY_UPDATED = "2026 年 11 月 12 日";
+export const POLICY_UPDATED = "2026 年 11 月 13 日";
 
 export const POLICY_SECTIONS: PrivacySection[] = [
   {
@@ -32,17 +32,19 @@ export const POLICY_SECTIONS: PrivacySection[] = [
     items: [
       "提供登入與帳號管理。",
       "依您的設定顯示公開基本資料頁。",
+      "在寰宇生態系內的 App 提供服務、處理報名與付款、顯示會員之間的資訊。",
       "讓您用同一個帳號登入合作營運單位的網站或 app，並依您的授權提供必要資料。",
       "會員資格審核、內容存取權限判斷、重複編號比對與夫妻綁定。",
-      "辨識付費課程報名的繳款人並進行對帳（您填寫的真實姓名；只有在您報名付費課程或對帳時，合作營運單位才會以您本人的登入讀取，不會公開，也不會用於其他用途）。",
+      "辨識付費課程報名的繳款人並進行對帳（您填寫的真實姓名；由寰宇生態系內的 App 在報名付費課程與對帳時使用，不會顯示在公開頁）。",
       "防止冒用、維護系統安全。",
     ],
   },
   {
     heading: "5. 公開與分享",
     items: [
-      "公開基本資料頁：頭像與會員編號一律公開；其他欄位由您自己設定是否公開。",
-      "合作營運單位：您用本網站帳號登入合作營運單位時，對方只會取得您授權的資料。Amway 會員資料以資格查詢方式提供，詳見{{amway}}。真實姓名預設不公開，僅在您報名付費課程時提供給合作營運單位。",
+      "公開基本資料頁：頭像與會員編號一律公開；其他欄位由您自己設定是否公開。您設定的「公開／隱藏」只決定本網站對外公開頁顯示的內容。",
+      "寰宇生態系內的 App：您註冊或登入的寰宇生態系 App（由成就寰宇股份有限公司營運或授權，並經本網站登記）為了提供服務、處理報名與付款、顯示會員之間的資訊，可以使用您的基本資料與 Amway 會員資料，包括您設定為「隱藏」的欄位，不需另外取得您的同意。這些 App 只會取得其功能所需的欄位，不得長期保存、不得提供給寰宇生態系以外的人；本網站會留下每次使用的紀錄（哪一款 App、哪些欄位、幾筆，不含內容）。",
+      "合作營運單位：您用本網站帳號登入合作營運單位時，對方只會取得您授權的資料。Amway 會員資料以資格查詢方式提供，詳見{{amway}}。真實姓名預設不在公開頁顯示；寰宇生態系內的 App 使用您的資料，依上一點辦理。",
       "服務供應商：Google（登入驗證）、Cloudflare（網站與資料存放，伺服器可能位於台灣以外地區）。",
       "除上述情況與法令要求外，我們不會把您的個人資料提供給其他人，也不會出售。",
     ],
