@@ -141,6 +141,8 @@ button.btn-edit:hover,.button.btn-edit:hover{filter:brightness(.97)}
 .with-none{display:flex;align-items:center;gap:10px}.with-none>:first-child{flex:1 1 auto;min-width:0}.with-none>.chk{flex:none;min-height:44px}
 .motto-box{min-height:4.2em}
 .row-head .saved.warn{color:var(--warn)}
+.req{padding:0 9px;border-radius:999px;font-size:.78rem;font-weight:700;line-height:1.5;color:var(--orange);background:var(--orange-soft);border:1px solid var(--b-warn)}
+.row.row-missing{outline:2px solid var(--orange);outline-offset:6px;border-radius:12px;background:var(--orange-soft)}
 .motto{margin:0 0 12px;color:var(--olive);font-style:italic}
 /* tabs and collapsible sections */
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
