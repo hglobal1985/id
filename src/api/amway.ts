@@ -12,7 +12,7 @@ import { amwayDefault, isForcedPublic, visibilityOf } from "../profile/visibilit
 import { readProfile } from "../db/profile";
 import { isPool } from "../vocab/terms";
 import { loadLayout } from "../db/layout";
-import { AMWAY_FIELDS, getAmwayField, validateAmwayValue, type AmwayValue } from "../amway/fields";
+import { AMWAY_FIELDS, getAmwayField, isNone, validateAmwayValue, type AmwayValue } from "../amway/fields";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
 
@@ -188,7 +188,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     // Free-text fields: an existing spelling in the vocabulary wins, and the typed word is remembered.
     const pool = def.suggest && isPool(def.suggest) ? def.suggest : null;
     // The regional center vocabulary belongs to H-Global1985 members only; for everyone else the field is plain text.
-    if (pool && typeof v.value === "string" && (!def.suggest_when_hglobal || (await isHglobalMember(c.env.DB, memberId)))) {
+    if (pool && typeof v.value === "string" && !isNone(v.value) && (!def.suggest_when_hglobal || (await isHglobalMember(c.env.DB, memberId)))) {
       v.value = (await canonicalTerms(c.env.DB, pool, [v.value]))[0] ?? v.value;
       await recordTerms(c.env.DB, pool, [v.value], deps.now());
     }

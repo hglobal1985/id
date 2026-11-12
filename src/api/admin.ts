@@ -15,7 +15,7 @@ import { auditStatement } from "../db/audit";
 import { decideReview, listOptions, readAmwayFields, staffAdjust } from "../db/amway";
 import { readNumbers } from "../db/member-numbers";
 import { getActiveBinding, otherSide } from "../db/spouse";
-import { REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway/fields";
+import { REVIEWER_ADJUSTABLE, getAmwayField, isNone, validateAmwayValue } from "../amway/fields";
 import { FEATURES, PERMISSION_INFO, PERMISSIONS, ROLE_GRANTS, ROLES, ROLE_LABELS, SCOPE_LABELS, can, grantsOf, hasGrant, permissionsOf, validateGrants, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
@@ -57,7 +57,7 @@ async function centerTextOf(db: D1Database, memberId: string): Promise<string | 
   const r = await db.prepare("SELECT value FROM amway_field_values WHERE member_id = ? AND field_key = 'education_center'").bind(memberId).first<{ value: string | null }>();
   try {
     const v = r?.value ? (JSON.parse(r.value) as unknown) : null;
-    return typeof v === "string" ? v : null;
+    return typeof v === "string" && !isNone(v) ? v : null;
   } catch {
     return null;
   }

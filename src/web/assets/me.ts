@@ -466,6 +466,14 @@ export const ME_JS = String.raw`
   }
 
   // ---- Amway block: the switch takes effect at once (no confirmation, no consent step) ----
+  var REQUIRED = ["education_system", "education_center", "rank"];
+  function amwayMissing() {
+    return S.adefs.fields.filter(function (d) {
+      if (REQUIRED.indexOf(d.key) < 0) return false;
+      var st = S.amway.fields[d.key];
+      return !st || ((st.value === null || st.value === undefined) && (st.pending_value === null || st.pending_value === undefined));
+    }).map(function (d) { return d.label; });
+  }
   function amwayFieldRow(d) {
     var st = S.amway.fields[d.key] || { value: null, pending_value: null, status: "not_required", visibility: "private" };
     var opts = d.options || [];
@@ -484,12 +492,18 @@ export const ME_JS = String.raw`
         return { node: dd.el, get: function () { return dd.get() || null; } };
       }
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
+      // Training system and regional center: a tick for 無 (none) next to the box; the field is required, 無 counts as filled in.
+      var canNone = d.key === "education_system" || d.key === "education_center", none = canNone && cur === "無";
+      if (none) { input.value = ""; input.disabled = true; }
       // The regional center offers its own related words only while the training system means H-Global1985.
       var useSuggest = d.suggest && (!d.suggest_when_hglobal || S.amway.hglobal);
-      return { node: useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest), undefined, { openOnFocus: d.key === "education_center" }) : input, get: function () { return input.value.trim() || null; } };
+      var field = useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest), undefined, { openOnFocus: d.key === "education_center" }) : input;
+      if (!canNone) return { node: field, get: function () { return input.value.trim() || null; } };
+      var noneBox = HG.checkbox("無", none, function (on) { none = on; input.disabled = on; if (on) input.value = ""; });
+      return { node: el("div", {}, [field, noneBox]), get: function () { return none ? "無" : (input.value.trim() || null); } };
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
-    return makeRow({ label: d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), display: display, editor: editor, save: save, after: refreshAmway });
+    return makeRow({ label: REQUIRED.indexOf(d.key) >= 0 ? d.label + "（必填）" : d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), display: display, editor: editor, save: save, after: refreshAmway });
   }
   // Replace one block in place (no page reload): used after the Amway switch and Amway field saves.
   var NODES = {}, MAKERS = {};
@@ -515,6 +529,7 @@ export const ME_JS = String.raw`
       });
     });
     var kids = [box, m];
+    if (isAmway()) { var miss = amwayMissing(); if (miss.length) kids.push(el("p", { class: "help warn-note", text: "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" })); }
     // The member number and the Amway fields in the order the administrator set; the number is always there.
     var items = [{ order: S.def.member_number.order, make: numberRow }];
     if (isAmway()) S.adefs.fields.forEach(function (d) { items.push({ order: d.order, make: function () { return amwayFieldRow(d); } }); });

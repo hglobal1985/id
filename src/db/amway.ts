@@ -9,6 +9,7 @@ import {
   AMWAY_FIELDS,
   HGLOBAL,
   getAmwayField,
+  isNone,
   needsReview,
   sameValue,
   systemKey,
@@ -142,8 +143,15 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   const centerRow = rows.get("education_center");
   const centerAfter = key === "education_center" ? value : (centerRow?.value ?? centerRow?.pending_value ?? null);
   const centerText = typeof centerAfter === "string" ? centerAfter.trim() : "";
-  const reviewCtx: ReviewContext = { system: systemAfter, hasCenter: centerText !== "" };
-  const centerNorm = centerText ? normTerm(centerText) : null;
+  const realCenter = centerText !== "" && !isNone(centerText);
+  const reviewCtx: ReviewContext = { system: systemAfter, hasCenter: realCenter };
+  const centerNorm = realCenter ? normTerm(centerText) : null;
+  // The rank is filled in last: the training system and the regional center (or 無 for either) must be there first, so a rank
+  // can never be sent for review without the system and center that tell the reviewers whose it is.
+  if (key === "rank" && value !== null) {
+    const has = (k: string) => { const r = rows.get(k); return !!r && (r.value !== null || r.pending_value !== null); };
+    if (!has("education_system") || !has("education_center")) return { ok: false, reason: "system_center_required", message: "請先填寫直銷商培訓系統與地區教育中心（沒有的話請勾選「無」）" };
+  }
 
   const current = rows.get(key);
   const holders = key === "rank" ? await rankHolders(db, memberId) : [memberId];
