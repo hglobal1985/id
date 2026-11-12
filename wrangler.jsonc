@@ -24,6 +24,8 @@
           { "name": "RL_WRITE", "type": "ratelimit", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
         ]
       },
+      // Smart Placement: run the Worker next to the database, so a request crosses the ocean once instead of once per query.
+      "placement": { "mode": "smart" },
       "triggers": { "crons": ["*/5 * * * *"] }
     },
     "production": {
@@ -44,6 +46,9 @@
           { "name": "RL_WRITE", "type": "ratelimit", "namespace_id": "2002", "simple": { "limit": 30, "period": 60 } }
         ]
       },
+      // Smart Placement: the database is in Singapore, but a visitor in Taiwan can be served from Los Angeles; without this
+      // every query crossed the Pacific (about 0.18 s each). Measured 2026-11-14: the review record page took 10 to 13 seconds.
+      "placement": { "mode": "smart" },
       "triggers": { "crons": ["*/5 * * * *"] }
     }
   }

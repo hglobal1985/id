@@ -71,7 +71,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - 自己的頁面 `/my/<代碼>`、編輯頁 `/my/edit`；`/me` 已不存在。
 
 ## 6.7 平台規範補充（2026-11-12.9）
-- **真實姓名**：欄位 `legal_name`（預設不公開）。只在報名付費課程與對帳當下用會員本人的 token 讀 `GET /v1/me/profile` 的 `fields.legal_name`；不保存、不寫日誌、不另建欄位。
+- **本名**：欄位 `legal_name`（畫面標籤 2026-11-14 起為「本名」，原稱「本姓」「真實姓名」；預設不公開）。只在報名付費課程與對帳當下用會員本人的 token 讀 `GET /v1/me/profile` 的 `fields.legal_name`；不保存、不寫日誌、不另建欄位。
 - **獎銜「無」**：選項（含「無」）來自 `GET /v1/amway/field-definitions` 的 `rank.options`；會員值 `fields.rank.value` 為 `null` 或 `"none"` 都代表「無」。對「無」顯示什麼文字由各 App 決定。
 - **會員資料的使用範圍**：會員的「公開／隱藏」只管對外公開頁，不限制寰宇生態系內的 App；業主在後台替每款 App 勾選可用欄位（含隱藏的），App 用 `POST /v1/apps/{app_id}/members/lookup` 讀取（見 6.8、ADR 0022）。
 - **深色模式**：跟隨系統，配色依視覺規範 1.5；業主核准的例外才可保留自己的配色。

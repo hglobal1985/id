@@ -1,4 +1,6 @@
-import { taipeiIso } from "../lib/time";
+import { hashSecret } from "../lib/crypto";
+import { epochSeconds, taipeiIso } from "../lib/time";
+import type { SessionRow } from "./identity";
 import { auditStatement } from "./audit";
 import type { Grant, Role } from "../admin/roles";
 import { normTerm } from "../vocab/terms";
@@ -83,4 +85,32 @@ export async function notifyReviewersStatements(db: D1Database, requestId: strin
   return (await reviewRecipients(db, centerNorm)).map((id) =>
     db.prepare("INSERT INTO notifications (id, member_id, kind, payload, created_at) VALUES (lower(hex(randomblob(16))), ?, 'staff.review.requested', ?, ?)").bind(id, payload, ts),
   );
+}
+
+/**
+ * The sign-in session of a cookie together with the member's positions and extra permissions, in ONE database round trip
+ * (three separate queries cost three trans-Pacific round trips on every back-office request).
+ */
+export async function staffContextByToken(db: D1Database, token: string, now: Date): Promise<{ session: SessionRow; roles: Role[]; grants: Grant[] } | null> {
+  const hash = await hashSecret(token);
+  const epoch = epochSeconds(now);
+  const owner = `(SELECT s.member_id FROM login_sessions s JOIN members m ON m.id = s.member_id WHERE s.token_hash = ? AND s.revoked_epoch IS NULL AND s.expires_epoch > ? AND m.status = 'active')`;
+  const [sess, roles, grants] = await db.batch([
+    db
+      .prepare(
+        `SELECT s.id, s.member_id, s.auth_time_epoch, s.expires_epoch, s.revoked_epoch
+         FROM login_sessions s JOIN members m ON m.id = s.member_id
+         WHERE s.token_hash = ? AND s.revoked_epoch IS NULL AND s.expires_epoch > ? AND m.status = 'active'`,
+      )
+      .bind(hash, epoch),
+    db.prepare(`SELECT role FROM staff_roles WHERE member_id = ${owner} ORDER BY role`).bind(hash, epoch),
+    db.prepare(`SELECT permission, scope FROM staff_grants WHERE member_id = ${owner} ORDER BY permission, scope`).bind(hash, epoch),
+  ]);
+  const session = ((sess?.results ?? [])[0] as unknown as SessionRow | undefined) ?? null;
+  if (!session) return null;
+  return {
+    session,
+    roles: ((roles?.results ?? []) as unknown as { role: Role }[]).map((x) => x.role),
+    grants: (grants?.results ?? []) as unknown as Grant[],
+  };
 }

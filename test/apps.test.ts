@@ -159,7 +159,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-13.12", digest: "6c48955d2721d165" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-14.1", digest: "04589619e8390a48" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -396,9 +396,9 @@ describe("back office", () => {
     expect(db.raw.prepare("SELECT action, target_id FROM audit_log WHERE action = 'app.register'").get()).toEqual({ action: "app.register", target_id: "shop" });
   });
 
-  it("editing needs a recent sign-in and keeps the status switch; scopes are always the full set", async () => {
+  it("editing needs no recent sign-in (owner 2026-11-14) and keeps the status switch; scopes are always the full set", async () => {
     const stale = await staff("old", ["super_admin"], 11 * 60);
-    expect(await errorCode(await admin(stale, "PUT", "/v1/admin/apps/learn", { name: "x" }))).toBe("reauth_required");
+    expect((await admin(stale, "PUT", "/v1/admin/apps/learn", { name: "寰宇行動大學" })).status).toBe(200);
     const sa = await staff("sa", ["super_admin"]);
     const t = await signIn();
     await admin(sa, "PUT", "/v1/admin/apps/learn/status", { status: "paused" });

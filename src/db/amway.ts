@@ -74,13 +74,24 @@ type RowWrite = Omit<FieldRow, "updated_at" | "value_approved"> & { value_approv
 const parse = (s: string | null): AmwayValue => (s === null ? null : (JSON.parse(s) as AmwayValue));
 const enc = (v: AmwayValue): string | null => (v === null ? null : JSON.stringify(v));
 
+export interface FieldRowRaw {
+  field_key: string;
+  value: string | null;
+  pending_value: string | null;
+  status: ReviewStatus;
+  value_approved: number;
+  updated_at: string;
+}
+export const AMWAY_ROW_COLUMNS = "field_key, value, pending_value, status, value_approved, updated_at";
+
+export function toFieldRow(x: FieldRowRaw): FieldRow {
+  return { value: parse(x.value), pending_value: parse(x.pending_value), status: x.status, value_approved: x.value_approved === 1, updated_at: x.updated_at };
+}
+
 export async function readAmwayFields(db: D1Database, memberId: string): Promise<Map<string, FieldRow>> {
-  const r = await db
-    .prepare("SELECT field_key, value, pending_value, status, value_approved, updated_at FROM amway_field_values WHERE member_id = ?")
-    .bind(memberId)
-    .all<{ field_key: string; value: string | null; pending_value: string | null; status: ReviewStatus; value_approved: number; updated_at: string }>();
+  const r = await db.prepare(`SELECT ${AMWAY_ROW_COLUMNS} FROM amway_field_values WHERE member_id = ?`).bind(memberId).all<FieldRowRaw>();
   const out = new Map<string, FieldRow>();
-  for (const x of r.results ?? []) out.set(x.field_key, { value: parse(x.value), pending_value: parse(x.pending_value), status: x.status, value_approved: x.value_approved === 1, updated_at: x.updated_at });
+  for (const x of r.results ?? []) out.set(x.field_key, toFieldRow(x));
   return out;
 }
 
@@ -255,10 +266,10 @@ export async function decideReview(db: D1Database, requestId: string, decision: 
   const req = await db.prepare("SELECT * FROM amway_review_requests WHERE id = ? AND status = 'pending'").bind(requestId).first<ReviewRequestRow>();
   if (!req) return false;
   const ts = taipeiIso(ctx.now);
-  const rows = await readAmwayFields(db, req.member_id);
+  // The two reads do not depend on each other: ask together (one round trip, not two).
+  const [rows, holders] = await Promise.all([readAmwayFields(db, req.member_id), req.field_key === "rank" ? rankHolders(db, req.member_id) : Promise.resolve([req.member_id])]);
   const current = rows.get(req.field_key);
   const requested = parse(req.requested_value);
-  const holders = req.field_key === "rank" ? await rankHolders(db, req.member_id) : [req.member_id];
   const row: RowWrite =
     decision === "approve"
       ? { value: requested, pending_value: null, status: "approved", value_approved: true }
