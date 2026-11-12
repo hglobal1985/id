@@ -6,7 +6,7 @@
 import { countryRows } from "./countries";
 import { isForcedPublic } from "./visibility";
 
-export const DEFINITIONS_VERSION = "2026-11-11.1";
+export const DEFINITIONS_VERSION = "2026-11-12.1";
 
 export type FieldType = "text" | "textarea" | "url" | "email" | "phone" | "date" | "select" | "tags";
 export type Visibility = "public" | "private";
@@ -130,6 +130,9 @@ const contact = (d: Def): FieldDefinition => ({
 
 const RAW: FieldDefinition[] = [
   basic({ key: "display_name", group: "basic", order: 10, label: "顯示名稱", type: "text", max_length: 50, required: true }),
+  // 真實姓名 (restored 2026-11-12, key legal_name; the deleted primary_name stays gone): used only to match payers in paid-course
+  // sign-ups and reconciliation. Private by default; an App reads it for the signed-in member only (GET /v1/me/profile).
+  basic({ key: "legal_name", group: "basic", order: 20, label: "真實姓名", help: "用於付費課程報名與對帳，預設不公開。", type: "text", max_length: 50, visibility: "private" }),
   basic({ key: "motto", group: "basic", order: 30, label: "座右銘", type: "text", max_length: 100 }),
   basic({ key: "bio", group: "basic", order: 40, label: "自我介紹", type: "textarea", max_length: 1000 }),
   basic({ key: "occupation", group: "basic", order: 50, label: "職業", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "occupation" }),

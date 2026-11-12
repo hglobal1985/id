@@ -441,7 +441,7 @@ describe("profile field order", () => {
     expect(v.groups[3]!.fields[0]).toMatchObject({ key: "member_number", label: "會員編號" });
     expect(v.customized).toBe(false);
     const basic = v.groups[1]!.fields.map((f) => f.key);
-    expect(basic.slice(0, 3)).toEqual(["display_name", "motto", "bio"]);
+    expect(basic.slice(0, 3)).toEqual(["display_name", "legal_name", "motto"]);
 
     // Must list every field of every group exactly once.
     const order = Object.fromEntries(v.groups.map((g) => [g.group, g.fields.map((f) => f.key)])) as Record<string, string[]>;

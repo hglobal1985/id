@@ -127,7 +127,20 @@ describe("PUT /v1/me/profile/fields/{field_key}", () => {
     expect((await call("PUT", "/v1/me/profile/fields/nickname", { token: t, body: { value: "x" } })).status).toBe(404);
   });
 
-  it("the legal-name field is gone for good", async () => {
+  it("the real name (legal_name): private by default, the member reads and writes it with their own token, never public, never audited with its value", async () => {
+    const t = await token();
+    const defs = (await (await call("GET", "/v1/profile/field-definitions", { token: t })).json()) as { fields: { key: string; group: string; label: string; visibility: { configurable: boolean; default: string } }[] };
+    expect(defs.fields.find((f) => f.key === "legal_name")).toMatchObject({ group: "basic", label: "真實姓名", visibility: { configurable: true, default: "private" } });
+    let res = await call("PUT", "/v1/me/profile/fields/legal_name", { token: t, body: { value: "  王小明 " } });
+    expect(res.status).toBe(200);
+    const p = (await (await call("GET", "/v1/me/profile", { token: t })).json()) as { fields: Record<string, { value: unknown; visibility: string }> };
+    expect(p.fields.legal_name).toMatchObject({ value: "王小明", visibility: "private" });
+    expect(JSON.stringify(db.raw.prepare("SELECT detail FROM audit_log").all())).not.toContain("王小明");
+    res = await call("PUT", "/v1/me/profile/fields/legal_name", { token: t, body: { value: "x".repeat(51) } });
+    expect(res.status).toBe(422);
+  });
+
+  it("the old primary_name key stays gone", async () => {
     const t = await token();
     expect((await call("PUT", "/v1/me/profile/fields/primary_name", { token: t, body: { value: "x" } })).status).toBe(404);
     expect((await call("PUT", "/v1/me/profile/fields/skills", { token: t, body: { value: ["x"] } })).status).toBe(404);
@@ -329,7 +342,7 @@ describe("field rules (unit)", () => {
   });
   it("every definition has a write scope and the documented field keys", () => {
     expect(FIELD_KEYS).toEqual([
-      "display_name", "motto", "bio", "occupation", "organization", "languages", "interests",
+      "display_name", "legal_name", "motto", "bio", "occupation", "organization", "languages", "interests",
       "university", "university_dept", "grad_school", "grad_dept", "phd_school", "phd_dept", "locale", "contact_email", "phone", "country", "region", "city", "birthday",
     ]);
     for (const f of fieldDefinitions()) expect(f.scope).toMatch(/^profile\.(basic|contact|birthday)\.write$/);

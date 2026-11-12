@@ -1689,6 +1689,7 @@
           "profile"
         ],
         "summary": "My profile (do not cache)",
+        "description": "Fields are keyed by the keys of GET /v1/profile/field-definitions. `fields.legal_name` (真實姓名, private by default) is for paid-course sign-up and payment reconciliation only: read it with the signed-in member's own token at that moment, never store it in the App, its logs or analytics.",
         "security": [
           {
             "bearer": []
