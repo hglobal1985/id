@@ -1285,6 +1285,15 @@
             },
             "maxItems": 10,
             "description": "Purposes the App may look up members' contact e-mail for."
+          },
+          "member_data_fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "maxItems": 60,
+            "description": "Member data fields the App may read for its members, hidden ones included (POST /v1/apps/{app_id}/members/lookup). Omit to keep what is stored."
           }
         },
         "required": [
@@ -1351,6 +1360,40 @@
         },
         "required": [
           "contacts",
+          "not_found"
+        ]
+      },
+      "MemberDataLookup": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "member_id": {
+                  "type": "string"
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "member_id",
+                "fields"
+              ]
+            }
+          },
+          "not_found": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "members",
           "not_found"
         ]
       }
@@ -8035,6 +8078,116 @@
           },
           "403": {
             "description": "forbidden or purpose_not_allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/members/lookup": {
+      "post": {
+        "tags": [
+          "platform"
+        ],
+        "summary": "Member data for up to 50 members who signed in to this App, hidden fields included (service token; only fields the owner allowed for the App)",
+        "description": "The member's 公開／隱藏 switch decides what the public page shows; it does not limit the Apps of the Hglobal ecosystem. Ask only for the fields the feature needs. `use` is `process` (handled inside your server) or `display` (shown to other members in the App). Do not store the values beyond what the feature needs, do not pass them to anyone outside the ecosystem. Each call is audited (App, count, field names, use; never values). Amway fields that need review are returned only once approved; members who are not Amway members get null for Amway fields.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "member_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "minItems": 1,
+                    "maxItems": 50
+                  },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    },
+                    "minItems": 1,
+                    "maxItems": 60
+                  },
+                  "use": {
+                    "type": "string",
+                    "enum": [
+                      "process",
+                      "display"
+                    ]
+                  }
+                },
+                "required": [
+                  "member_ids",
+                  "fields",
+                  "use"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDataLookup"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden or field_not_allowed",
             "content": {
               "application/json": {
                 "schema": {

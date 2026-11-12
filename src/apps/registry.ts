@@ -1,6 +1,7 @@
 // App registry rules (framework-free). An App definition is one JSON object stored in `registered_apps`;
 // parseApp validates it on every write and every read, so a broken row can never be used.
 import { SUPPORTED_SCOPES } from "../oidc/scopes";
+import { MEMBER_DATA_KEYS } from "./data-fields";
 
 export type AppStatus = "active" | "paused" | "killed";
 export const APP_STATUSES: readonly AppStatus[] = ["active", "paused", "killed"];
@@ -18,6 +19,8 @@ export interface AppEntry {
   scopes_restricted: boolean;
   /** Purposes this App may look up members' contact e-mail for (POST /v1/apps/{app_id}/contacts/lookup). Empty = not allowed. */
   contact_purposes: readonly string[];
+  /** Member data fields this App may read for its members through POST /v1/apps/{app_id}/members/lookup, hidden ones included (ADR 0022). Empty = none. */
+  member_data_fields: readonly string[];
   min_version: string;
   /** Public remote settings returned by GET /v1/apps/{app_id}/config. Never secrets. */
   config: Readonly<Record<string, unknown>>;
@@ -100,6 +103,12 @@ function purposeList(v: unknown): readonly string[] {
   return out;
 }
 
+function dataFieldList(v: unknown): readonly string[] {
+  const out = list(v, /^[a-z_]{2,40}$/, "可使用的會員資料欄位", 60);
+  if (!out.every((x) => MEMBER_DATA_KEYS.includes(x))) throw new AppDefinitionError("可使用的會員資料欄位有不認得的項目。");
+  return out;
+}
+
 /** Validates one App definition. Throws AppDefinitionError with a message the back office can show. */
 export function parseApp(item: unknown): AppEntry {
   if (!isRecord(item) || typeof item.app_id !== "string" || !APP_ID.test(item.app_id)) {
@@ -125,6 +134,7 @@ export function parseApp(item: unknown): AppEntry {
     scopes: item.scopes_restricted === true ? scopeList(item.scopes) : APP_SCOPES,
     scopes_restricted: item.scopes_restricted === true,
     contact_purposes: purposeList(item.contact_purposes),
+    member_data_fields: dataFieldList(item.member_data_fields),
     min_version: item.min_version,
     config: Object.freeze({ ...(item.config as Record<string, unknown> | undefined) }),
     auth: Object.freeze({ google_audiences: list(auth.google_audiences, AUDIENCE, "額外的 Google 用戶端 ID", 10) }),
@@ -144,6 +154,7 @@ export function appDefinition(app: AppEntry): Record<string, unknown> {
     scopes: app.scopes,
     scopes_restricted: app.scopes_restricted,
     contact_purposes: app.contact_purposes,
+    member_data_fields: app.member_data_fields,
     min_version: app.min_version,
     config: app.config,
     auth: { google_audiences: app.auth.google_audiences },
@@ -165,6 +176,7 @@ export interface AppForm {
   /** Super admin only: switches the App to an explicit scope list (null/omitted keeps what is stored). */
   scopes?: string[];
   contact_purposes?: string[];
+  member_data_fields?: string[];
 }
 
 const clean = (v: string[] | undefined) => [...new Set((v ?? []).map((x) => x.trim()).filter(Boolean))];
@@ -195,6 +207,7 @@ export function definitionFromForm(form: AppForm, options: { defaults?: boolean;
     // A new App starts with the least privilege; an existing one keeps what it has unless the form names scopes.
     ...scopeFields(form, options),
     contact_purposes: form.contact_purposes ?? options.keep?.contact_purposes ?? [],
+    member_data_fields: form.member_data_fields ?? options.keep?.member_data_fields ?? [],
     min_version: (form.min_version ?? "").trim() || options.keep?.min_version || "0.0.0",
     config: options.keep?.config ?? {},
     auth: { google_audiences: form.extra_google_audiences === undefined && k ? [...k.auth.google_audiences] : clean(form.extra_google_audiences) },

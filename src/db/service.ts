@@ -10,7 +10,7 @@ import { getApp } from "./apps";
 import { auditStatement } from "./audit";
 
 export const SERVICE_TOKEN_LIFETIME = 600;
-export const SERVICE_SCOPE = "contacts.lookup";
+export const SERVICE_SCOPE = "service.lookup";
 export const LOOKUP_MAX = 50;
 
 /** New credential (replaces the old one). The secret is returned once; only its hash is stored. */

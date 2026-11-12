@@ -6,6 +6,8 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { APP_SCOPES, CONTACT_PURPOSES, PURPOSE_LABELS, SCOPE_LABELS } from "../apps/registry";
+import { DATA_USES, MEMBER_DATA_FIELDS } from "../apps/data-fields";
+import { MEMBER_LOOKUP_MAX, lookupMemberData } from "../db/member-data";
 import { REAUTH_MAX_AGE, can, type Permission } from "../admin/roles";
 import { epochSeconds } from "../lib/time";
 import { resolveIssuer } from "../oidc/config";
@@ -52,6 +54,26 @@ const lookupRoute = createRoute({
   },
 });
 
+const memberDataRoute = createRoute({
+  method: "post",
+  path: "/v1/apps/{app_id}/members/lookup",
+  tags: ["platform"],
+  summary: "Member data for up to 50 members who signed in to this App, hidden fields included (service token; only fields the owner allowed for the App)",
+  description:
+    "The member's 公開／隱藏 switch decides what the public page shows; it does not limit the Apps of the Hglobal ecosystem. Ask only for the fields the feature needs. `use` is `process` (handled inside your server) or `display` (shown to other members in the App). Do not store the values beyond what the feature needs, do not pass them to anyone outside the ecosystem. Each call is audited (App, count, field names, use; never values). Amway fields that need review are returned only once approved; members who are not Amway members get null for Amway fields.",
+  security: [{ bearer: [] }],
+  request: {
+    params: AppIdParam,
+    body: { required: true, content: json(z.object({ member_ids: z.array(z.string().uuid()).min(1).max(MEMBER_LOOKUP_MAX), fields: z.array(z.string().max(40)).min(1).max(60), use: z.enum(DATA_USES) })) },
+  },
+  responses: {
+    200: { description: "Members", content: json(z.object({ members: z.array(z.object({ member_id: z.string(), fields: z.record(z.unknown()) })), not_found: z.array(z.string()) }).openapi("MemberDataLookup")) },
+    401: err("unauthenticated"),
+    403: err("forbidden or field_not_allowed"),
+    422: err("invalid_field"),
+  },
+});
+
 // ---------- back office ----------
 const security = [{ session: [] }];
 const common = { 401: err("unauthenticated or reauth_required"), 403: err("forbidden") };
@@ -79,7 +101,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     const t = await issueServiceToken(c.env, deps, resolveIssuer(c.env, c.req.url), app_id, client_secret, c.get("requestId"));
     c.header("cache-control", "no-store");
     if (!t) return c.json(errorBody("invalid_client", "App 或金鑰不正確", c.get("requestId")), 401) as never;
-    return c.json({ access_token: t.token, token_type: "Bearer" as const, expires_in: t.expires_in, scope: "contacts.lookup" }, 200);
+    return c.json({ access_token: t.token, token_type: "Bearer" as const, expires_in: t.expires_in, scope: "service.lookup" }, 200);
   });
 
   app.openapi(lookupRoute, async (c) => {
@@ -91,6 +113,20 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     if (!a || !a.contact_purposes.includes(purpose)) return c.json(errorBody("purpose_not_allowed", "這個用途沒有獲得業主授權", c.get("requestId"), { purpose }), 403) as never;
     c.header("cache-control", "no-store");
     return c.json(await lookupContacts(c.env.DB, appId, purpose, member_ids, c.get("requestId"), deps.now()), 200);
+  });
+
+  app.openapi(memberDataRoute, async (c) => {
+    const appId = await checkServiceToken(c.env, deps, resolveIssuer(c.env, c.req.url), c.req.header("authorization"));
+    if (!appId) return c.json(errorBody("unauthenticated", "Invalid or expired service token", c.get("requestId")), 401) as never;
+    if (appId !== c.req.valid("param").app_id) return c.json(errorBody("forbidden", "This credential belongs to another App", c.get("requestId")), 403) as never;
+    const a = await getApp(c.env.DB, appId, deps.now());
+    const { member_ids, fields, use } = c.req.valid("json") as { member_ids: string[]; fields: string[]; use: string };
+    const unknown = fields.filter((f) => !MEMBER_DATA_FIELDS.some((o) => o.key === f));
+    if (unknown.length) return c.json(errorBody("invalid_field", "不認得的欄位", c.get("requestId"), { fields: unknown }), 422) as never;
+    const denied = fields.filter((f) => !a?.member_data_fields.includes(f));
+    if (!a || denied.length) return c.json(errorBody("field_not_allowed", "這些欄位沒有獲得業主授權", c.get("requestId"), { fields: denied }), 403) as never;
+    c.header("cache-control", "no-store");
+    return c.json(await lookupMemberData(c.env.DB, appId, use, member_ids, [...new Set(fields)], c.get("requestId"), deps.now()), 200);
   });
 
   app.openapi(platformRoute, async (c) => {
@@ -106,6 +142,8 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
         scopes_restricted: a.scopes_restricted,
         contact_purposes: a.contact_purposes,
         scope_options: APP_SCOPES.map((key) => ({ key, label: SCOPE_LABELS[key] ?? key })),
+        member_data_fields: a.member_data_fields,
+        member_data_options: MEMBER_DATA_FIELDS,
         contact_purpose_options: CONTACT_PURPOSES.map((key) => ({ key, label: PURPOSE_LABELS[key] ?? key })),
         webhook: w ? { url: w.url, enabled: w.enabled === 1, secret_version: w.secret_version } : null,
         signing_configured: !!c.env.WEBHOOK_SIGNING_KEY,

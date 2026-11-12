@@ -403,11 +403,20 @@ export const ADMIN_JS = String.raw`
           var on = p.contact_purposes.indexOf(o.key) >= 0, c = cbox(o.label + "（" + o.key + "）", on, function (v) { chk["purpose:" + o.key] = v; });
           chk["purpose:" + o.key] = on; return el("div", {}, [c]);
         });
+        var dataBoxes = [], lastGroup = "";
+        var dataRows = [];
+        p.member_data_options.forEach(function (o) {
+          if (o.group !== lastGroup) { lastGroup = o.group; dataRows.push(el("div", { class: "help", text: o.group })); }
+          var on = p.member_data_fields.indexOf(o.key) >= 0, c = cbox(o.label + "（" + o.key + "）", on, function (v) { chk["data:" + o.key] = v; });
+          chk["data:" + o.key] = on; dataBoxes.push(c); dataRows.push(el("div", {}, [c]));
+        });
+        function setAllData(v) { dataBoxes.forEach(function (c, i) { c.setAttribute("aria-checked", v ? "true" : "false"); chk["data:" + p.member_data_options[i].key] = v; }); }
         function saveScopes() {
           var scopes = p.scope_options.map(function (o) { return o.key; }).filter(function (sc) { return chk[sc]; });
           var purposes = p.contact_purpose_options.map(function (o) { return o.key; }).filter(function (pp) { return chk["purpose:" + pp]; });
           if (!p.scopes_restricted && !confirm("這會把「" + a.name + "」從「全部權限」改成只有勾選的權限，之後沒勾的功能會被拒絕。確定嗎？")) return;
-          api("PUT", "/v1/admin/apps/" + id, { name: a.name, scopes: scopes, contact_purposes: purposes }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存（30 秒內生效）"); } else if (!reauth(res)) say(box, false, errText(res)); });
+          var fieldsAllowed = p.member_data_options.map(function (o) { return o.key; }).filter(function (k) { return chk["data:" + k]; });
+          api("PUT", "/v1/admin/apps/" + id, { name: a.name, scopes: scopes, contact_purposes: purposes, member_data_fields: fieldsAllowed }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存（30 秒內生效）"); } else if (!reauth(res)) say(box, false, errText(res)); });
         }
         var log = (p.webhook_log.events || []).map(function (e) { return el("div", { class: "help", text: e.created_at.slice(0, 16).replace("T", " ") + "｜" + e.type + "｜" + e.status + "（" + e.attempts + " 次" + (e.last_error ? "，" + e.last_error : "") + "）" }); });
         var rep = a.standards || [], ck = a.checks || {};
@@ -441,6 +450,10 @@ export const ADMIN_JS = String.raw`
           el("p", { class: "help", text: p.scopes_restricted ? "這款 App 目前只有勾選的權限；沒勾的功能會被拒絕。" : "目前是舊制：這款 App 擁有全部權限（尚未收緊）。勾選後按儲存，才會改成只有勾選的權限；沒勾的功能之後會被拒絕。" }),
           el("div", {}, scopeRows),
           el("p", { class: "help", text: "允許查詢聯絡信箱的用途（沒勾＝不能查詢）：" }), el("div", {}, purposeRows),
+          el("h3", { text: "可使用的會員資料欄位（含會員設為隱藏的）" }),
+          el("p", { class: "help", text: "會員的「公開／隱藏」只管對外的公開頁；寰宇生態系內的 App 經你勾選後，可以讀取在這款 App 登入過的會員的這些欄位（隱藏的也可以），不必再問會員。沒勾＝不能讀。請先確認隱私權政策已寫明這項用途再勾選。" }),
+          el("div", { class: "inline" }, [el("button", { text: "全部勾選", onclick: function () { setAllData(true); } }), el("button", { text: "全部取消", onclick: function () { setAllData(false); } })]),
+          el("div", {}, dataRows),
           el("div", { class: "inline" }, [el("button", { class: "primary", text: "儲存權限與用途", onclick: saveScopes }), el("button", { text: "返回", onclick: reload }), box])
         ]));
       });
