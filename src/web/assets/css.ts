@@ -211,16 +211,13 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .edu-line .gap{display:none}
 @media (min-width:560px){.edu-line{grid-template-columns:1fr 1fr}}
 .num-line{display:grid;grid-template-columns:minmax(120px,170px) 1fr auto;gap:8px;align-items:start;margin:6px 0}
-@media (max-width:480px){.num-line{grid-template-columns:1fr;}}
+@media (max-width:480px){.num-line{grid-template-columns:1fr auto}.num-line>.dd{grid-column:1 / -1}}
+.num-more{display:flex;justify-content:flex-end}
 .actions .small .ico{width:1em;height:1em}
 /* three picture buttons in one full-width row */
 .avbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 6px}
 .avbtns button{min-height:44px;padding:6px 4px;font-size:.95rem;white-space:nowrap}
 /* public address with the big share button at its left */
-.pubrow{display:flex;align-items:center;gap:12px;margin-top:8px}
-.pubtext{min-width:0;display:flex;flex-direction:column}.pubtext a{word-break:break-all}
-.share-big{flex:none;width:56px;height:56px;min-height:56px;padding:0;border-radius:16px;border-color:var(--green);color:var(--green);background:var(--green-soft)}
-.share-big .ico{width:30px;height:30px}
 /* social links: icons under the name, centered; 5 per row, 7 (smaller) when there are more than two rows */
 .socials{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 0;margin:2px 0 14px}
 .soc{position:relative;width:20%;display:flex;flex-direction:column;align-items:center;gap:4px}
