@@ -1,10 +1,10 @@
-// General privacy policy (/privacy), approved by the owner 2026-11-10. Separate from the Amway notice
+// General privacy policy (/privacy), approved by the owner 2026-11-10; real-name wording added 2026-11-12 (owner approved, ADR 0020). Separate from the Amway notice
 // (/privacy/amway, src/web/privacy.ts). Do not edit the wording without the owner.
 // Text is escaped when rendered; the token {{amway}} becomes a link to /privacy/amway.
 import type { PrivacySection } from "./privacy";
 
 export const POLICY_TITLE = "隱私權政策";
-export const POLICY_UPDATED = "2026 年 11 月 10 日";
+export const POLICY_UPDATED = "2026 年 11 月 12 日";
 
 export const POLICY_SECTIONS: PrivacySection[] = [
   {
@@ -21,7 +21,7 @@ export const POLICY_SECTIONS: PrivacySection[] = [
     heading: "3. 我們收集的資料",
     items: [
       "Google 登入資料：Google 帳號識別碼、Google 信箱與信箱是否已驗證、Google 大頭貼網址、名稱。我們只用 Google 帳號識別碼辨識您，不會用信箱或姓名合併帳號。我們不會取得您的 Google 密碼。",
-      "您自己填寫的基本資料：例如顯示名稱、暱稱、本名、頭像、座右銘、自我介紹、職業、公司、學歷、興趣、專長、聯絡信箱、手機、居住地區、生日。這些都由您自己選擇是否填寫。",
+      "您自己填寫的基本資料：例如顯示名稱、暱稱、真實姓名、頭像、座右銘、自我介紹、職業、公司、學歷、興趣、專長、聯絡信箱、手機、居住地區、生日。這些都由您自己選擇是否填寫。",
       "會員編號：系統會配發一組會員編號，您也可以自行設定。",
       "Amway 會員資料：只有在您勾選「我是Amway會員」並同意《Amway 會員資料之蒐集與跨系統利用告知》後才會收集，詳見{{amway}}。",
       "系統自動產生的資料：註冊國家（由註冊時的連線位置判斷，只記錄國家）、登入紀錄、站內通知，以及操作紀錄（用於安全與稽核，不含您的姓名、信箱與 Amway 欄位內容）。",
@@ -34,6 +34,7 @@ export const POLICY_SECTIONS: PrivacySection[] = [
       "依您的設定顯示公開基本資料頁。",
       "讓您用同一個帳號登入合作營運單位的網站或 app，並依您的授權提供必要資料。",
       "會員資格審核、內容存取權限判斷、重複編號比對與夫妻綁定。",
+      "辨識付費課程報名的繳款人並進行對帳（您填寫的真實姓名；只有在您報名付費課程或對帳時，合作營運單位才會以您本人的登入讀取，不會公開，也不會用於其他用途）。",
       "防止冒用、維護系統安全。",
     ],
   },
@@ -41,7 +42,7 @@ export const POLICY_SECTIONS: PrivacySection[] = [
     heading: "5. 公開與分享",
     items: [
       "公開基本資料頁：頭像與會員編號一律公開；其他欄位由您自己設定是否公開。",
-      "合作營運單位：您用本網站帳號登入合作營運單位時，對方只會取得您授權的資料。Amway 會員資料以資格查詢方式提供，詳見{{amway}}。",
+      "合作營運單位：您用本網站帳號登入合作營運單位時，對方只會取得您授權的資料。Amway 會員資料以資格查詢方式提供，詳見{{amway}}。真實姓名預設不公開，僅在您報名付費課程時提供給合作營運單位。",
       "服務供應商：Google（登入驗證）、Cloudflare（網站與資料存放，伺服器可能位於台灣以外地區）。",
       "除上述情況與法令要求外，我們不會把您的個人資料提供給其他人，也不會出售。",
     ],
