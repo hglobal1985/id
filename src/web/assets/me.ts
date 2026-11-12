@@ -496,16 +496,26 @@ export const ME_JS = String.raw`
     var cands = el("div");
     function editor() {
       var list = el("div"), max = f.max_items || 1;
+      // The box shows the digits only (the country is chosen in the list above it); a number that is not changed keeps its stored form.
+      var plus = max > 1 ? el("button", { type: "button", class: "num-plus", "aria-label": "新增一組", title: "新增一組", onclick: function () {
+        if (list.children.length < max) { addRow({ country: (numbers()[0] || {}).country || "TW", number: "" }); placePlus(); }
+      } }, [HG.icon("plus")]) : null;
+      function placePlus() {
+        if (!plus) return;
+        var last = list.lastElementChild; plus.hidden = list.children.length >= max;
+        if (last) last.appendChild(plus);
+      }
       function addRow(e) {
         var dd = HG.dropdown({ options: def.options, value: e.country, searchable: true });
-        var num = el("input", { type: "text", maxlength: 20, "aria-label": "會員編號", placeholder: "編號" }); num.value = e.number;
-        var row = el("div", { class: "num-line" }, [dd.el, num, list.children.length >= 0 && max > 1 ? el("button", { type: "button", class: "small", text: "移除", onclick: function () { row.remove(); } }) : null]);
-        row.getValue = function () { return { country: dd.get(), number: num.value }; };
+        var shown = e.number.indexOf(e.country) === 0 ? e.number.slice(e.country.length) : e.number;
+        var num = el("input", { type: "text", maxlength: 20, inputmode: "numeric", "aria-label": "會員編號", placeholder: "編號" }); num.value = shown;
+        var row = el("div", { class: "num-line" }, [dd.el, num, max > 1 ? el("button", { type: "button", class: "small", text: "移除", onclick: function () { row.remove(); placePlus(); } }) : null]);
+        row.getValue = function () { return { country: dd.get(), number: num.value === shown ? e.number : num.value }; };
         list.appendChild(row);
       }
       numbers().forEach(addRow);
-      var more = max > 1 ? el("div", { class: "num-more" }, [el("button", { type: "button", class: "small", onclick: function () { if (list.children.length < max) addRow({ country: (numbers()[0] || {}).country || "TW", number: "" }); } }, [HG.icon("plus"), document.createTextNode("新增一組")])]) : null;
-      return { node: el("div", {}, [el("div", { class: "help", text: def.help }), list, more]), typing: false, get: function () { return Array.prototype.map.call(list.children, function (r) { return r.getValue(); }); } };
+      placePlus();
+      return { node: el("div", {}, [list]), typing: false, get: function () { return Array.prototype.map.call(list.children, function (r) { return r.getValue(); }); } };
     }
     function save(v) {
       return api("PUT", "/v1/me/profile/fields/member_number", { value: v }).then(function (r) {

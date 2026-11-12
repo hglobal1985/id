@@ -210,9 +210,9 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .edu-line{display:grid;grid-template-columns:1fr;gap:8px}
 .edu-line .gap{display:none}
 @media (min-width:560px){.edu-line{grid-template-columns:1fr 1fr}}
-.num-line{display:grid;grid-template-columns:minmax(120px,170px) 1fr auto;gap:8px;align-items:start;margin:6px 0}
-@media (max-width:480px){.num-line{grid-template-columns:1fr auto}.num-line>.dd{grid-column:1 / -1}}
-.num-more{display:flex;justify-content:flex-end}
+.num-line{display:grid;grid-template-columns:minmax(120px,170px) 1fr auto auto;gap:8px;align-items:start;margin:6px 0}
+@media (max-width:480px){.num-line{grid-template-columns:1fr auto auto}.num-line>.dd{grid-column:1 / -1}}
+.num-line>button{min-height:44px;align-self:stretch}.num-line>button.num-plus{min-width:44px;padding:0}.num-line>button.num-plus .ico{width:1.3em;height:1.3em}
 .actions .small .ico{width:1em;height:1em}
 /* three picture buttons in one full-width row */
 .avbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 6px}
