@@ -70,6 +70,14 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - 公開頁（純淨，給別人看）：`/<國碼二碼緊接編號>`，例如 `TW9475831`；沒有選單、頁尾、分享與編輯按鈕。
 - 自己的頁面 `/my/<代碼>`、編輯頁 `/my/edit`；`/me` 已不存在。
 
+## 6.7 平台規範補充（2026-11-12.9）
+- **真實姓名**：欄位 `legal_name`（預設不公開）。只在報名付費課程與對帳當下用會員本人的 token 讀 `GET /v1/me/profile` 的 `fields.legal_name`；不保存、不寫日誌、不另建欄位。
+- **獎銜「無」**：選項（含「無」）來自 `GET /v1/amway/field-definitions` 的 `rank.options`；會員值 `fields.rank.value` 為 `null` 或 `"none"` 都代表「無」。對「無」顯示什麼文字由各 App 決定。
+- **顯示 Amway 資料**：只給本人、只放記憶體；給他人看時遵守該會員的公開設定。
+- **深色模式**：跟隨系統，配色依視覺規範 1.5；業主核准的例外才可保留自己的配色。
+- **測試環境**：正式前用 staging（`https://hglobal-id-staging.hglobal1985-static.workers.dev`，會員、金鑰、App 登記獨立）。`http://localhost` 不能登記；手機用已登記的深層連結，網頁用 https 預覽網址。測試版共用登入鍵名建議 `hglobal.sso.staging`。
+- **新規範流程**：任何新規範先寫進串接指令與更新檢查清單並升版，各 App 只補差異（見 `AGENTS.md`「平台規範」）。
+
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 

@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-12.8";
-export const HANDOFF_UPDATED = "2026-11-12 21:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-12.9";
+export const HANDOFF_UPDATED = "2026-11-12 22:30（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -83,6 +83,10 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `   - 社群連結（取代原本的「個人網站」欄位，一律顯示）：名片照片下方一列置中的小圖示，每列 5 個；圖示總數超過兩排時改縮小，每列 7 個。最後一個是「＋」圖示，下方寫「新增連結」。每個圖示下方有「複製」小標籤（複製該網址），點圖示在新視窗開啟連結。可選平台與圖示由 GET ${origin}/v1/social/platforms 取得（順序與圖示由後台決定，不要寫死；custom 為 true 的是「自定義」）；GET／POST ${origin}/v1/me/social-links（body {"platform_key","url","label"?}，網址沒打 http:// 或 https:// 時由中央補上 https://、打了就照會員輸入的保留（只收這兩種開頭），最多 30 個，同一平台可重複新增）、DELETE ${origin}/v1/me/social-links/{id}；「自定義」連結可用 PUT ${origin}/v1/me/social-links/{id}/icon 直接送圖片位元組（先縮成約 64 px 的小圖，不超過 16 KB）。`,
     "   - 審核規則：選「直銷商培訓系統」＝寰宇不需審核，立刻生效。只有「寰宇＋同時填了地區教育中心」時，「中心」與「獎銜」才需審核：送出後欄位 status 為 pending（顯示「等待審核中」），原本的值維持有效，由相同中心的審核員核准後才換成新值；駁回則維持原值。App 只顯示 status，不要自己判斷。",
     "   - 真實姓名（欄位 legal_name，基本資料區塊，預設隱藏）：只用於付費課程報名與對帳，不要顯示在公開畫面。要辨識繳款人時，只在「報名付費課程」與「對帳」的當下，用會員本人的 Access Token 呼叫 GET /v1/me/profile 讀 fields.legal_name.value；沒有填就請會員到中央會員的編輯頁填寫，不要在 App 內另建一份姓名欄位，也不要把它存進 App 的資料庫、日誌或分析工具（對帳需要留存時只留訂單與 member_id 的對應，姓名每次現讀）。舊的 primary_name 已永久刪除，不會恢復。",
+    "   - 獎銜「無」：獎銜選項（含「無」）一律來自 GET /v1/amway/field-definitions 的 rank.options，不要自己複製或寫死。會員的值在 GET /v1/me/amway 的 fields.rank.value：null（從未填寫）與 \"none\"（選了「無」）兩種都代表「無」，App 要一視同仁；各 App 對「無」要顯示什麼文字由該 App 自己決定，不要回寫中央會員。",
+    "   - 顯示會員自己的 Amway 資料（獎銜、系統、中心等）：只顯示給本人、只放記憶體、不保存、不寫日誌；要顯示給其他會員看時，必須使用中央會員公開頁的資料並遵守該會員的公開／隱藏設定，不可自行取得他人的 Amway 資料。這樣不需要新的同意文字。",
+    "   - 測試環境：正式前一律用 staging（https://hglobal-id-staging.hglobal1985-static.workers.dev，兩個環境的會員、簽章金鑰、App 登記各自獨立）。網頁版來源只能登記 https 網址、回傳網址只能是自訂 scheme，所以 http://localhost 不能登記；手機用 Expo dev build 搭配已登記的深層連結，網頁用 https 預覽網址（請業主通知中央會員在 staging 補登記）。測試版 App 的共用登入鍵名建議用 hglobal.sso.staging，避免與正式版互相覆蓋。",
+    "   - 深色模式：跟隨系統設定自動切換。配色以視覺規範 1.5 的深色色表為準；經業主明確核准保留自己配色的 App（目前：行動大學）除外，仍須跟隨系統、對比至少 4.5:1。",
     "   - 一律公開的欄位（顯示名稱、居住國家／地區、生命靈數九宮格，以及會員編號、頭像）：沒有填寫就不顯示；欄位定義的 visibility.configurable 為 false，畫面上仍顯示和其他欄位一樣的圓角方框與眼睛圖案「公開」，但不能按（沒有切換）；PUT /v1/me/profile/visibility 對這些欄位回 422 always_public。所有 Amway 欄位（直銷商培訓系統、地區教育中心、獎銜、推薦人、上手、皇冠大使）都有公開／隱藏切換，預設值看欄位定義的 visibility.default（皇冠大使預設隱藏，其餘預設公開）。暱稱欄位已刪除。",
     "   - 勾選「我是Amway會員」後，直銷商培訓系統、地區教育中心、獎銜三欄都是必填：系統與中心旁各有一個「無」勾選框，勾了就送出值 \"無\"（算已填，不審核、不顯示方框、不影響資格）；獎銜要等系統與中心都有值（或為無）才能送出，否則 PUT /v1/me/amway/fields/rank 回 422 invalid_field（reason system_center_required）。畫面上三欄標示「（必填）」，缺的時候提示請填寫。",
     "   - 名字旁的方框：名字右邊依序顯示「系統」（直銷商培訓系統）、「中心」（地區教育中心）、「獎銜」（只顯示已審核的，「創辦人」三個字改寫成 F）三個小方框，只在勾選「我是Amway會員」且有填寫時出現；GET /v1/me/profile 的 badges 已算好文字與字級（size 0–3，字多自動縮小到固定五個中文字寬）；訪客看到的公開頁，被隱藏的欄位就沒有對應方框。系統方框直接顯示會員填的詞（例如「寰宇」）。頁首名字固定一行顯示，字多時自動縮小字級；「會員編號」文字加國碼的完整編號（例如 TW9475831）也固定在同一行。",
@@ -134,7 +138,11 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "9. 會員資料頁（三、5）：一律公開欄位只顯示「公開」不能切換、名字旁的系統／中心／獎銜方框、電腦版 Enter 不動作、地區教育中心點開顯示全部、App 內原地修改、關聯詞、多項欄位確認符號、學歷分列（空白的碩士、博士列會自動消失）、會員編號提示與公開網址格式、Amway 勾選立即生效、地區教育中心的條件式關聯詞、不使用原生下拉與勾選框、亮色系配色。（2026-11-11.1 新增，.2 補充）",
     "10. 視覺規範（視覺規範文件）：顏色只用規範內的色碼、theme 集中管理、圓角與方框尺寸、名字旁方框與會員編號的樣式、不使用原生下拉與勾選框。（2026-11-11.9 新增）",
     "11. 2026-11-11.9 新增的資料頁項目：頭像上傳前的裁切視窗、置頂三格按鈕、社群連結名稱框（兩行高、可自訂、編輯畫面點名稱可編輯）、九宮格主線／副線／天賦數空心三角形（出現幾次畫幾個）／加總命數空心正方形／圖例只在自己的頁面顯示（對外公開頁不顯示）、區塊大標題「xxx生命靈數 x年x月x日」（一行、字多縮小）、審核規則（寰宇不需審核，寰宇＋中心才審核中心與獎銜）。",
-    "12. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "12. 真實姓名（三、5）：只在報名付費課程與對帳當下用會員本人的 token 讀 fields.legal_name，沒有保存、沒有寫日誌、沒有另建姓名欄位；舊 primary_name 不可再使用。",
+    "13. 獎銜選項來自 field-definitions，null 與 \"none\" 都視為「無」，沒有自己複製的獎銜資料表（三、5）。",
+    "14. 顯示 Amway 資料：只給本人、只放記憶體；給他人看時遵守公開設定（三、5）。",
+    "15. 深色模式跟隨系統，配色符合視覺規範 1.5 或有業主核准的例外；測試用 staging，測試版共用登入鍵名分開（三、5）。",
+    "16. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }
