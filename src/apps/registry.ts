@@ -32,6 +32,26 @@ export interface AppEntry {
 /** Scopes an App may hold. `openid` and `profile` belong to the OIDC flow only. */
 export const APP_SCOPES: readonly string[] = SUPPORTED_SCOPES.filter((s) => s !== "openid" && s !== "profile");
 
+/** What each scope allows, in plain words (the back office shows this first, the code in brackets). */
+export const SCOPE_LABELS: Readonly<Record<string, string>> = {
+  "profile.read": "讀取會員基本資料與通知（頭像、顯示名稱、真實姓名、社群連結、站內通知）",
+  "profile.basic.write": "修改基本資料（顯示名稱、自我介紹、職業、學歷、社群連結、會員編號）",
+  "profile.avatar.write": "更換或移除頭像",
+  "profile.contact.write": "修改聯絡與地區資料（聯絡信箱、手機、居住地）",
+  "profile.birthday.write": "修改生日",
+  "profile.visibility.write": "設定各欄位要公開或隱藏",
+  "profile.spouse.write": "夫妻綁定與解除",
+  "amway.read": "讀取 Amway 資料與查詢資格（系統、中心、獎銜；判斷會員能不能使用某些內容）",
+  "amway.write": "修改 Amway 資料（勾選「我是 Amway 會員」、填系統、中心、獎銜、上手）",
+};
+
+/** What each contact-lookup purpose means, in plain words. */
+export const PURPOSE_LABELS: Readonly<Record<string, string>> = {
+  payment_notice: "付款相關通知（繳費提醒、收據、對帳）",
+  course_notice: "課程相關通知（報名成功、開課、課程異動）",
+  account_security: "帳號安全通知（異常登入、重要資料被修改）",
+};
+
 /** The least-privilege default for a newly registered App: sign-in and eligibility lookup only. */
 export const DEFAULT_APP_SCOPES: readonly string[] = ["amway.read"];
 

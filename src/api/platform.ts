@@ -5,7 +5,7 @@ import type { Context } from "hono";
 import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
-import { CONTACT_PURPOSES } from "../apps/registry";
+import { APP_SCOPES, CONTACT_PURPOSES, PURPOSE_LABELS, SCOPE_LABELS } from "../apps/registry";
 import { REAUTH_MAX_AGE, can, type Permission } from "../admin/roles";
 import { epochSeconds } from "../lib/time";
 import { resolveIssuer } from "../oidc/config";
@@ -105,7 +105,8 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
         scopes: a.scopes,
         scopes_restricted: a.scopes_restricted,
         contact_purposes: a.contact_purposes,
-        contact_purpose_options: CONTACT_PURPOSES,
+        scope_options: APP_SCOPES.map((key) => ({ key, label: SCOPE_LABELS[key] ?? key })),
+        contact_purpose_options: CONTACT_PURPOSES.map((key) => ({ key, label: PURPOSE_LABELS[key] ?? key })),
         webhook: w ? { url: w.url, enabled: w.enabled === 1, secret_version: w.secret_version } : null,
         signing_configured: !!c.env.WEBHOOK_SIGNING_KEY,
         webhook_log: log,
