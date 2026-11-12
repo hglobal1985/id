@@ -1,6 +1,6 @@
 // /assets/me.js — the member's edit page (/my/edit). Built from the field definition APIs (no hard-coded fields,
 // labels or options beyond the education rows). textContent only; member input never becomes HTML.
-// Every field has a public/hidden switch and an edit button that turns into 「儲存」 while editing.
+// Every field has a public/hidden switch and is always in editing state: no edit or save buttons, every change is saved by itself.
 // Written without template literals so it can live in String.raw. Needs /assets/common.js (window.HG).
 export const ME_JS = String.raw`
 (function () {
@@ -53,43 +53,53 @@ export const ME_JS = String.raw`
     return b;
   }
 
-  // One row: label, public/hidden switch, edit button (becomes 「儲存」 while editing), value or editor.
-  // cfg: label, help, note, keys, vis, fixed (text when always public), display(), editor() -> {node,get()}, save(val) -> Promise<res>, reload (full reload after saving)
+  // One row: label, public/hidden switch and the editor, always open. Every change saves by itself (no edit or save button):
+  // dropdowns, ticks and chips right away, plain text after a short pause, text with related words / countries / numbers when the
+  // box is left or a suggestion is picked (so half-typed words never reach the vocabulary or burn the member-number quota).
+  // cfg: label, help, note, keys, vis, forced (always public), editor() -> {node, get(), typing?, watch?}, valid(val) -> bool,
+  // save(val) -> Promise<res>, after(val, res) (no re-render of this row), status() -> node shown under the editor,
+  // noEdit + display() (read-only), below() -> node under the row
   function makeRow(cfg) {
-    var row = el("div", { class: "row" }), valueBox = el("div"), editing = false, ed = null, m = msg();
-    var edit = el("button", { type: "button", class: "small" }), cancel = el("button", { type: "button", class: "small", text: "取消", hidden: true });
-    var tools = el("div", { class: "row-tools" });
-    function paintBtn() {
-      edit.textContent = ""; edit.className = "small" + (editing ? " primary" : "");
-      edit.appendChild(HG.icon(editing ? "floppy" : "pencil")); edit.appendChild(document.createTextNode(editing ? "儲存" : "編輯"));
-      edit.setAttribute("aria-label", (editing ? "儲存" : "編輯") + cfg.label);
-      cancel.hidden = !editing;
-    }
-    function paintValue() {
-      valueBox.textContent = "";
-      if (editing) { ed = cfg.editor(); valueBox.appendChild(ed.node); }
-      else valueBox.appendChild(cfg.display());
-    }
-    function stop() { editing = false; ed = null; paintValue(); paintBtn(); if (cfg.onStop) cfg.onStop(); }
-    edit.addEventListener("click", function () {
-      if (!editing) { editing = true; paintValue(); paintBtn(); m.textContent = ""; return; }
-      edit.disabled = true;
-      Promise.resolve(cfg.save(ed.get())).then(function (res) {
-        edit.disabled = false;
-        if (res && res.status === 200) { HG.toast("已儲存"); if (cfg.after) cfg.after(); else if (cfg.reload) load(); else { stop(); } }
-        else say(m, false, res ? errText(res) : "儲存失敗");
+    var row = el("div", { class: "row" }), valueBox = el("div"), m = msg(), tools = el("div", { class: "row-tools" });
+    var saved = el("span", { class: "saved", "aria-live": "polite" }), statusBox = el("div"), ed = null, last = "", timer = null, busy = false, again = false, fade = null;
+    function key(v) { return JSON.stringify(v); }
+    function paintStatus() { statusBox.textContent = ""; if (cfg.status) { var n = cfg.status(); if (n) statusBox.appendChild(n); } }
+    function mark(text, ok) { saved.textContent = text; saved.className = "saved" + (ok ? " ok" : ""); clearTimeout(fade); if (ok) fade = setTimeout(function () { saved.textContent = ""; }, 2500); }
+    function flush() {
+      clearTimeout(timer);
+      if (!ed) return;
+      var v = ed.get();
+      if (key(v) === last || (cfg.valid && !cfg.valid(v))) return;
+      if (busy) { again = true; return; }
+      busy = true; mark("儲存中…", false); m.textContent = "";
+      Promise.resolve(cfg.save(v)).then(function (res) {
+        busy = false;
+        if (res && res.status === 200) { last = key(v); mark("已儲存", true); if (cfg.after) cfg.after(v, res); paintStatus(); }
+        else { mark("", false); say(m, false, res ? errText(res) : "儲存失敗"); }
+        if (again) { again = false; flush(); }
       });
-    });
-    cancel.addEventListener("click", stop);
-    row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), tools]));
+    }
+    function later(ms) { clearTimeout(timer); timer = setTimeout(flush, ms); }
+    row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), saved, tools]));
     if (cfg.note) row.appendChild(el("div", {}, [el("span", { class: "note", text: cfg.note })]));
     if (cfg.help) row.appendChild(el("div", { class: "help", text: cfg.help }));
     if (cfg.forced) tools.appendChild(lockedPill());
     else if (cfg.keys) tools.appendChild(eyeButton(cfg.keys, cfg.vis));
-    if (!cfg.noEdit) { tools.appendChild(cancel); tools.appendChild(edit); }
-    row.appendChild(valueBox); row.appendChild(m);
-    paintValue(); paintBtn();
-    row.refresh = paintValue;
+    row.appendChild(valueBox);
+    if (cfg.noEdit) valueBox.appendChild(cfg.display());
+    else {
+      ed = cfg.editor(); valueBox.appendChild(ed.node); last = key(ed.get());
+      var watch = ed.watch === undefined ? valueBox : ed.watch;
+      if (watch && window.MutationObserver) new MutationObserver(function () { later(350); }).observe(watch, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked"] });
+      if (ed.typing !== false) valueBox.addEventListener("input", function () { later(900); });
+      valueBox.addEventListener("change", function () { later(200); });
+      valueBox.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".sg-list, .dd-list")) later(250); });
+      valueBox.addEventListener("focusout", function () { setTimeout(flush, 180); });
+    }
+    row.appendChild(statusBox); row.appendChild(m);
+    if (cfg.below) row.appendChild(cfg.below());
+    paintStatus();
+    row.flush = flush; row.refreshStatus = paintStatus;
     return row;
   }
 
@@ -131,7 +141,8 @@ export const ME_JS = String.raw`
       var v = S.profile.fields[def.key].value, input, node;
       if (def.type === "tags") {
         var t = HG.tags({ value: v || [], max: def.max_items, itemMax: def.item_max_length, label: def.label, fetcher: def.suggest ? suggestFetcher(def.suggest) : null });
-        return { node: t.el, get: function () { var a = t.get(); return a.length ? a : null; } };
+        // Only the chips are watched and typing does not save: leaving the box (or a separator) turns the text into a chip first.
+        return { node: t.el, typing: false, watch: t.el.querySelector(".chips-in"), get: function () { var a = t.get(); return a.length ? a : null; } };
       }
       if (def.type === "select" && !def.ui) {
         var dd = HG.dropdown({ options: [{ value: "", label: "（未選擇）" }].concat(def.options || []), value: v || "", block: true });
@@ -166,7 +177,7 @@ export const ME_JS = String.raw`
         } });
         kids.push(el("div", { class: "actions" }, [dice]));
       }
-      return { node: el("div", {}, kids), get: function () { return input.value.trim() || null; } };
+      return { node: el("div", {}, kids), typing: !(def.suggest || def.ui), get: function () { return input.value.trim() || null; } };
     }
     function save(val) {
       return api("PUT", "/v1/me/profile/fields/" + encodeURIComponent(def.key), { value: val }).then(function (r) {
@@ -174,7 +185,13 @@ export const ME_JS = String.raw`
         return r;
       });
     }
-    return makeRow({ label: def.label, help: def.help, keys: [def.key], vis: st.visibility, forced: def.visibility.configurable === false, display: display, editor: editor, save: save, reload: def.key === "birthday" });
+    // The date is saved as soon as year, month and day are all chosen (or all cleared); then the chart is drawn again at once.
+    function valid(val) { return def.type !== "date" || val === null || /^\d{4}-\d{2}-\d{2}$/.test(val); }
+    function after() {
+      if (def.key === "birthday") refreshBirthday();
+      else if (def.key === "display_name") { swap("avatar"); retitleLife(); }
+    }
+    return makeRow({ label: def.label, help: def.help, keys: [def.key], vis: st.visibility, forced: def.visibility.configurable === false, display: display, editor: editor, save: save, valid: valid, after: after });
   }
 
   // ---- education: one line per level (school + department) ----
@@ -197,7 +214,7 @@ export const ME_JS = String.raw`
       var di = el("input", { type: "text", maxlength: dd.max_length, placeholder: "系名", "aria-label": l.label + "系名" });
       si.value = f[l.school].value || ""; di.value = f[l.dept].value || "";
       var node = el("div", { class: "edu-line" }, [HG.suggestBox(si, suggestFetcher(sd.suggest)), el("div", { class: "gap" }), HG.suggestBox(di, suggestFetcher(dd.suggest))]);
-      return { node: node, get: function () { return { school: si.value.trim() || null, dept: di.value.trim() || null }; } };
+      return { node: node, typing: false, get: function () { return { school: si.value.trim() || null, dept: di.value.trim() || null }; } };
     }
     function save(v) {
       return api("PUT", "/v1/me/profile/fields/" + l.school, { value: v.school }).then(function (r1) {
@@ -206,22 +223,15 @@ export const ME_JS = String.raw`
         return api("PUT", "/v1/me/profile/fields/" + l.dept, { value: v.dept }).then(function (r2) { if (r2.status === 200) f[l.dept].value = r2.body.value; return r2; });
       });
     }
-    // A master or doctor line that stays empty disappears again (also when the member cancels).
-    function onStop() {
-      if (l.key === "university" || levelHas(l)) return;
-      UI[l.key] = false;
-      if (l.key === "master" && !levelHas(LEVELS[2])) UI.doctor = false;
-      render();
-    }
-    return makeRow({ label: l.label, keys: [l.school, l.dept], vis: vis, display: display, editor: editor, save: save, onStop: onStop });
+    return makeRow({ label: l.label, keys: [l.school, l.dept], vis: vis, display: display, editor: editor, save: save });
   }
   function educationCard() {
     var kids = [];
     LEVELS.forEach(function (l, i) {
-      if (levelShown(l)) { var r = eduRow(l); kids.push(r); if (UI.justAdded === l.key) { UI.justAdded = null; var b = r.querySelector(".row-tools button:last-child"); if (b) setTimeout(function () { b.click(); }, 0); } }
+      if (levelShown(l)) kids.push(eduRow(l));
       var next = LEVELS[i + 1];
       if (next && levelShown(l) && !levelShown(next)) {
-        kids.push(el("div", { class: "actions" }, [el("button", { type: "button", class: "small", onclick: function () { UI[next.key] = true; UI.justAdded = next.key; render(); } }, [HG.icon("plus"), document.createTextNode("新增" + next.label + "學歷")])]));
+        kids.push(el("div", { class: "actions" }, [el("button", { type: "button", class: "small", onclick: function () { UI[next.key] = true; render(); } }, [HG.icon("plus"), document.createTextNode("新增" + next.label + "學歷")])]));
       }
     });
     return card("學歷", kids);
@@ -441,7 +451,7 @@ export const ME_JS = String.raw`
       }
       numbers().forEach(addRow);
       var more = max > 1 ? el("div", { class: "actions" }, [el("button", { type: "button", class: "small", onclick: function () { if (list.children.length < max) addRow({ country: (numbers()[0] || {}).country || "TW", number: "" }); } }, [HG.icon("plus"), document.createTextNode("新增一組")])]) : null;
-      return { node: el("div", {}, [el("div", { class: "help", text: def.help }), list, more]), get: function () { return Array.prototype.map.call(list.children, function (r) { return r.getValue(); }); } };
+      return { node: el("div", {}, [el("div", { class: "help", text: def.help }), list, more]), typing: false, get: function () { return Array.prototype.map.call(list.children, function (r) { return r.getValue(); }); } };
     }
     function save(v) {
       return api("PUT", "/v1/me/profile/fields/member_number", { value: v }).then(function (r) {
@@ -455,12 +465,18 @@ export const ME_JS = String.raw`
               el("div", { class: "hero" }, [HG.bubble("md", c.avatar_url, c.display_name), el("p", { text: "此編號與「" + (c.display_name || "一位會員") + "」" + (c.rank ? "（" + c.rank + "）" : "") + "相同。是否與此會員綁定為夫妻？" })]),
               el("button", { type: "button", class: "primary", text: "綁定為夫妻", onclick: function () { api("POST", "/v1/me/spouse", { candidate_id: c.candidate_id }).then(function (b) { if (b.status === 200) load(); else HG.toast(errText(b)); }); } })]));
           });
-          return { status: 0, body: { error: { message: "已儲存；請看下方的夫妻綁定提示" } } };
         }
         return r;
       });
     }
-    var row = makeRow({ label: f.label, note: note, forced: true, display: display, editor: editor, save: save, noEdit: !canEdit, reload: true });
+    // The public address stays visible under the numbers and follows every change.
+    var urlBox = el("div");
+    function paintUrl() { urlBox.textContent = ""; var u = S.profile.fields.member_number.public_url; if (u) urlBox.appendChild(publicUrlRow(u)); }
+    function valid(list) { return list.length > 0 && list.every(function (e) { return e.number.trim(); }); }
+    function after() {
+      api("GET", "/v1/me/profile").then(function (r) { if (r.status === 200) { S.profile = r.body; paintUrl(); swap("avatar"); } });
+    }
+    var row = makeRow({ label: f.label, note: note, forced: true, display: display, editor: editor, save: save, valid: valid, after: after, noEdit: !canEdit, below: canEdit ? function () { paintUrl(); return urlBox; } : null });
     row.appendChild(cands);
     return row;
   }
@@ -478,12 +494,13 @@ export const ME_JS = String.raw`
     var st = S.amway.fields[d.key] || { value: null, pending_value: null, status: "not_required", visibility: "private" };
     var opts = d.options || [];
     function label(v) { var f = opts.filter(function (o) { return o.value === v; })[0]; return f ? f.label : v; }
-    function display() {
-      var kids = [valueText(st.value === null ? "" : (d.type === "select" ? label(st.value) : st.value))];
-      if (st.pending_value !== null && st.pending_value !== undefined) kids.push(el("p", {}, [el("span", { class: "badge pending", text: d.status_labels.pending }), document.createTextNode(" " + (d.type === "select" ? label(st.pending_value) : st.pending_value))]));
-      else if (st.status === "approved" && d.status_labels.approved) kids.push(el("span", { class: "badge approved", text: d.status_labels.approved }));
-      else if (st.status === "rejected") kids.push(el("span", { class: "badge rejected", text: d.status_labels.rejected }));
-      return el("div", {}, kids);
+    // The review state shown under the editor (updated after every save, without redrawing the editor).
+    function status() {
+      var cur = S.amway.fields[d.key] || st;
+      if (cur.pending_value !== null && cur.pending_value !== undefined) return el("p", {}, [el("span", { class: "badge pending", text: d.status_labels.pending }), document.createTextNode(" " + (d.type === "select" ? label(cur.pending_value) : cur.pending_value))]);
+      if (cur.status === "approved" && d.status_labels.approved) return el("span", { class: "badge approved", text: d.status_labels.approved });
+      if (cur.status === "rejected") return el("span", { class: "badge rejected", text: d.status_labels.rejected });
+      return null;
     }
     function editor() {
       var cur = st.pending_value !== null && st.pending_value !== undefined ? st.pending_value : st.value;
@@ -492,18 +509,22 @@ export const ME_JS = String.raw`
         return { node: dd.el, get: function () { return dd.get() || null; } };
       }
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
+      var typingSaves = !d.suggest;
       // Training system and regional center: a tick for 無 (none) next to the box; the field is required, 無 counts as filled in.
       var canNone = d.key === "education_system" || d.key === "education_center", none = canNone && cur === "無";
       if (none) { input.value = ""; input.disabled = true; }
       // The regional center offers its own related words only while the training system means H-Global1985.
       var useSuggest = d.suggest && (!d.suggest_when_hglobal || S.amway.hglobal);
       var field = useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest), undefined, { openOnFocus: d.key === "education_center" }) : input;
-      if (!canNone) return { node: field, get: function () { return input.value.trim() || null; } };
+      if (!canNone) return { node: field, typing: typingSaves, get: function () { return input.value.trim() || null; } };
       var noneBox = HG.checkbox("無", none, function (on) { none = on; input.disabled = on; if (on) input.value = ""; });
-      return { node: el("div", {}, [field, noneBox]), get: function () { return none ? "無" : (input.value.trim() || null); } };
+      return { node: el("div", {}, [field, noneBox]), typing: false, get: function () { return none ? "無" : (input.value.trim() || null); } };
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
-    return makeRow({ label: REQUIRED.indexOf(d.key) >= 0 ? d.label + "（必填）" : d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), display: display, editor: editor, save: save, after: refreshAmway });
+    function after() { refreshAmwayData(d.key); }
+    var r = makeRow({ label: REQUIRED.indexOf(d.key) >= 0 ? d.label + "（必填）" : d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after });
+    AROWS[d.key] = r;
+    return r;
   }
   // Replace one block in place (no page reload): used after the Amway switch and Amway field saves.
   var NODES = {}, MAKERS = {};
@@ -515,6 +536,24 @@ export const ME_JS = String.raw`
   function refreshAmway() {
     return Promise.all([api("GET", "/v1/me/amway"), api("GET", "/v1/me/profile")]).then(function (r) {
       if (r[0].status === 200 && r[1].status === 200) { S.amway = r[0].body; S.profile = r[1].body; swap("avatar"); swap("amway"); }
+    });
+  }
+  // After one Amway field was saved: refresh the data and only the bits that depend on it (the editors stay as they are).
+  var AROWS = {};
+  function refreshAmwayData(savedKey) {
+    var wasHglobal = !!S.amway.hglobal;
+    return Promise.all([api("GET", "/v1/me/amway"), api("GET", "/v1/me/profile")]).then(function (r) {
+      if (r[0].status !== 200 || r[1].status !== 200) return;
+      S.amway = r[0].body; S.profile = r[1].body; swap("avatar");
+      Object.keys(AROWS).forEach(function (k) { AROWS[k].refreshStatus(); });
+      var note = document.getElementById("amway-missing"); if (note) { var miss = amwayMissing(); note.textContent = miss.length ? "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" : ""; note.hidden = !miss.length; }
+      // The related words of the center depend on the training system: that one row is rebuilt when it changes meaning.
+      if (savedKey === "education_system" && wasHglobal !== !!S.amway.hglobal && AROWS.education_center) {
+        var cd = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0], old = AROWS.education_center;
+        if (cd) { var neu = amwayFieldRow(cd); old.replaceWith(neu); }
+      }
+      // The rank waits for the system and the center: once they are filled in, a rank chosen earlier is sent.
+      if ((savedKey === "education_system" || savedKey === "education_center") && AROWS.rank) AROWS.rank.flush();
     });
   }
 
@@ -529,7 +568,8 @@ export const ME_JS = String.raw`
       });
     });
     var kids = [box, m];
-    if (isAmway()) { var miss = amwayMissing(); if (miss.length) kids.push(el("p", { class: "help warn-note", text: "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" })); }
+    AROWS = {};
+    if (isAmway()) { var miss = amwayMissing(); kids.push(el("p", { id: "amway-missing", class: "help warn-note", hidden: !miss.length, text: miss.length ? "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" : "" })); }
     // The member number and the Amway fields in the order the administrator set; the number is always there.
     var items = [{ order: S.def.member_number.order, make: numberRow }];
     if (isAmway()) S.adefs.fields.forEach(function (d) { items.push({ order: d.order, make: function () { return amwayFieldRow(d); } }); });
@@ -663,6 +703,22 @@ export const ME_JS = String.raw`
       } })]), m]);
   }
 
+  // The birthday was saved: read the profile again and draw the chart again (the date row itself is left alone).
+  var CHART = null;
+  function retitleLife() {
+    if (!CHART || !CHART.card) return;
+    var h = CHART.card.querySelector("h2"), t = lifeTitle(); if (!h) return;
+    h.textContent = t; h.className = titleClassOf(t); HG.fitTitles(CHART.card);
+  }
+  function refreshBirthday() {
+    return api("GET", "/v1/me/profile").then(function (r) {
+      if (r.status !== 200 || !CHART) return;
+      S.profile = r.body;
+      var ch = chartBody(); CHART.holder.textContent = ""; if (ch) CHART.holder.appendChild(ch);
+      retitleLife();
+    });
+  }
+
   function render() {
     root.textContent = "";
     // Same three places as on the page itself: back (where 編輯 is there), 分享, 預覽公開頁.
@@ -679,7 +735,7 @@ export const ME_JS = String.raw`
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
       return card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField)));
     }
-    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { var ch = chartBody(); var t = lifeTitle(); return card(t, [profileField(S.def.birthday), ch], titleClassOf(t)); } };
+    var makers = MAKERS = { avatar: avatarBlock, amway: amwayCard, basic: basicCard, education: educationCard, contact: contactCard, birthday: function () { var ch = chartBody(); var t = lifeTitle(); CHART = { holder: el("div", {}, ch ? [ch] : []) }; var c = card(t, [profileField(S.def.birthday), CHART.holder], titleClassOf(t)); CHART.card = c; return c; } };
     (S.defs.blocks || []).slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (blk) {
       var make = makers[blk.key], node = make ? make() : null; if (node) { root.appendChild(node); NODES[blk.key] = node; }
     });
