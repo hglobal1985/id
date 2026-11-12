@@ -24,7 +24,7 @@
           { "name": "RL_WRITE", "type": "ratelimit", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
         ]
       },
-      "triggers": { "crons": ["0 19 * * *"] }
+      "triggers": { "crons": ["*/5 * * * *"] }
     },
     "production": {
       "name": "hglobal-id",
@@ -44,7 +44,7 @@
           { "name": "RL_WRITE", "type": "ratelimit", "namespace_id": "2002", "simple": { "limit": 30, "period": 60 } }
         ]
       },
-      "triggers": { "crons": ["0 19 * * *"] }
+      "triggers": { "crons": ["*/5 * * * *"] }
     }
   }
 }

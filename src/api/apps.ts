@@ -7,7 +7,7 @@ import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definitionFromForm, type AppEntry } from "../apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, isUpToDate } from "../apps/handoff";
-import { appStats, getApp, isAppWebOrigin, listApps, readStoredApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
+import { APP_STANDARDS, appChecks, appStats, getApp, isAppWebOrigin, listApps, readStoredApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
 import { rolesOf } from "../db/staff";
 import { REAUTH_MAX_AGE, can, type Permission } from "../admin/roles";
 import { resolveIssuer } from "../oidc/config";
@@ -52,7 +52,7 @@ const handoffRoute = createRoute({
   summary: "Newest integration instructions for this App (super admin only, this App's own sign-in only)",
   description: "Called by the App's own admin page. Send `integrated` (the instruction version the App was last built to); it is recorded. When up_to_date is false, patch ONLY the differences. Never contains keys.",
   security: [{ bearer: [] }],
-  request: { params: AppIdParam, query: z.object({ integrated: z.string().regex(HANDOFF_VERSION_PATTERN).optional().openapi({ example: "2026-11-10.2" }) }) },
+  request: { params: AppIdParam, query: z.object({ integrated: z.string().regex(HANDOFF_VERSION_PATTERN).optional().openapi({ example: "2026-11-10.2" }), standards: z.string().max(200).optional().openapi({ example: "webhook,delete_copy", description: "Comma-separated platform standards the App meets (webhook, delete_copy, no_email_copy, snapshot_reconcile, least_scope). Omit to keep the last report." }) }) },
   responses: {
     200: {
       description: "Newest instructions",
@@ -78,6 +78,8 @@ const FormSchema = z
     return_urls: z.array(z.string().max(200)).max(10).optional(),
     extra_google_audiences: z.array(z.string().max(200)).max(10).optional(),
     min_version: z.string().max(20).optional(),
+    scopes: z.array(z.string().max(40)).max(20).optional().openapi({ description: "Super admin: switches the App to exactly these scopes (least privilege). Omit to keep what is stored." }),
+    contact_purposes: z.array(z.string().max(40)).max(10).optional().openapi({ description: "Purposes the App may look up members' contact e-mail for." }),
   })
   .openapi("AppRegistrationForm");
 
@@ -185,7 +187,9 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (auth.appId !== a.app_id) return c.json(errorBody("forbidden", "Only this App's own sign-in can read this", c.get("requestId")), 403);
     if (!(await rolesOf(c.env.DB, auth.memberId)).includes("super_admin")) return c.json(errorBody("forbidden", "Super admin only", c.get("requestId")), 403);
     const integrated = c.req.valid("query").integrated ?? null;
-    if (integrated) await reportIntegratedVersion(c.env.DB, a.app_id, integrated, auth.memberId, deps.now());
+    const reported = c.req.valid("query").standards;
+    const standards = reported === undefined ? undefined : [...new Set(reported.split(",").map((x) => x.trim()).filter((x) => (APP_STANDARDS as readonly string[]).includes(x)))];
+    if (integrated) await reportIntegratedVersion(c.env.DB, a.app_id, integrated, auth.memberId, deps.now(), standards);
     return c.json({ app_id: a.app_id, version: HANDOFF_VERSION, updated: HANDOFF_UPDATED, integrated, up_to_date: isUpToDate(integrated), text: buildHandoff(a, resolveIssuer(c.env, c.req.url)) }, 200);
   });
 
@@ -195,9 +199,13 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (d) return d as never;
     const now = deps.now();
     const [{ apps, invalid: broken }, stats] = await Promise.all([listApps(c.env.DB, now), appStats(c.env.DB, now)]);
+    const checks = new Map(await Promise.all(apps.map(async (a) => [a.app_id, await appChecks(c.env.DB, a)] as const)));
     const row = (a: AppEntry) => {
       const s = stats.get(a.app_id);
       return {
+        standards: s?.standards ?? [],
+        standards_all: APP_STANDARDS,
+        checks: checks.get(a.app_id),
         ...appDefinition(a),
         members: s?.members ?? 0,
         active_sessions: s?.active_sessions ?? 0,

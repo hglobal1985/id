@@ -78,6 +78,14 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **測試環境**：正式前用 staging（`https://hglobal-id-staging.hglobal1985-static.workers.dev`，會員、金鑰、App 登記獨立）。`http://localhost` 不能登記；手機用已登記的深層連結，網頁用 https 預覽網址。測試版共用登入鍵名建議 `hglobal.sso.staging`。
 - **新規範流程**：任何新規範先寫進串接指令與更新檢查清單並升版，各 App 只補差異（見 `AGENTS.md`「平台規範」）。
 
+## 6.8 平台資料標準（2026-11-12.10，所有 App 一體適用）
+完整設計與規格見 [ADR 0021](adr/0021-platform-standards.md)。
+- **原則**：①個人資料正本只在中央，App 只存 `member_id`，複製要有同步與刪除機制；②交易紀錄存「當時快照」，對帳靠付款代碼或金流交易編號，不靠姓名；③需要聯絡方式走中央的聯絡查詢，不長期保存副本；④變動與刪除由中央 webhook 通知，App 照辦；⑤只拿到最小權限，中央留稽核。
+- **webhook**：事件 `member.profile_changed`（`fields` 只有欄位名稱）、`member.deleted`、`webhook.test`；POST JSON，標頭 `X-HG-Event-Id`／`X-HG-Timestamp`／`X-HG-Attempt`／`X-HG-Signature: v1=HMAC-SHA256(金鑰, 時間戳.原始內容)`；驗簽用原始內容、常數時間、時間窗 5 分鐘、依 `id` 去重、5 秒內回 2xx。至少一次投遞，失敗在 1 分、5 分、30 分、2 小時、6 小時、24 小時重試（共 7 次），紀錄保存 30 天。金鑰由業主在後台取得，只放伺服器環境變數。
+- **聯絡查詢**：服務金鑰（後台建立，只放伺服器）→ `POST /v1/service/token` → `POST /v1/apps/{app_id}/contacts/lookup`（≤ 50 個 `member_id`、`purpose` 須經業主核准）。信箱用完即丟；中央每次稽核（不記信箱）。
+- **最小權限**：新 App 預設只有 `amway.read`；多的權限由業主在後台勾選；收到 403 不自行繞過。
+- **符合度回報**：`GET /v1/apps/{app_id}/handoff?integrated=<版本>&standards=webhook,delete_copy,no_email_copy,snapshot_reconcile,least_scope`（只列已做到的），後台 App 清單顯示結果。
+
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 

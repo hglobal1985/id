@@ -19,6 +19,7 @@ import { registerSiteRoutes } from "./web/site";
 import { registerAppAuthRoutes } from "./api/app-auth";
 import { registerAppSsoRoutes } from "./api/app-sso";
 import { registerAppCors, registerAppRoutes } from "./api/apps";
+import { registerPlatformRoutes } from "./api/platform";
 import { HTTPException } from "hono/http-exception";
 
 const HealthSchema = z
@@ -93,6 +94,7 @@ export function createApp(overrides: Partial<Deps> = {}) {
   registerAppAuthRoutes(app, deps);
   registerAppSsoRoutes(app, deps);
   registerAppRoutes(app, deps);
+  registerPlatformRoutes(app, deps);
 
   // Last: the public profile route matches /<member number>.
   registerSiteRoutes(app, deps);

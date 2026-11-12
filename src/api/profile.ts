@@ -1,5 +1,6 @@
 // /v1 profile APIs: field definitions, my profile, single-field write, visibility, avatar.
 // Contract: integration instruction pack, sections 4A and 4C.
+import { notifyProfileChanged } from "../webhooks/notify";
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import type { AppBindings } from "../env";
@@ -334,6 +335,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       await recordTerms(c.env.DB, pool, canon, now);
     }
     const r = await writeField(c.env.DB, field_key, v.value, { memberId, appId: clientId, requestId: c.get("requestId"), now });
+    await notifyProfileChanged(c, deps, memberId, [field_key]);
     return c.json({ field_key, value: v.value, updated_at: r.updated_at }, 200);
   });
 
@@ -365,6 +367,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     if (!mime) return invalid(c, "avatar", "not_an_image", "請上傳 JPEG、PNG 或 WebP 圖片") as never;
     const { memberId, clientId } = c.get("auth");
     const url = await saveAvatarUpload(c.env.DB, mime, bytes, resolveIssuer(c.env, c.req.url), { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() });
+    await notifyProfileChanged(c, deps, memberId, ["avatar"]);
     return c.json({ avatar: { url, source: "upload" as const } }, 200);
   });
   app.openapi(avatarGoogleRoute, async (c) => {
@@ -373,6 +376,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     const { memberId, clientId } = c.get("auth");
     const url = await useGoogleAvatar(c.env.DB, { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() });
     if (!url) return invalid(c, "avatar", "no_google_picture", "您的 Google 帳號沒有大頭貼") as never;
+    await notifyProfileChanged(c, deps, memberId, ["avatar"]);
     return c.json({ avatar: { url, source: "google" as const } }, 200);
   });
 
@@ -397,6 +401,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     if (denied) return denied as never;
     const { memberId, clientId } = c.get("auth");
     await removeAvatar(c.env.DB, { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() });
+    await notifyProfileChanged(c, deps, memberId, ["avatar"]);
     return c.json({ avatar: { url: null, source: "none" as const } }, 200);
   });
 }

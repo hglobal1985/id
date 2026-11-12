@@ -360,7 +360,7 @@ export const ADMIN_JS = String.raw`
         field("名稱", name), field("iOS Bundle ID", ios), field("Android 套件名稱", android),
         field("網頁版來源（一行一個）", web, "只填 https://網域，不含路徑。"), field("App 回傳網址（一行一個）", ret),
         field("額外的 Google 用戶端 ID", aud), field("最低版本", min, "低於這個版本的 App 會被要求更新。"),
-        el("p", { class: "help", text: "所有 App 都擁有全部權限範圍，不需要設定。" }),
+        el("p", { class: "help", text: "權限範圍、聯絡信箱用途、webhook 與服務金鑰在「平台設定」。新 App 預設只有最小權限。" }),
         el("div", { class: "inline" }, [el("button", { class: "primary", text: a ? "儲存" : "建立", onclick: save }), el("button", { text: "取消", onclick: reload }), box]),
         a ? el("div", { class: "help", text: "儲存需要 10 分鐘內登入過；會跳到登入頁再回來。" }) : null
       ]);
@@ -381,6 +381,65 @@ export const ADMIN_JS = String.raw`
         ]));
       });
     }
+    var STD = { webhook: "收到變動與刪除通知（webhook）並驗證簽章", delete_copy: "收到刪除通知就刪除自己這邊的副本", no_email_copy: "不長期保存聯絡信箱，改用中央查詢", snapshot_reconcile: "交易存當時快照，對帳靠付款代碼不靠姓名", least_scope: "只使用被授權的最小權限" };
+    function platform(a, b) {
+      api("GET", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/platform").then(function (r) {
+        if (r.status !== 200) return;
+        var p = r.body, box = m(), id = encodeURIComponent(a.app_id);
+        var url = el("input", { type: "text", placeholder: "https://…（只能是 https 網域）", value: p.webhook ? p.webhook.url : null });
+        var secretBox = el("div", { class: "help" });
+        function shown(res) { if (res.status === 200 && res.body.secret) { secretBox.textContent = "金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.secret; } else if (res.status === 200 && res.body.client_secret) { secretBox.textContent = "服務金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.client_secret; } else if (!reauth(res)) say(box, false, errText(res)); }
+        var chk = {};
+        var scopeRows = b.scopes.map(function (sc) {
+          var on = p.scopes.indexOf(sc) >= 0, c = HG.checkbox(sc, on, function (v) { chk[sc] = v; });
+          chk[sc] = on; return c;
+        });
+        var purposeRows = p.contact_purpose_options.map(function (pp) {
+          var on = p.contact_purposes.indexOf(pp) >= 0, c = HG.checkbox(pp, on, function (v) { chk["purpose:" + pp] = v; });
+          chk["purpose:" + pp] = on; return c;
+        });
+        function saveScopes() {
+          var scopes = b.scopes.filter(function (sc) { return chk[sc]; });
+          var purposes = p.contact_purpose_options.filter(function (pp) { return chk["purpose:" + pp]; });
+          if (!p.scopes_restricted && !confirm("這會把「" + a.name + "」從「全部權限」改成只有勾選的權限，之後沒勾的功能會被拒絕。確定嗎？")) return;
+          api("PUT", "/v1/admin/apps/" + id, { name: a.name, scopes: scopes, contact_purposes: purposes }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存（30 秒內生效）"); } else if (!reauth(res)) say(box, false, errText(res)); });
+        }
+        var log = (p.webhook_log.events || []).map(function (e) { return el("div", { class: "help", text: e.created_at.slice(0, 16).replace("T", " ") + "｜" + e.type + "｜" + e.status + "（" + e.attempts + " 次" + (e.last_error ? "，" + e.last_error : "") + "）" }); });
+        var rep = a.standards || [], ck = a.checks || {};
+        var stdRows = Object.keys(STD).map(function (k) {
+          var central = k === "webhook" ? ck.webhook_configured : k === "least_scope" ? ck.least_scope : null;
+          var ok = (central === null ? rep.indexOf(k) >= 0 : central && rep.indexOf(k) >= 0);
+          var note = central === null ? (rep.indexOf(k) >= 0 ? "App 已回報" : "App 尚未回報") : ((central ? "中央已設定" : "中央尚未設定") + "／" + (rep.indexOf(k) >= 0 ? "App 已回報" : "App 尚未回報"));
+          return el("div", { class: "help", text: (ok ? "✔ " : "✗ ") + STD[k] + "｜" + note });
+        });
+        pane.textContent = "";
+        pane.appendChild(card("平台設定：" + a.name, [
+          el("h3", { text: "標準符合度" }), el("div", {}, stdRows),
+          el("h3", { text: "事件通知（webhook）" }),
+          p.signing_configured ? null : el("p", { class: "msg bad", text: "尚未設定簽章金鑰（Workers Secret WEBHOOK_SIGNING_KEY），目前不會送出任何事件。" }),
+          field("網址", url, "會員資料變動或刪除時通知這個網址；空白＝移除。"),
+          el("div", { class: "inline" }, [
+            el("button", { class: "primary", text: "儲存網址", onclick: function () { api("PUT", "/v1/admin/apps/" + id + "/webhook", { url: url.value.trim() || null }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存"); } else if (!reauth(res)) say(box, false, errText(res)); }); } }),
+            el("button", { text: "顯示金鑰", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: false }).then(shown); } }),
+            el("button", { text: "重新產生金鑰", onclick: function () { if (confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: true }).then(shown); } }),
+            el("button", { text: "送一則測試", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/test").then(function (res) { if (res.status === 200) say(box, res.body.status === "delivered", res.body.status === "delivered" ? "對方已收到（HTTP " + res.body.last_http_status + "）" : "沒有成功：" + (res.body.last_error || res.body.status)); else say(box, false, errText(res)); }); } })
+          ]),
+          secretBox,
+          el("p", { class: "help", text: "待送 " + p.webhook_log.pending + " 則，失敗 " + p.webhook_log.failed + " 則。最近事件：" }), el("div", {}, log.length ? log : [el("div", { class: "help", text: "（沒有）" })]),
+          el("h3", { text: "服務金鑰（App 查詢聯絡信箱用）" }),
+          el("p", { class: "help", text: p.service_credential ? "已建立。" : "尚未建立。" }),
+          el("div", { class: "inline" }, [
+            el("button", { text: p.service_credential ? "重新產生服務金鑰" : "建立服務金鑰", onclick: function () { if (!p.service_credential || confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/service-secret").then(shown); } }),
+            p.service_credential ? el("button", { class: "danger", text: "撤銷", onclick: function () { if (confirm("撤銷後這款 App 不能再查詢，確定嗎？")) api("DELETE", "/v1/admin/apps/" + id + "/service-secret").then(function (res) { if (res.status === 200) say(box, true, "已撤銷"); else if (!reauth(res)) say(box, false, errText(res)); }); } }) : null
+          ]),
+          el("h3", { text: "權限範圍與聯絡信箱用途" }),
+          el("p", { class: "help", text: p.scopes_restricted ? "目前只有勾選的權限。" : "目前是舊制：這款 App 擁有全部權限（尚未收緊）。勾選後儲存，才會改成只有勾選的權限。" }),
+          el("div", {}, scopeRows),
+          el("p", { class: "help", text: "允許查詢聯絡信箱的用途（沒勾＝不能查詢）：" }), el("div", {}, purposeRows),
+          el("div", { class: "inline" }, [el("button", { class: "primary", text: "儲存權限與用途", onclick: saveScopes }), el("button", { text: "返回", onclick: reload }), box])
+        ]));
+      });
+    }
     api("GET", "/v1/admin/apps").then(function (r) {
       var b = r.body, box = m();
       function setStatus(a, st) { return function () {
@@ -393,8 +452,10 @@ export const ADMIN_JS = String.raw`
           el("div", { class: "inline" }, [el("strong", { text: a.name }), el("span", { class: "mono help", text: a.app_id }), el("span", { class: "badge " + (a.status === "active" ? "approved" : a.status === "paused" ? "pending" : "rejected"), text: STATUS[a.status] })]),
           el("div", { class: "help", text: "會員 " + a.members + " 位｜目前登入 " + a.active_sessions + " 個｜最近登入 " + (a.last_sign_in_at ? a.last_sign_in_at.slice(0, 16).replace("T", " ") : "—") + "｜最低版本 " + a.min_version }),
           el("div", { class: "help", text: ver }),
+          el("div", { class: "help", text: "平台標準符合 " + (a.standards || []).length + "／5" + (a.checks && a.checks.webhook_failed_events ? "｜webhook 有 " + a.checks.webhook_failed_events + " 則送不出去" : "") }),
           el("div", { class: "inline" }, [
             el("button", { text: "給開發 AI 的串接指令", onclick: function () { handoff(a); } }),
+            b.can_manage ? el("button", { text: "平台設定", onclick: function () { platform(a, b); } }) : null,
             b.can_manage ? el("button", { text: "編輯登記資料", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, a)); } }) : null,
             a.status !== "active" ? el("button", { text: "恢復正常", onclick: setStatus(a, "active") }) : null,
             a.status !== "paused" ? el("button", { text: "一鍵暫停", onclick: setStatus(a, "paused") }) : null,

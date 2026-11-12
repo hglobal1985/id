@@ -1,6 +1,7 @@
 // Admin APIs for staff (super admin, secretary, reviewer) on the central site itself.
 // Authentication: the central sign-in session cookie (never app tokens). State-changing requests must come
 // from this origin (CSRF protection). Every action is checked against the role matrix and audited.
+import { kickDelivery } from "../webhooks/notify";
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppBindings } from "../env";
@@ -479,6 +480,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (r === "not_found") return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
     if (r === "last_super_admin") return c.json(errorBody("conflict", "至少要保留一位超級管理員", c.get("requestId")), 409);
     await auditStatement(c.env.DB, { actorType: "staff", actorId: staff.memberId, action: "member.delete", targetType: "member", targetId: member_id, appId: null, result: "success", requestId: c.get("requestId") }, deps.now()).run();
+    kickDelivery(c, deps);
     return c.json({ member_id, deleted: true }, 200);
   });
 

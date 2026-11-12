@@ -1,5 +1,6 @@
 // PUT /v1/me/profile/fields/member_number — whole ordered list; duplicates are allowed and reported
 // as spouse candidates. Self-service changes: at most 3 per 24 hours (audited; no review).
+import { notifyProfileChanged } from "../webhooks/notify";
 import type { Context } from "hono";
 import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
@@ -69,5 +70,6 @@ export async function putMemberNumbers(c: C, deps: Deps): Promise<Response> {
     ),
   ]);
   const candidates = await findDuplicateCandidates(db, memberId, v.value, now);
+  await notifyProfileChanged(c, deps, memberId, ["member_number"]);
   return c.json({ field_key: "member_number", value: v.value, updated_at: taipeiIso(now), public_url: publicUrl, duplicate_candidates: candidates }, 200);
 }

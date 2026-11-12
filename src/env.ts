@@ -15,6 +15,8 @@ export interface Env {
   OIDC_SIGNING_JWK?: string;
   /** Secret (optional): previous private JWK, still published in JWKS during key rotation. */
   OIDC_SIGNING_JWK_PREVIOUS?: string;
+  /** Secret (optional): signing key the App webhook secrets are derived from. Without it no webhook is sent (fail closed). */
+  WEBHOOK_SIGNING_KEY?: string;
   /** Rate Limiting bindings (wrangler.jsonc `ratelimits`). */
   RL_READ?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   RL_WRITE?: { limit(o: { key: string }): Promise<{ success: boolean }> };

@@ -14,6 +14,10 @@ export interface AppEntry {
   status: AppStatus;
   /** Scopes carried by this App's access tokens (same names as the /v1 APIs check). */
   scopes: readonly string[];
+  /** false = legacy App holding every scope (owner decision 2026-11-11); true = only `scopes` (least privilege, ADR 0021). */
+  scopes_restricted: boolean;
+  /** Purposes this App may look up members' contact e-mail for (POST /v1/apps/{app_id}/contacts/lookup). Empty = not allowed. */
+  contact_purposes: readonly string[];
   min_version: string;
   /** Public remote settings returned by GET /v1/apps/{app_id}/config. Never secrets. */
   config: Readonly<Record<string, unknown>>;
@@ -27,6 +31,12 @@ export interface AppEntry {
 
 /** Scopes an App may hold. `openid` and `profile` belong to the OIDC flow only. */
 export const APP_SCOPES: readonly string[] = SUPPORTED_SCOPES.filter((s) => s !== "openid" && s !== "profile");
+
+/** The least-privilege default for a newly registered App: sign-in and eligibility lookup only. */
+export const DEFAULT_APP_SCOPES: readonly string[] = ["amway.read"];
+
+/** What an App may be allowed to send contact notices for. */
+export const CONTACT_PURPOSES: readonly string[] = ["payment_notice", "course_notice", "account_security"];
 
 /** app_ids that can never be registered: they name the central site itself. */
 export const RESERVED_APP_IDS: readonly string[] = ["central", "account", "id", "admin", "www"];
@@ -59,6 +69,17 @@ function list(v: unknown, pattern: RegExp, field: string, max: number): readonly
   return Object.freeze([...new Set(v as string[])]);
 }
 
+function scopeList(v: unknown): readonly string[] {
+  if (!Array.isArray(v) || !v.every((x) => typeof x === "string" && APP_SCOPES.includes(x))) throw new AppDefinitionError("權限範圍有不認得的項目。");
+  return Object.freeze([...new Set(v as string[])]);
+}
+
+function purposeList(v: unknown): readonly string[] {
+  const out = list(v, /^[a-z_]{3,40}$/, "聯絡信箱用途", 10);
+  if (!out.every((x) => CONTACT_PURPOSES.includes(x))) throw new AppDefinitionError("聯絡信箱用途有不認得的項目。");
+  return out;
+}
+
 /** Validates one App definition. Throws AppDefinitionError with a message the back office can show. */
 export function parseApp(item: unknown): AppEntry {
   if (!isRecord(item) || typeof item.app_id !== "string" || !APP_ID.test(item.app_id)) {
@@ -79,9 +100,11 @@ export function parseApp(item: unknown): AppEntry {
     ios_bundle_id: platformId(item.ios_bundle_id, "iOS Bundle ID"),
     android_package: platformId(item.android_package, "Android 套件名稱"),
     status: item.status as AppStatus,
-    // Every App holds every scope (owner decision 2026-11-11): what a member can do is decided by the member's own
-    // sign-in and the central rules, not by trimming App permissions. Stored lists are ignored.
-    scopes: APP_SCOPES,
+    // Legacy Apps (no scopes_restricted flag) hold every scope (owner decision 2026-11-11). An App the owner restricted
+    // holds exactly its stored list (ADR 0021).
+    scopes: item.scopes_restricted === true ? scopeList(item.scopes) : APP_SCOPES,
+    scopes_restricted: item.scopes_restricted === true,
+    contact_purposes: purposeList(item.contact_purposes),
     min_version: item.min_version,
     config: Object.freeze({ ...(item.config as Record<string, unknown> | undefined) }),
     auth: Object.freeze({ google_audiences: list(auth.google_audiences, AUDIENCE, "額外的 Google 用戶端 ID", 10) }),
@@ -99,6 +122,8 @@ export function appDefinition(app: AppEntry): Record<string, unknown> {
     android_package: app.android_package,
     status: app.status,
     scopes: app.scopes,
+    scopes_restricted: app.scopes_restricted,
+    contact_purposes: app.contact_purposes,
     min_version: app.min_version,
     config: app.config,
     auth: { google_audiences: app.auth.google_audiences },
@@ -117,6 +142,9 @@ export interface AppForm {
   return_urls?: string[];
   extra_google_audiences?: string[];
   min_version?: string;
+  /** Super admin only: switches the App to an explicit scope list (null/omitted keeps what is stored). */
+  scopes?: string[];
+  contact_purposes?: string[];
 }
 
 const clean = (v: string[] | undefined) => [...new Set((v ?? []).map((x) => x.trim()).filter(Boolean))];
@@ -129,11 +157,13 @@ const clean = (v: string[] | undefined) => [...new Set((v ?? []).map((x) => x.tr
 export function definitionFromForm(form: AppForm, options: { defaults?: boolean; keep?: AppEntry } = {}): AppEntry {
   const appId = (form.app_id ?? "").trim();
   const compact = appId.replace(/-/g, "");
-  const ios = (form.ios_bundle_id ?? "").trim() || (options.defaults ? `com.hglobal1985.${compact}` : null);
-  const android = (form.android_package ?? "").trim() || (options.defaults ? `com.hglobal1985.${compact}` : null);
-  const webOrigins = clean(form.web_origins);
+  // Fields the form leaves out (undefined, not empty) keep what is stored: a small edit such as new scopes never wipes the rest.
+  const k = options.keep;
+  const ios = form.ios_bundle_id === undefined && k ? k.ios_bundle_id : (form.ios_bundle_id ?? "").trim() || (options.defaults ? `com.hglobal1985.${compact}` : null);
+  const android = form.android_package === undefined && k ? k.android_package : (form.android_package ?? "").trim() || (options.defaults ? `com.hglobal1985.${compact}` : null);
+  const webOrigins = form.web_origins === undefined && k ? [...k.web_origins] : clean(form.web_origins);
   if (!webOrigins.length && options.defaults) webOrigins.push(`https://${appId}.hglobal1985.com`);
-  const returnUrls = clean(form.return_urls);
+  const returnUrls = form.return_urls === undefined && k ? [...k.return_urls] : clean(form.return_urls);
   if (!returnUrls.length && options.defaults) returnUrls.push(`${(form.scheme ?? "").trim() || compact}://auth/google`);
   return parseApp({
     app_id: appId,
@@ -142,13 +172,21 @@ export function definitionFromForm(form: AppForm, options: { defaults?: boolean;
     android_package: android,
     // Status and remote settings are not part of the form: editing never un-pauses an App or drops its settings.
     status: options.keep?.status ?? "active",
-    scopes: APP_SCOPES,
+    // A new App starts with the least privilege; an existing one keeps what it has unless the form names scopes.
+    ...scopeFields(form, options),
+    contact_purposes: form.contact_purposes ?? options.keep?.contact_purposes ?? [],
     min_version: (form.min_version ?? "").trim() || options.keep?.min_version || "0.0.0",
     config: options.keep?.config ?? {},
-    auth: { google_audiences: clean(form.extra_google_audiences) },
+    auth: { google_audiences: form.extra_google_audiences === undefined && k ? [...k.auth.google_audiences] : clean(form.extra_google_audiences) },
     web_origins: webOrigins,
     return_urls: returnUrls,
   });
+}
+
+function scopeFields(form: AppForm, options: { defaults?: boolean; keep?: AppEntry }): { scopes: readonly string[]; scopes_restricted: boolean } {
+  if (form.scopes) return { scopes: form.scopes, scopes_restricted: true };
+  if (options.keep) return { scopes: options.keep.scopes, scopes_restricted: options.keep.scopes_restricted };
+  return { scopes: DEFAULT_APP_SCOPES, scopes_restricted: true };
 }
 
 /** A registered deep link, or an https page (no fragment) on one of the App's registered web origins. */

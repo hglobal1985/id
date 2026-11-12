@@ -106,7 +106,8 @@ describe("registry rules", () => {
       android_package: "com.hglobal1985.myapp",
       web_origins: ["https://my-app.hglobal1985.com"],
       return_urls: ["myapp://auth/google"],
-      scopes: APP_SCOPES, // every App holds every scope
+      scopes: ["amway.read"], // a new App starts with the least privilege (ADR 0021)
+      scopes_restricted: true,
       status: "active",
       min_version: "0.0.0",
     });
@@ -158,7 +159,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-12.9", digest: "28db2ab0485eddf9" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-12.10", digest: "7a03d842eee9f2df" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
