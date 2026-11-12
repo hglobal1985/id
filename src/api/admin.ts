@@ -8,8 +8,9 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { SESSION_COOKIE, readCookie } from "../auth/cookies";
-import { findActiveSessionByToken, getMember } from "../db/identity";
-import { centerNormOfMember, grantsOfMember, listStaff, rolesOf, setRoles } from "../db/staff";
+import { getMember } from "../db/identity";
+import { centerNormOfMember, grantsOfMember, listStaff, rolesOf, setRoles, staffContextByToken } from "../db/staff";
+import { memberBriefs, type MemberBrief } from "../db/member-bulk";
 import { hasDiamondRank, memberInScope, memberScopeOf, searchMemberIds } from "../db/member-scope";
 import { deleteAccount } from "../db/deletion";
 import { auditStatement } from "../db/audit";
@@ -38,10 +39,9 @@ function staffAuth(deps: Deps): MiddlewareHandler<AppBindings> {
     c.header("cache-control", "no-store");
     if (!isSameOriginWrite(c)) return c.json(errorBody("forbidden", "Cross-site request refused", c.get("requestId")), 403);
     const token = readCookie(c, SESSION_COOKIE);
-    const session = token ? await findActiveSessionByToken(c.env.DB, token, deps.now()) : null;
-    if (!session) return c.json(errorBody("unauthenticated", "Sign in required", c.get("requestId")), 401);
-    const roles = await rolesOf(c.env.DB, session.member_id);
-    const grants = await grantsOfMember(c.env.DB, session.member_id);
+    const found = token ? await staffContextByToken(c.env.DB, token, deps.now()) : null;
+    if (!found) return c.json(errorBody("unauthenticated", "Sign in required", c.get("requestId")), 401);
+    const { session, roles, grants } = found;
     if (!roles.length && !grants.length) return c.json(errorBody("forbidden", "Staff only", c.get("requestId")), 403);
     c.set("staff", { memberId: session.member_id, roles, grants, authTime: session.auth_time_epoch });
     await next();
@@ -287,40 +287,43 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   const inScope = (sc: { all: true } | { all: false; center: string | null }, centerNorm: string | null) => sc.all || (sc.center !== null && centerNorm === sc.center);
 
   /** The center a request is about, as text: the requested center, or the member's own center for a rank. */
-  const centerLabel = async (db: D1Database, memberId: string, fieldKey: string, requested: unknown) => {
+  const centerLabel = (brief: MemberBrief | undefined, fieldKey: string, requested: unknown) => {
     if (fieldKey === "education_center") return typeof requested === "string" ? requested : null;
-    const row = (await readAmwayFields(db, memberId)).get("education_center");
+    const row = brief?.amway.get("education_center");
     const v = row?.value ?? row?.pending_value ?? null;
     return typeof v === "string" ? v : null;
   };
 
+  // Both lists load the people they mention with one memberBriefs call (one round trip), never one query per row.
   app.openapi(reviewsRoute, async (c) => {
     const d = deny(c, "review");
     if (d) return d as never;
     const db = c.env.DB;
-    const scope = await reviewScope(c);
-    const r = await db
-      .prepare("SELECT id, member_id, field_key, requested_value, created_at, app_id, center_norm FROM amway_review_requests WHERE status = 'pending' ORDER BY created_at LIMIT 200")
-      .all<{ id: string; member_id: string; field_key: string; requested_value: string; created_at: string; app_id: string | null; center_norm: string | null }>();
-    const items = [];
-    for (const x of r.results ?? []) {
-      if (!inScope(scope, x.center_norm)) continue;
-      const current = (await readAmwayFields(db, x.member_id)).get(x.field_key);
+    const [scope, r] = await Promise.all([
+      reviewScope(c),
+      db
+        .prepare("SELECT id, member_id, field_key, requested_value, created_at, app_id, center_norm FROM amway_review_requests WHERE status = 'pending' ORDER BY created_at LIMIT 200")
+        .all<{ id: string; member_id: string; field_key: string; requested_value: string; created_at: string; app_id: string | null; center_norm: string | null }>(),
+    ]);
+    const rows = (r.results ?? []).filter((x) => inScope(scope, x.center_norm));
+    const briefs = await memberBriefs(db, rows.map((x) => x.member_id));
+    const items = rows.map((x) => {
+      const b = briefs.get(x.member_id);
       const requested = JSON.parse(x.requested_value) as unknown;
-      items.push({
+      return {
         id: x.id,
         member_id: x.member_id,
-        display_name: await displayName(db, x.member_id),
-        member_number: (await readNumbers(db, x.member_id))[0] ?? null,
+        display_name: b?.display_name ?? null,
+        member_number: b?.numbers[0] ?? null,
         field_key: x.field_key,
         field_label: getAmwayField(x.field_key)?.label ?? x.field_key,
-        center: await centerLabel(db, x.member_id, x.field_key, requested),
-        current_value: current?.value ?? null,
+        center: centerLabel(b, x.field_key, requested),
+        current_value: b?.amway.get(x.field_key)?.value ?? null,
         requested_value: requested,
         created_at: x.created_at,
         app_id: x.app_id,
-      });
-    }
+      };
+    });
     return c.json({ reviews: items }, 200);
   });
 
@@ -328,28 +331,30 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const d = deny(c, "review");
     if (d) return d as never;
     const db = c.env.DB;
-    const scope = await reviewScope(c);
-    const r = await db
-      .prepare("SELECT id, member_id, field_key, requested_value, status, decided_at, decided_by, center_norm FROM amway_review_requests WHERE status IN ('approved', 'rejected') ORDER BY decided_at DESC LIMIT 200")
-      .all<{ id: string; member_id: string; field_key: string; requested_value: string; status: string; decided_at: string; decided_by: string | null; center_norm: string | null }>();
-    const items = [];
-    for (const x of r.results ?? []) {
-      if (!inScope(scope, x.center_norm)) continue;
-      if (items.length >= 50) break;
+    const [scope, r] = await Promise.all([
+      reviewScope(c),
+      db
+        .prepare("SELECT id, member_id, field_key, requested_value, status, decided_at, decided_by, center_norm FROM amway_review_requests WHERE status IN ('approved', 'rejected') ORDER BY decided_at DESC LIMIT 200")
+        .all<{ id: string; member_id: string; field_key: string; requested_value: string; status: string; decided_at: string; decided_by: string | null; center_norm: string | null }>(),
+    ]);
+    const rows = (r.results ?? []).filter((x) => inScope(scope, x.center_norm)).slice(0, 50);
+    const briefs = await memberBriefs(db, rows.flatMap((x) => (x.decided_by ? [x.member_id, x.decided_by] : [x.member_id])));
+    const items = rows.map((x) => {
+      const b = briefs.get(x.member_id);
       const requested = JSON.parse(x.requested_value) as unknown;
-      items.push({
+      return {
         id: x.id,
-        display_name: await displayName(db, x.member_id),
-        member_number: (await readNumbers(db, x.member_id))[0] ?? null,
+        display_name: b?.display_name ?? null,
+        member_number: b?.numbers[0] ?? null,
         field_key: x.field_key,
         field_label: getAmwayField(x.field_key)?.label ?? x.field_key,
-        center: await centerLabel(db, x.member_id, x.field_key, requested),
+        center: centerLabel(b, x.field_key, requested),
         requested_value: requested,
         status: x.status,
         decided_at: x.decided_at,
-        decided_by: x.decided_by ? await displayName(db, x.decided_by) : null,
-      });
-    }
+        decided_by: x.decided_by ? (briefs.get(x.decided_by)?.display_name ?? null) : null,
+      };
+    });
     return c.json({ history: items }, 200);
   });
 
@@ -357,9 +362,12 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const d = deny(c, "review");
     if (d) return d as never;
     const { id } = c.req.valid("param");
-    const req = await c.env.DB.prepare("SELECT center_norm FROM amway_review_requests WHERE id = ? AND status = 'pending'").bind(id).first<{ center_norm: string | null }>();
+    const [req, scope] = await Promise.all([
+      c.env.DB.prepare("SELECT center_norm FROM amway_review_requests WHERE id = ? AND status = 'pending'").bind(id).first<{ center_norm: string | null }>(),
+      reviewScope(c),
+    ]);
     if (!req) return c.json(errorBody("not_found", "No pending request", c.get("requestId")), 404);
-    if (!inScope(await reviewScope(c), req.center_norm)) return c.json(errorBody("forbidden", "這個申請不屬於您負責的中心", c.get("requestId"), { required_permission: "review" }), 403);
+    if (!inScope(scope, req.center_norm)) return c.json(errorBody("forbidden", "這個申請不屬於您負責的中心", c.get("requestId"), { required_permission: "review" }), 403);
     const ok = await decideReview(c.env.DB, id, c.req.valid("json").decision, c.get("staff").memberId, ctxOf(c, deps));
     if (!ok) return c.json(errorBody("not_found", "No pending request", c.get("requestId")), 404);
     return c.json({ decided: c.req.valid("json").decision }, 200);
@@ -373,26 +381,28 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const scope = await memberScopeOf(db, st.memberId, st.roles, st.grants);
     const f = c.req.valid("query");
     const { ids, total } = await searchMemberIds(db, scope, f);
-    const ladder = await db.prepare("SELECT value, label FROM amway_options WHERE field_key = 'rank'").all<{ value: string; label: string }>();
+    const [ladder, briefs] = await Promise.all([
+      db.prepare("SELECT value, label FROM amway_options WHERE field_key = 'rank'").all<{ value: string; label: string }>(),
+      memberBriefs(db, ids),
+    ]);
     const rankLabel = new Map((ladder.results ?? []).map((r) => [r.value, r.label]));
     const text = (v: unknown) => (typeof v === "string" ? v : v && typeof v === "object" && "option" in v ? String((v as { option: string }).option) : null);
-    const out = [];
-    for (const id of ids) {
-      const m = await getMember(db, id);
-      const fields = await readAmwayFields(db, id);
-      const rank = text(fields.get("rank")?.value ?? null);
-      out.push({
+    const out = ids.map((id) => {
+      const b = briefs.get(id);
+      const m = b?.member;
+      const rank = text(b?.amway.get("rank")?.value ?? null);
+      return {
         member_id: id,
-        display_name: await displayName(db, id),
-        member_number: (await readNumbers(db, id))[0] ?? null,
+        display_name: b?.display_name ?? null,
+        member_number: b?.numbers[0] ?? null,
         status: m?.status,
         amway_enabled: m?.amway_enabled === 1,
-        system: text(fields.get("education_system")?.value ?? null),
-        center: text(fields.get("education_center")?.value ?? null),
+        system: text(b?.amway.get("education_system")?.value ?? null),
+        center: text(b?.amway.get("education_center")?.value ?? null),
         rank: rank ? (rankLabel.get(rank) ?? rank) : null,
         created_at: m?.created_at ?? null,
-      });
-    }
+      };
+    });
     return c.json({ members: out, total, scope: scope.labels, can_manage: can(st.roles, "members.manage", st.grants) }, 200);
   });
 

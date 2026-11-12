@@ -45,9 +45,17 @@ function page(c: C, body: string, status: 200 | 403 | 404 = 200) {
   return c.html(body, status);
 }
 
-async function currentSession(c: C, deps: Deps) {
+// A page asks for the session more than once (the route, then the main menu): look it up once per request, not once per ask.
+const sessionOfRequest = new WeakMap<object, ReturnType<typeof findActiveSessionByToken>>();
+function currentSession(c: C, deps: Deps) {
   const t = readCookie(c, SESSION_COOKIE);
-  return t ? findActiveSessionByToken(c.env.DB, t, deps.now()) : null;
+  if (!t) return Promise.resolve(null);
+  let p = sessionOfRequest.get(c);
+  if (!p) {
+    p = findActiveSessionByToken(c.env.DB, t, deps.now());
+    sessionOfRequest.set(c, p);
+  }
+  return p;
 }
 
 /** Name and picture for the main menu. */

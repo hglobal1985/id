@@ -61,6 +61,11 @@ npm run openapi     # 改了 /v1 路由後重新產生 openapi/hglobal-id.v1.jso
 - 沙盒的 MCP 工具（GitHub、Cloudflare）有時會斷線；GitHub 改用 `gh api`（合併：`gh api -X PUT repos/hglobal1985/id/pulls/<n>/merge -f merge_method=squash`；部署 production 見第 2 節）；Cloudflare 資料庫可用 `curl https://api.cloudflare.com/...`（憑證由代理注入，只讀查詢可，寫入先問）。
 - 瀏覽器實測的做法：寫一個暫時的 vitest 檔（`test/zz-*.test.ts`，用完刪除）用 `createApp` ＋ Node `http` 起本機伺服器，Playwright（`NODE_PATH=/opt/node22/lib/node_modules`）設定 `__Host-hgid_session` cookie（domain=localhost、secure）截圖與驗證。**每次改畫面都要實測，曾因沒實測讓「平台設定」按了沒反應。**
 
+## 5.6 效能（2026-11-14，ADR 0025）
+- Worker 可能在洛杉磯、資料庫在新加坡：**每次資料庫查詢約 0.18 秒**。寫程式不可在迴圈裡 `await` 查資料庫；列表用 `src/db/member-bulk.ts` 的 `memberBriefs` 一次查；獨立查詢用 `Promise.all`／`db.batch`；新列表 API 加進 `test/roundtrips.test.ts`。
+- 看線上速度：Cloudflare 的 Workers 觀測紀錄（telemetry query）有每個請求的牆鐘時間與機房（colo）；CPU 很低但牆鐘很高＝在等資料庫。
+- 已啟用 Smart Placement（`wrangler.jsonc`）；部署後要用觀測紀錄確認通知頁各請求變快。
+
 ## 6. 給新對話的第一句提示（業主貼這段）
 ```
 這個工作階段只處理 hglobal1985/id（寰宇 H-Global1985 中央會員系統）；starry-phd/id 只可唯讀參考。

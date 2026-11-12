@@ -5,69 +5,110 @@ export const NOTES_JS = String.raw`
   "use strict";
   var HG = window.HG, el = HG.el, api = HG.api, root = document.getElementById("app");
   function when(iso) { return (iso || "").slice(0, 16).replace("T", " "); }
-  // Staff who may review: pending requests are decided right here (no separate back-office page).
-  function reviewCard(reload) {
-    return api("GET", "/v1/admin/me").then(function (me) {
-      if (me.status !== 200 || me.body.permissions.indexOf("review") < 0) return null;
-      return Promise.all([api("GET", "/v1/admin/reviews"), api("GET", "/v1/amway/field-definitions")]).then(function (x) {
-        if (x[0].status !== 200) return null;
-        var labels = {};
-        ((x[1].body && x[1].body.fields) || []).forEach(function (f) { labels[f.key] = {}; (f.options || []).forEach(function (o) { labels[f.key][o.value] = o.label; }); });
-        function show(v, key) { if (v === null || v === undefined) return "（無）"; return (labels[key] && labels[key][v]) || String(v); }
-        var list = x[0].body.reviews;
-        var items = list.map(function (r) {
-          var box = HG.msg();
-          function decide(d) { return function () { api("POST", "/v1/admin/reviews/" + r.id + "/decision", { decision: d }).then(function (res) { if (res.status === 200) reload(); else HG.say(box, false, HG.errText(res)); }); }; }
-          var num = r.member_number ? (r.member_number.number.indexOf(r.member_number.country) === 0 ? r.member_number.number : r.member_number.country + r.member_number.number) : "";
-          return el("div", { class: "note-item unread" }, [
-            el("strong", { text: (r.display_name || "會員") + (num ? "（" + num + "）" : "") + "：" + r.field_label }),
-            r.center ? el("div", { class: "help", text: "中心：" + r.center }) : null,
-            el("div", { text: "原本：" + show(r.current_value, r.field_key) + " → 申請：" + show(r.requested_value, r.field_key) }),
-            el("div", { class: "when", text: when(r.created_at) }),
-            el("div", { class: "actions" }, [el("button", { type: "button", class: "small primary", text: "核准", onclick: decide("approve") }), el("button", { type: "button", class: "small danger", text: "駁回", onclick: decide("reject") }), box])
-          ]);
-        });
-        var pending = el("section", { class: "card" }, [el("h2", { text: "待審核（" + list.length + "）" })].concat(items.length ? items : [el("p", { class: "help", text: "目前沒有待審核的申請。" })]));
-        // The record of decided requests, with the name of the person who decided each one.
-        return api("GET", "/v1/admin/reviews/history").then(function (h) {
-          var done = (h.status === 200 && h.body.history) || [];
-          var rows = done.map(function (r) {
-            var num = r.member_number ? (r.member_number.number.indexOf(r.member_number.country) === 0 ? r.member_number.number : r.member_number.country + r.member_number.number) : "";
-            return el("div", { class: "note-item" }, [
-              el("strong", { text: (r.display_name || "會員") + (num ? "（" + num + "）" : "") + "：" + r.field_label + " " + (r.status === "approved" ? "已核准" : "已駁回") }),
-              r.center ? el("div", { class: "help", text: "中心：" + r.center }) : null,
-              el("div", { text: "申請：" + show(r.requested_value, r.field_key) }),
-              el("div", { class: "when", text: when(r.decided_at) + " 審核人員：" + (r.decided_by || "（未記錄）") })
-            ]);
-          });
-          return el("div", {}, [pending, el("section", { class: "card" }, [el("h2", { text: "審核紀錄" })].concat(rows.length ? rows : [el("p", { class: "help", text: "還沒有審核紀錄。" })]))]);
-        });
+  function numOf(r) { return r.member_number ? (r.member_number.number.indexOf(r.member_number.country) === 0 ? r.member_number.number : r.member_number.country + r.member_number.number) : ""; }
+  var labels = null;
+  function show(v, key) { if (v === null || v === undefined) return "（無）"; return (labels && labels[key] && labels[key][v]) || String(v); }
+  function readLabels(res) {
+    labels = {};
+    ((res.body && res.body.fields) || []).forEach(function (f) { labels[f.key] = {}; (f.options || []).forEach(function (o) { labels[f.key][o.value] = o.label; }); });
+  }
+  // The review panel (staff who may review decide pending requests right here). The three requests it needs go out together.
+  function loadReviews(holder, note) {
+    var needLabels = labels ? Promise.resolve(null) : api("GET", "/v1/amway/field-definitions");
+    return Promise.all([api("GET", "/v1/admin/reviews"), api("GET", "/v1/admin/reviews/history"), needLabels]).then(function (x) {
+      if (x[0].status !== 200) { holder.textContent = ""; return; }
+      if (x[2]) readLabels(x[2]);
+      var list = x[0].body.reviews;
+      var count = el("h2", { text: "待審核（" + list.length + "）" });
+      var pending = el("section", { class: "card" }, [count]);
+      var empty = el("p", { class: "help", text: "目前沒有待審核的申請。" });
+      list.forEach(function (r) {
+        var box = HG.msg();
+        var item = el("div", { class: "note-item unread" });
+        var yes = el("button", { type: "button", class: "small primary", text: "核准" });
+        var no = el("button", { type: "button", class: "small danger", text: "駁回" });
+        var busy = false;
+        function decide(d, btn, label) {
+          return function () {
+            if (busy) return;
+            busy = true; yes.disabled = true; no.disabled = true; btn.textContent = "處理中…";
+            api("POST", "/v1/admin/reviews/" + r.id + "/decision", { decision: d }).then(function (res) {
+              if (res.status === 200 || res.status === 404) {
+                // Done (404 = someone already decided it): take it off the list now, then refresh the record and the notices.
+                item.remove();
+                var left = pending.querySelectorAll(".note-item").length;
+                count.textContent = "待審核（" + left + "）";
+                if (!left) pending.appendChild(empty);
+                loadReviews(holder, note); if (note) note();
+              } else { busy = false; yes.disabled = false; no.disabled = false; btn.textContent = label; HG.say(box, false, HG.errText(res)); }
+            });
+          };
+        }
+        yes.onclick = decide("approve", yes, "核准");
+        no.onclick = decide("reject", no, "駁回");
+        [el("strong", { text: (r.display_name || "會員") + (numOf(r) ? "（" + numOf(r) + "）" : "") + "：" + r.field_label }),
+          r.center ? el("div", { class: "help", text: "中心：" + r.center }) : null,
+          el("div", { text: "原本：" + show(r.current_value, r.field_key) + " → 申請：" + show(r.requested_value, r.field_key) }),
+          el("div", { class: "when", text: when(r.created_at) }),
+          el("div", { class: "actions" }, [yes, no, box])].forEach(function (n) { if (n) item.appendChild(n); });
+        pending.appendChild(item);
       });
+      if (!list.length) pending.appendChild(empty);
+      // The record of decided requests, with the name of the person who decided each one.
+      var done = (x[1].status === 200 && x[1].body.history) || [];
+      var rows = done.map(function (r) {
+        return el("div", { class: "note-item" }, [
+          el("strong", { text: (r.display_name || "會員") + (numOf(r) ? "（" + numOf(r) + "）" : "") + "：" + r.field_label + " " + (r.status === "approved" ? "已核准" : "已駁回") }),
+          r.center ? el("div", { class: "help", text: "中心：" + r.center }) : null,
+          el("div", { text: "申請：" + show(r.requested_value, r.field_key) }),
+          el("div", { class: "when", text: when(r.decided_at) + " 審核人員：" + (r.decided_by || "（未記錄）") })
+        ]);
+      });
+      holder.textContent = "";
+      holder.appendChild(pending);
+      holder.appendChild(el("section", { class: "card" }, [el("h2", { text: "審核紀錄" })].concat(rows.length ? rows : [el("p", { class: "help", text: "還沒有審核紀錄。" })])));
+    });
+  }
+  function renderNotes(box, r, again) {
+    var list = r.body.notifications, unread = r.body.unread, m = HG.msg();
+    box.textContent = "";
+    box.appendChild(el("div", { class: "pagebar" }, [el("h1", { text: "站內通知" }), unread ? el("button", { type: "button", class: "small", text: "全部標示已讀", onclick: function () {
+      api("POST", "/v1/me/notifications/read-all").then(function (x) { if (x.status === 200) again(); else HG.say(m, false, HG.errText(x)); });
+    } }) : null]));
+    box.appendChild(m);
+  }
+  function renderList(box, r, again) {
+    box.textContent = "";
+    var list = r.body.notifications;
+    if (!list.length) { box.appendChild(el("section", { class: "card" }, [el("p", { class: "help", text: "目前沒有通知。" })])); return; }
+    box.appendChild(el("section", { class: "card" }, list.map(function (x) {
+      return el("div", { class: "note-item" + (x.read ? "" : " unread") }, [
+        el("strong", { text: x.title }), el("div", { text: x.body }), el("div", { class: "when", text: when(x.created_at) }),
+        el("div", { class: "actions" }, [
+          x.actions.indexOf("unbind_spouse") >= 0 ? el("button", { type: "button", class: "small danger", text: "一鍵解除夫妻綁定", onclick: function () {
+            if (!confirm("確定要解除夫妻綁定嗎？")) return;
+            api("DELETE", "/v1/me/spouse").then(again);
+          } }) : null,
+          x.read ? null : el("button", { type: "button", class: "small", text: "標示已讀", onclick: function () { api("POST", "/v1/me/notifications/" + x.id + "/read").then(again); } })
+        ])]);
+    })));
+  }
+  // The page frame appears as soon as the notices arrive; the review panel fills in when its own requests come back.
+  var head = el("div", {}), reviewBox = el("div", {}), listBox = el("div", {});
+  root.textContent = "";
+  [head, reviewBox, listBox].forEach(function (n) { root.appendChild(n); });
+  function refreshNotes() {
+    return api("GET", "/v1/me/notifications").then(function (r) {
+      if (r.status === 401) { location.href = "/login?return_to=%2Fnotifications"; return; }
+      renderNotes(head, r, refreshNotes); renderList(listBox, r, refreshNotes);
     });
   }
   function load() {
-    Promise.all([api("GET", "/v1/me/notifications"), reviewCard(load)]).then(function (all) {
-      var r = all[0], rc = all[1];
-      if (r.status === 401) { location.href = "/login?return_to=%2Fnotifications"; return; }
-      var list = r.body.notifications, unread = r.body.unread, m = HG.msg();
-      root.textContent = "";
-      root.appendChild(el("div", { class: "pagebar" }, [el("h1", { text: "站內通知" }), unread ? el("button", { type: "button", class: "small", text: "全部標示已讀", onclick: function () {
-        api("POST", "/v1/me/notifications/read-all").then(function (x) { if (x.status === 200) load(); else HG.say(m, false, HG.errText(x)); });
-      } }) : null]));
-      root.appendChild(m);
-      if (rc) root.appendChild(rc);
-      if (!list.length) { root.appendChild(el("section", { class: "card" }, [el("p", { class: "help", text: "目前沒有通知。" })])); return; }
-      root.appendChild(el("section", { class: "card" }, list.map(function (x) {
-        return el("div", { class: "note-item" + (x.read ? "" : " unread") }, [
-          el("strong", { text: x.title }), el("div", { text: x.body }), el("div", { class: "when", text: when(x.created_at) }),
-          el("div", { class: "actions" }, [
-            x.actions.indexOf("unbind_spouse") >= 0 ? el("button", { type: "button", class: "small danger", text: "一鍵解除夫妻綁定", onclick: function () {
-              if (!confirm("確定要解除夫妻綁定嗎？")) return;
-              api("DELETE", "/v1/me/spouse").then(load);
-            } }) : null,
-            x.read ? null : el("button", { type: "button", class: "small", text: "標示已讀", onclick: function () { api("POST", "/v1/me/notifications/" + x.id + "/read").then(load); } })
-          ])]);
-      })));
+    var me = api("GET", "/v1/admin/me");
+    refreshNotes();
+    me.then(function (m) {
+      if (m.status !== 200 || m.body.permissions.indexOf("review") < 0) return;
+      loadReviews(reviewBox, refreshNotes);
     });
   }
   load();
