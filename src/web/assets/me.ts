@@ -71,11 +71,13 @@ export const ME_JS = String.raw`
     function paintStatus() { statusBox.textContent = ""; if (cfg.status) { var n = cfg.status(); if (n) statusBox.appendChild(n); } }
     function mark(text, cls) { saved.textContent = text; saved.className = "saved" + (cls ? " " + cls : ""); clearTimeout(fade); if (cls === "ok") fade = setTimeout(function () { saved.textContent = ""; }, 2500); }
     function dirty() { return !!ed && key(ed.get()) !== last; }
+    function isEmpty(v) { return v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length); }
     function touch() {
       clearTimeout(timer);
       timer = setTimeout(function () {
         row.touched = true;
         var v = ed.get();
+        if (!isEmpty(v)) row.classList.remove("row-missing");
         if (key(v) !== last) { mark("尚未儲存", "warn"); m.textContent = ""; } else if (saved.className.indexOf("warn") >= 0) mark("", "");
         if (cfg.onChange) cfg.onChange(v);
       }, 250);
@@ -93,7 +95,7 @@ export const ME_JS = String.raw`
         mark("尚未儲存", "warn"); say(m, false, res ? errText(res) : "儲存失敗"); return { ok: false };
       });
     }
-    row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), saved, tools]));
+    row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), cfg.required ? el("span", { class: "req", text: "必填" }) : null, saved, tools]));
     if (cfg.note) row.appendChild(el("div", {}, [el("span", { class: "note", text: cfg.note })]));
     if (cfg.help) row.appendChild(el("div", { class: "help", text: cfg.help }));
     if (cfg.forced) tools.appendChild(lockedPill());
@@ -105,6 +107,8 @@ export const ME_JS = String.raw`
       var watch = ed.watch === undefined ? valueBox : ed.watch;
       if (watch && window.MutationObserver) new MutationObserver(touch).observe(watch, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked", "disabled"] });
       if (ed.typing !== false) valueBox.addEventListener("input", touch);
+      // Typing in a required box takes its orange mark away at once (rows with chips are checked when they change).
+      if (ed.watch === undefined) valueBox.addEventListener("input", function () { if (row.classList.contains("row-missing") && !isEmpty(ed.get())) row.classList.remove("row-missing"); });
       valueBox.addEventListener("change", touch);
       valueBox.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".sg-list, .dd-list")) touch(); });
       valueBox.addEventListener("focusout", function () { setTimeout(touch, 180); });
@@ -114,10 +118,22 @@ export const ME_JS = String.raw`
     if (cfg.below) row.appendChild(cfg.below());
     paintStatus();
     row.commit = commit; row.isDirty = dirty; row.refreshStatus = paintStatus; row.touched = false; row.ed = ed; row.value = function () { return ed ? ed.get() : null; };
+    row.required = !!cfg.required && !!ed; row.isEmpty = function () { return !!ed && isEmpty(ed.get()); };
     return row;
   }
   // The floating 儲存 button: saves every changed row, one after another, then returns to the member's own page.
   function saveAll(btn) {
+    // Required fields first: if one is empty nothing is saved; the page jumps to the first empty one and marks every empty one.
+    var missing = liveRows().filter(function (r) { return r.required && r.isEmpty(); });
+    liveRows().forEach(function (r) { r.classList.remove("row-missing"); });
+    if (missing.length) {
+      missing.forEach(function (r) { r.classList.add("row-missing"); });
+      var first = missing[0], box = first.querySelector("input, textarea, .dd-btn, button.chk");
+      first.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (box && box.focus) setTimeout(function () { box.focus({ preventScroll: true }); }, 400);
+      HG.toast("請先填寫必填欄位：" + missing.map(function (r) { return r.querySelector("label").textContent; }).join("、"));
+      return;
+    }
     var failed = null, stay = false;
     liveRows().forEach(function (r) { r.skip = false; });
     btn.disabled = true; btn.textContent = "儲存中…";
@@ -238,7 +254,7 @@ export const ME_JS = String.raw`
       else if (def.key === "display_name") { swap("avatar"); retitleLife(); }
     }
     function onChange(val) { if (def.key === "birthday") previewBirthday(val); }
-    return makeRow({ label: def.label, help: def.help, keys: [def.key], vis: st.visibility, forced: def.visibility.configurable === false, display: display, editor: editor, stored: def.key === "contact_email" ? S.profile.fields[def.key].value : undefined, save: save, valid: valid, invalidText: "請把年、月、日都選好", after: after, onChange: onChange });
+    return makeRow({ label: def.label, required: !!def.required, help: def.help, keys: [def.key], vis: st.visibility, forced: def.visibility.configurable === false, display: display, editor: editor, stored: def.key === "contact_email" ? S.profile.fields[def.key].value : undefined, save: save, valid: valid, invalidText: "請把年、月、日都選好", after: after, onChange: onChange });
   }
 
   // ---- education: one line per level (school + department) ----
@@ -578,7 +594,7 @@ export const ME_JS = String.raw`
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
     function after() { refreshAmwayData(d.key); }
-    var r = makeRow({ label: REQUIRED.indexOf(d.key) >= 0 ? d.label + "（必填）" : d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: updateRankLock });
+    var r = makeRow({ label: d.label, required: REQUIRED.indexOf(d.key) >= 0, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: updateRankLock });
     AROWS[d.key] = r;
     return r;
   }

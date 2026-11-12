@@ -129,7 +129,7 @@ const contact = (d: Def): FieldDefinition => ({
 });
 
 const RAW: FieldDefinition[] = [
-  basic({ key: "display_name", group: "basic", order: 10, label: "顯示名稱", type: "text", max_length: 50, required: true }),
+  basic({ key: "display_name", group: "basic", order: 10, label: "暱稱", type: "text", max_length: 50, required: true }),
   // 真實姓名 (restored 2026-11-12, key legal_name; the deleted primary_name stays gone): used only to match payers in paid-course
   // sign-ups and reconciliation. Private by default; an App reads it for the signed-in member only (GET /v1/me/profile).
   basic({ key: "legal_name", group: "basic", order: 20, label: "真實姓名", help: "用於付費課程報名與對帳，預設不公開。", type: "text", max_length: 50, visibility: "private" }),
