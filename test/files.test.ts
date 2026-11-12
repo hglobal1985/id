@@ -72,10 +72,10 @@ describe("avatars in R2", () => {
     await upload();
     expect(stored()?.n).toBe(PNG.length);
     const bucket = fakeR2();
-    expect(await moveAvatarsToR2(db as unknown as D1Database, bucket as unknown as R2Bucket)).toBe(1);
+    expect((await moveAvatarsToR2(db as unknown as D1Database, bucket as unknown as R2Bucket)).moved).toBe(1);
     expect(bucket.store.get(`avatars/${memberId}`)?.bytes).toEqual(PNG);
     expect(stored()?.n).toBe(0);
-    expect(await moveAvatarsToR2(db as unknown as D1Database, bucket as unknown as R2Bucket)).toBe(0);
+    expect((await moveAvatarsToR2(db as unknown as D1Database, bucket as unknown as R2Bucket)).moved).toBe(0);
     const withR2 = { ...env, FILES: bucket as unknown as R2Bucket } as Env;
     const img = await app.request(`/avatar/${memberId}`, {}, withR2);
     expect(new Uint8Array(await img.arrayBuffer())).toEqual(PNG);
