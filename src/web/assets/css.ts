@@ -48,6 +48,7 @@ hr.part{border:0;border-top:2px solid var(--line);margin:28px 0 20px}
 .value{margin:0;word-break:break-word;min-height:1.65em}
 .value.empty{color:var(--muted)}
 .help{color:var(--muted);font-size:14px}
+.warn-note{color:var(--warn)}
 .note{display:inline-block;margin-left:8px;padding:1px 10px;border-radius:999px;background:var(--orange-soft);color:var(--orange);font-size:13px;font-weight:600}
 .inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 0}

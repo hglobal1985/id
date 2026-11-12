@@ -1,6 +1,6 @@
 import { readAmwayFields } from "./amway";
 import { hglobalNorms } from "./vocab";
-import { HGLOBAL, systemKey } from "../amway/fields";
+import { HGLOBAL, isNone, systemKey } from "../amway/fields";
 import type { Ladder, MemberEligibility } from "../eligibility/rules";
 
 export async function loadMemberEligibility(db: D1Database, memberId: string): Promise<MemberEligibility | null> {
@@ -12,7 +12,7 @@ export async function loadMemberEligibility(db: D1Database, memberId: string): P
   const rank = rows.get("rank");
   // 寰宇 alone passes at once; a member who also named a regional center is verified once that center was approved by its reviewer.
   const center = rows.get("education_center");
-  const hasCenter = !!center && (center.value !== null || center.pending_value !== null);
+  const hasCenter = !!center && ((center.value !== null && !isNone(center.value)) || (center.pending_value !== null && !isNone(center.pending_value)));
   const centerOk = !hasCenter || (!!center && center.value !== null && center.value_approved);
   return {
     amwayActive: m.amway_enabled === 1,

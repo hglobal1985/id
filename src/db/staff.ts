@@ -2,6 +2,7 @@ import { taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
 import type { Grant, Role } from "../admin/roles";
 import { normTerm } from "../vocab/terms";
+import { isNone } from "../amway/fields";
 
 export async function rolesOf(db: D1Database, memberId: string): Promise<Role[]> {
   const r = await db.prepare("SELECT role FROM staff_roles WHERE member_id = ? ORDER BY role").bind(memberId).all<{ role: Role }>();
@@ -56,7 +57,7 @@ export async function centerNormOfMember(db: D1Database, memberId: string): Prom
   if (!r?.value) return null;
   try {
     const v = JSON.parse(r.value) as unknown;
-    return typeof v === "string" && v.trim() ? normTerm(v) : null;
+    return typeof v === "string" && v.trim() && !isNone(v) ? normTerm(v) : null;
   } catch {
     return null;
   }

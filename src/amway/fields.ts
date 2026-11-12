@@ -117,6 +117,12 @@ export function systemKey(v: AmwayValue, hglobalNorms: ReadonlySet<string>): str
 }
 
 /** What the review rule needs to know about the member: the training system (effective / pending) and whether a regional center is filled in. */
+/** "無": the member has no training system / regional center. Counts as filled in, but is not a real center (never reviewed, no badge). */
+export const NONE_TERM = "無";
+export function isNone(v: unknown): boolean {
+  return typeof v === "string" && v.trim() === NONE_TERM;
+}
+
 export interface ReviewContext {
   system: { effective: string | null; pending: string | null };
   /** A regional center is saved or waiting for review (the value being written counts). */
@@ -131,7 +137,7 @@ export interface ReviewContext {
 export function needsReview(def: AmwayFieldDef, value: AmwayValue, ctx: ReviewContext): boolean {
   if (def.review === "never" || value === null) return false;
   const isHglobal = ctx.system.effective === HGLOBAL || ctx.system.pending === HGLOBAL;
-  if (def.key === "education_center") return isHglobal;
+  if (def.key === "education_center") return isHglobal && !isNone(value);
   if (def.key === "rank") return isHglobal && ctx.hasCenter;
   return false;
 }

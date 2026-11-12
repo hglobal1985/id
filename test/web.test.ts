@@ -316,6 +316,8 @@ describe("member center template (same layout as starry.phd)", () => {
     const a = await person("a", "王大明明明明");
     await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
     const code = db.raw.prepare("SELECT value FROM amway_options WHERE field_key = 'rank' AND label = '創辦人執行專才鑽石'").get()?.value as string;
+    await req(a, "PUT", "/v1/me/amway/fields/education_system", { value: "無" });
+    await req(a, "PUT", "/v1/me/amway/fields/education_center", { value: "無" });
     await req(a, "PUT", "/v1/me/amway/fields/rank", { value: code });
     // No review is needed unless the training system is H-Global1985, and an unreviewed rank is not shown.
     expect(await (await req(a, "GET", "/privacy")).text()).not.toContain('class="rank');

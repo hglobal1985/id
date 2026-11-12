@@ -1,5 +1,6 @@
 // The boxes beside a member's name: training system (系統), regional center (中心) and the reviewed rank (獎銜).
 // Shown only while 我是Amway會員 is on and only for what is filled; the rank only when it has been reviewed.
+import { isNone } from "../amway/fields";
 import { approvedRankLabel, readAmwayFields } from "./amway";
 import { amwayDefault, visibilityOf } from "../profile/visibility";
 import { fitBadge, rankBadge, type RankBadge } from "../web/nav-text";
@@ -16,7 +17,7 @@ export async function heroBadges(db: D1Database, memberId: string, publicOnly = 
   const out: HeroBadge[] = [];
   const text = (k: string) => {
     const v = rows.get(k)?.value;
-    return typeof v === "string" && v.trim() ? v.trim() : null;
+    return typeof v === "string" && v.trim() && !isNone(v) ? v.trim() : null;
   };
   const hidden = new Set<string>();
   if (publicOnly) {
