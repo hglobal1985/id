@@ -523,6 +523,13 @@
               "registration_country": {
                 "type": "string"
               },
+              "google_email": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The member's own Google sign-in e-mail; the edit page pre-fills the contact e-mail with it"
+              },
               "account_status": {
                 "type": "string"
               },
@@ -549,6 +556,7 @@
             "required": [
               "member_id",
               "registration_country",
+              "google_email",
               "account_status",
               "zodiac",
               "life_path_number",
@@ -2364,6 +2372,85 @@
           },
           "422": {
             "description": "invalid_field (unknown pool)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/profile/life-chart": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Life number chart for a birthday, for a live preview on the edit page (nothing is saved)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "required": true,
+            "name": "birthday",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chart",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "life_chart": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "zodiac": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "life_chart",
+                    "zodiac"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden (scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
             "content": {
               "application/json": {
                 "schema": {

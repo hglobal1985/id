@@ -105,6 +105,7 @@ const ProfileSchema = z
     info: z.object({
       member_id: z.string(),
       registration_country: z.string(),
+      google_email: z.string().nullable().openapi({ description: "The member's own Google sign-in e-mail; the edit page pre-fills the contact e-mail with it" }),
       account_status: z.string(),
       zodiac: z.string().nullable(),
       life_path_number: z.number().int().nullable(),
@@ -222,6 +223,15 @@ const mottoRoute = createRoute({
   request: { query: z.object({ current: z.string().max(200).optional() }) },
   responses: { 200: { description: "Suggestion", content: json(z.object({ motto: z.string() })) }, ...errors },
 });
+const lifeChartPreviewRoute = createRoute({
+  method: "get",
+  path: "/v1/profile/life-chart",
+  tags: ["profile"],
+  summary: "Life number chart for a birthday, for a live preview on the edit page (nothing is saved)",
+  security,
+  request: { query: z.object({ birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }) },
+  responses: { 200: { description: "Chart", content: json(z.object({ life_chart: z.record(z.unknown()), zodiac: z.string() })) }, ...errors, 422: { description: "invalid_field", content: json(ErrorBodySchema) } },
+});
 const avatarDeleteRoute = createRoute({
   method: "delete",
   path: "/v1/me/profile/avatar",
@@ -300,6 +310,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
         info: {
           member_id: member.id,
           registration_country: member.registration_country,
+          google_email: member.google_email ?? null,
           account_status: member.status,
           zodiac: birthday ? zodiacSign(birthday) : null,
           life_path_number: chart?.life_number ?? null,
@@ -388,6 +399,16 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     // The regional center list shows in full when the field is opened (empty query); other vocabularies need a typed character.
     const suggestions = q.trim() ? await suggestTerms(c.env.DB, pool, q) : pool === "education_center" ? await allTerms(c.env.DB, pool, 60) : [];
     return c.json({ pool, suggestions }, 200);
+  });
+
+  app.openapi(lifeChartPreviewRoute, (c) => {
+    const denied = missingScope(c, ["profile.read"]);
+    if (denied) return denied as never;
+    const birthday = c.req.valid("query").birthday;
+    const chart = lifeChartOf(birthday);
+    const sign = zodiacSign(birthday);
+    if (!chart || !sign) return invalid(c, "birthday", "invalid_date", "日期不正確") as never;
+    return c.json({ life_chart: chart as unknown as Record<string, unknown>, zodiac: sign }, 200);
   });
 
   app.openapi(mottoRoute, (c) => {

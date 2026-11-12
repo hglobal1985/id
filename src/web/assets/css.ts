@@ -129,6 +129,15 @@ button[disabled]{opacity:.5;cursor:default}
 .pagebar{display:flex;align-items:stretch;gap:8px;margin:0 0 10px}
 .pagebar>.button,.pagebar>button{flex:1 1 0;min-width:0;min-height:40px;padding:6px 6px;font-size:.95rem;white-space:nowrap}
 .pagebar>.wide{flex:1.5 1 0}
+/* edit page: the three buttons float at the top (under the main menu); the page scrolls under them */
+.pagebar.float{position:sticky;top:73px;z-index:28;margin-bottom:6px;pointer-events:none}
+.pagebar.float>.button,.pagebar.float>button{pointer-events:auto;box-shadow:var(--shadow)}
+.pagebar.float>.wide{flex:1.6 1 0}
+button.gold,.button.gold{background:var(--yellow);border-color:var(--b-warn);color:#1d2a22;font-weight:700}
+button.gold:hover,.button.gold:hover{filter:brightness(.95)}
+.with-none{display:flex;align-items:center;gap:10px}.with-none>:first-child{flex:1 1 auto;min-width:0}.with-none>.chk{flex:none;min-height:44px}
+.motto-box{min-height:4.2em}
+.row-head .saved.warn{color:var(--warn)}
 .motto{margin:0 0 12px;color:var(--olive);font-style:italic}
 /* tabs and collapsible sections */
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}

@@ -1,6 +1,6 @@
 // /assets/me.js — the member's edit page (/my/edit). Built from the field definition APIs (no hard-coded fields,
 // labels or options beyond the education rows). textContent only; member input never becomes HTML.
-// Every field has a public/hidden switch and is always in editing state: no edit or save buttons, every change is saved by itself.
+// Every field has a public/hidden switch and is always in editing state (no edit button); nothing is saved until the floating 儲存 button is pressed. The birthday draws its life number chart at once (a preview, not saved).
 // Written without template literals so it can live in String.raw. Needs /assets/common.js (window.HG).
 export const ME_JS = String.raw`
 (function () {
@@ -53,33 +53,46 @@ export const ME_JS = String.raw`
     return b;
   }
 
-  // One row: label, public/hidden switch and the editor, always open. Every change saves by itself (no edit or save button):
-  // dropdowns, ticks and chips right away, plain text after a short pause, text with related words / countries / numbers when the
-  // box is left or a suggestion is picked (so half-typed words never reach the vocabulary or burn the member-number quota).
-  // cfg: label, help, note, keys, vis, forced (always public), editor() -> {node, get(), typing?, watch?}, valid(val) -> bool,
-  // save(val) -> Promise<res>, after(val, res) (no re-render of this row), status() -> node shown under the editor,
-  // noEdit + display() (read-only), below() -> node under the row
+  // One row: label, public/hidden switch and the editor, always open. A change only marks the row 「尚未儲存」; the floating 儲存
+  // button saves every changed row (in page order, so the training system and center are in before the rank) and then goes back.
+  // cfg: label, help, note, keys, vis, forced (always public), editor() -> {node, get(), typing?, watch?}, stored (the saved value, when
+  // the editor starts with something else, e.g. the pre-filled e-mail), valid(val) -> bool, invalidText, save(val) -> Promise<res>,
+  // after(val, res), onChange(val) (live reaction, nothing is saved), status() -> node under the editor, noEdit + display() (read-only), below()
+  var ROWS = [];
+  function liveRows() {
+    ROWS = ROWS.filter(function (r) { return document.body.contains(r); });
+    return ROWS.slice().sort(function (a, b) { return a.compareDocumentPosition(b) & 4 ? -1 : 1; });
+  }
+  function anyUnsaved() { return liveRows().some(function (r) { return r.touched && r.isDirty(); }); }
   function makeRow(cfg) {
     var row = el("div", { class: "row" }), valueBox = el("div"), m = msg(), tools = el("div", { class: "row-tools" });
-    var saved = el("span", { class: "saved", "aria-live": "polite" }), statusBox = el("div"), ed = null, last = "", timer = null, busy = false, again = false, fade = null;
+    var saved = el("span", { class: "saved", "aria-live": "polite" }), statusBox = el("div"), ed = null, last = "", timer = null, fade = null;
     function key(v) { return JSON.stringify(v); }
     function paintStatus() { statusBox.textContent = ""; if (cfg.status) { var n = cfg.status(); if (n) statusBox.appendChild(n); } }
-    function mark(text, ok) { saved.textContent = text; saved.className = "saved" + (ok ? " ok" : ""); clearTimeout(fade); if (ok) fade = setTimeout(function () { saved.textContent = ""; }, 2500); }
-    function flush() {
+    function mark(text, cls) { saved.textContent = text; saved.className = "saved" + (cls ? " " + cls : ""); clearTimeout(fade); if (cls === "ok") fade = setTimeout(function () { saved.textContent = ""; }, 2500); }
+    function dirty() { return !!ed && key(ed.get()) !== last; }
+    function touch() {
       clearTimeout(timer);
-      if (!ed) return;
+      timer = setTimeout(function () {
+        row.touched = true;
+        var v = ed.get();
+        if (key(v) !== last) { mark("尚未儲存", "warn"); m.textContent = ""; } else if (saved.className.indexOf("warn") >= 0) mark("", "");
+        if (cfg.onChange) cfg.onChange(v);
+      }, 250);
+    }
+    // Saves this row when it changed. Resolves {ok, stay}: stay = something on the page needs a look before leaving.
+    function commit() {
+      clearTimeout(timer);
+      if (!ed) return Promise.resolve({ ok: true });
       var v = ed.get();
-      if (key(v) === last || (cfg.valid && !cfg.valid(v))) return;
-      if (busy) { again = true; return; }
-      busy = true; mark("儲存中…", false); m.textContent = "";
-      Promise.resolve(cfg.save(v)).then(function (res) {
-        busy = false;
-        if (res && res.status === 200) { last = key(v); mark("已儲存", true); if (cfg.after) cfg.after(v, res); paintStatus(); }
-        else { mark("", false); say(m, false, res ? errText(res) : "儲存失敗"); }
-        if (again) { again = false; flush(); }
+      if (key(v) === last) return Promise.resolve({ ok: true });
+      if (cfg.valid && !cfg.valid(v)) { say(m, false, cfg.invalidText || "內容還不完整"); return Promise.resolve({ ok: false }); }
+      mark("儲存中…", ""); m.textContent = "";
+      return Promise.resolve(cfg.save(v)).then(function (res) {
+        if (res && res.status === 200) { last = key(v); mark("已儲存", "ok"); if (cfg.after) cfg.after(v, res); paintStatus(); return { ok: true, stay: !!res.stay }; }
+        mark("尚未儲存", "warn"); say(m, false, res ? errText(res) : "儲存失敗"); return { ok: false };
       });
     }
-    function later(ms) { clearTimeout(timer); timer = setTimeout(flush, ms); }
     row.appendChild(el("div", { class: "row-head" }, [el("label", { text: cfg.label }), saved, tools]));
     if (cfg.note) row.appendChild(el("div", {}, [el("span", { class: "note", text: cfg.note })]));
     if (cfg.help) row.appendChild(el("div", { class: "help", text: cfg.help }));
@@ -88,20 +101,39 @@ export const ME_JS = String.raw`
     row.appendChild(valueBox);
     if (cfg.noEdit) valueBox.appendChild(cfg.display());
     else {
-      ed = cfg.editor(); valueBox.appendChild(ed.node); last = key(ed.get());
+      ed = cfg.editor(); valueBox.appendChild(ed.node); last = key(cfg.stored !== undefined ? cfg.stored : ed.get());
       var watch = ed.watch === undefined ? valueBox : ed.watch;
-      if (watch && window.MutationObserver) new MutationObserver(function () { later(350); }).observe(watch, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked"] });
-      if (ed.typing !== false) valueBox.addEventListener("input", function () { later(900); });
-      valueBox.addEventListener("change", function () { later(200); });
-      valueBox.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".sg-list, .dd-list")) later(250); });
-      valueBox.addEventListener("focusout", function () { setTimeout(flush, 180); });
+      if (watch && window.MutationObserver) new MutationObserver(touch).observe(watch, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked", "disabled"] });
+      if (ed.typing !== false) valueBox.addEventListener("input", touch);
+      valueBox.addEventListener("change", touch);
+      valueBox.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".sg-list, .dd-list")) touch(); });
+      valueBox.addEventListener("focusout", function () { setTimeout(touch, 180); });
+      ROWS.push(row);
     }
     row.appendChild(statusBox); row.appendChild(m);
     if (cfg.below) row.appendChild(cfg.below());
     paintStatus();
-    row.flush = flush; row.refreshStatus = paintStatus;
+    row.commit = commit; row.isDirty = dirty; row.refreshStatus = paintStatus; row.touched = false;
     return row;
   }
+  // The floating 儲存 button: saves every changed row, one after another, then returns to the member's own page.
+  function saveAll(btn) {
+    var failed = null, stay = false;
+    liveRows().forEach(function (r) { r.skip = false; });
+    btn.disabled = true; btn.textContent = "儲存中…";
+    function next() {
+      var r = liveRows().filter(function (x) { return !x.skip && x.isDirty(); })[0];
+      if (!r) return Promise.resolve();
+      return r.commit().then(function (res) { if (!res.ok) { r.skip = true; failed = failed || r; } if (res.stay) stay = true; return next(); });
+    }
+    next().then(function () {
+      btn.disabled = false; btn.textContent = "儲存";
+      if (failed) { HG.toast("有欄位沒有儲存成功，請看欄位下方的原因"); failed.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+      HG.toast("已儲存");
+      if (!stay) setTimeout(function () { location.href = ownPage(); }, 700);
+    });
+  }
+  window.addEventListener("beforeunload", function (e) { if (anyUnsaved()) { e.preventDefault(); e.returnValue = ""; } });
 
   function pid(e) { return e.number.indexOf(e.country) === 0 ? e.number : e.country + e.number; }
   // Fields that are always public look like the others (rounded box, eye, 公開) but have no switch.
@@ -166,10 +198,24 @@ export const ME_JS = String.raw`
           return !a && !b && !c ? null : (a || "") + "-" + (b || "") + "-" + (c || "");
         } };
       }
+      if (def.key === "motto") {
+        // Two lines high; Enter does not start a new line (a motto is one line of text that wraps).
+        input = el("textarea", { rows: "2", class: "motto-box", maxlength: def.max_length, "aria-label": def.label }); input.value = v || "";
+        input.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
+        input.addEventListener("input", function () { if (/[\r\n]/.test(input.value)) input.value = input.value.replace(/[\r\n]+/g, " "); });
+        var dice0 = el("button", { type: "button", class: "small", text: "🎲 隨機提案", onclick: function () {
+          api("GET", "/v1/profile/suggestions/motto?current=" + encodeURIComponent(input.value)).then(function (r) { if (r.status === 200) { input.value = r.body.motto; input.focus(); input.dispatchEvent(new Event("input", { bubbles: true })); } });
+        } });
+        return { node: el("div", {}, [input, el("div", { class: "actions" }, [dice0])]), get: function () { return input.value.trim() || null; } };
+      }
       var kind = { url: "url", email: "email", phone: "tel" }[def.type] || "text";
       input = el("input", { type: kind, maxlength: def.max_length, "aria-label": def.label });
       if (def.ui === "autocomplete") { var cur = (def.options.filter(function (o) { return o.value === v; })[0] || {}).label; input.value = cur || ""; node = HG.suggestBox(input, countryFetcher(def)); }
-      else { input.value = v || ""; node = def.suggest ? HG.suggestBox(input, suggestFetcher(def.suggest)) : input; }
+      else {
+        // The contact e-mail starts with the member's own Google e-mail (it is saved with 儲存, the member can change it).
+        input.value = v || (def.key === "contact_email" && S.profile.info ? S.profile.info.google_email || "" : "");
+        node = def.suggest ? HG.suggestBox(input, suggestFetcher(def.suggest)) : input;
+      }
       var kids = [node];
       if (def.key === "motto") {
         var dice = el("button", { type: "button", class: "small", text: "🎲 隨機提案", onclick: function () {
@@ -191,7 +237,8 @@ export const ME_JS = String.raw`
       if (def.key === "birthday") refreshBirthday();
       else if (def.key === "display_name") { swap("avatar"); retitleLife(); }
     }
-    return makeRow({ label: def.label, help: def.help, keys: [def.key], vis: st.visibility, forced: def.visibility.configurable === false, display: display, editor: editor, save: save, valid: valid, after: after });
+    function onChange(val) { if (def.key === "birthday") previewBirthday(val); }
+    return makeRow({ label: def.label, help: def.help, keys: [def.key], vis: st.visibility, forced: def.visibility.configurable === false, display: display, editor: editor, stored: def.key === "contact_email" ? S.profile.fields[def.key].value : undefined, save: save, valid: valid, invalidText: "請把年、月、日都選好", after: after, onChange: onChange });
   }
 
   // ---- education: one line per level (school + department) ----
@@ -465,6 +512,7 @@ export const ME_JS = String.raw`
               el("div", { class: "hero" }, [HG.bubble("md", c.avatar_url, c.display_name), el("p", { text: "此編號與「" + (c.display_name || "一位會員") + "」" + (c.rank ? "（" + c.rank + "）" : "") + "相同。是否與此會員綁定為夫妻？" })]),
               el("button", { type: "button", class: "primary", text: "綁定為夫妻", onclick: function () { api("POST", "/v1/me/spouse", { candidate_id: c.candidate_id }).then(function (b) { if (b.status === 200) load(); else HG.toast(errText(b)); }); } })]));
           });
+          r.stay = true; // the member must see the spouse-binding question before leaving the page
         }
         return r;
       });
@@ -505,8 +553,13 @@ export const ME_JS = String.raw`
     function editor() {
       var cur = st.pending_value !== null && st.pending_value !== undefined ? st.pending_value : st.value;
       if (d.type === "select") {
-        var dd = HG.dropdown({ options: [{ value: "", label: "（未選擇）" }].concat(opts), value: cur || "", block: true });
-        return { node: dd.el, get: function () { return dd.get() || null; } };
+        // 「無」 is a tick beside the drop-down (not an entry inside it): ticked = the value "none", the list is switched off.
+        var hasNone = opts.some(function (o) { return o.value === "none"; }), noneOn = hasNone && cur === "none";
+        var dd = HG.dropdown({ options: [{ value: "", label: "（未選擇）" }].concat(opts.filter(function (o) { return o.value !== "none"; })), value: noneOn ? "" : (cur || ""), block: true });
+        if (!hasNone) return { node: dd.el, get: function () { return dd.get() || null; } };
+        var ddBtn = dd.el.querySelector(".dd-btn"); if (noneOn) ddBtn.disabled = true;
+        var noneTick = HG.checkbox("無", noneOn, function (on) { noneOn = on; ddBtn.disabled = on; if (on) dd.set(""); });
+        return { node: el("div", { class: "with-none" }, [dd.el, noneTick]), get: function () { return noneOn ? "none" : (dd.get() || null); } };
       }
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
       var typingSaves = !d.suggest;
@@ -518,7 +571,7 @@ export const ME_JS = String.raw`
       var field = useSuggest ? HG.suggestBox(input, suggestFetcher(d.suggest), undefined, { openOnFocus: d.key === "education_center" }) : input;
       if (!canNone) return { node: field, typing: typingSaves, get: function () { return input.value.trim() || null; } };
       var noneBox = HG.checkbox("無", none, function (on) { none = on; input.disabled = on; if (on) input.value = ""; });
-      return { node: el("div", {}, [field, noneBox]), typing: false, get: function () { return none ? "無" : (input.value.trim() || null); } };
+      return { node: el("div", { class: "with-none" }, [field, noneBox]), typing: false, get: function () { return none ? "無" : (input.value.trim() || null); } };
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
     function after() { refreshAmwayData(d.key); }
@@ -552,8 +605,6 @@ export const ME_JS = String.raw`
         var cd = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0], old = AROWS.education_center;
         if (cd) { var neu = amwayFieldRow(cd); old.replaceWith(neu); }
       }
-      // The rank waits for the system and the center: once they are filled in, a rank chosen earlier is sent.
-      if ((savedKey === "education_system" || savedKey === "education_center") && AROWS.rank) AROWS.rank.flush();
     });
   }
 
@@ -638,7 +689,7 @@ export const ME_JS = String.raw`
   }
   // 「xxx的生命靈數（x年x月x日）」 is the block's title (the plain 生日與生命靈數 until a birthday is saved).
   function lifeTitle() {
-    var f = S.profile.fields.birthday, m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((f && f.value) || "");
+    var f = S.profile.fields.birthday, m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(PREVIEW ? (PREVIEW.birthday || "") : ((f && f.value) || ""));
     return m ? (shownName() || "我") + "生命靈數 " + m[1] + "年" + Number(m[2]) + "月" + Number(m[3]) + "日" : "生日與生命靈數";
   }
   // The title stays on one line: the longer it is, the smaller the font (same steps as the public page).
@@ -647,8 +698,9 @@ export const ME_JS = String.raw`
     return "life-title lt-" + (u <= 14.5 ? 0 : u <= 17 ? 1 : u <= 19.5 ? 2 : u <= 23 ? 3 : 4);
   }
   // The 生命靈數 chart inside the birthday block (one block for both).
+  var PREVIEW = null, previewSeq = 0;
   function chartBody() {
-    var c = S.profile.life_chart; if (!c) return null;
+    var c = PREVIEW ? PREVIEW.chart : S.profile.life_chart; if (!c) return null;
     function item(cls, label, value, badge) { return el("div", { class: "ln-item " + cls }, [el("span", { text: label }), el("span", { class: "ln-badge " + badge, text: String(value) })]); }
     function legend(cls, text) { return el("div", {}, [el("span", { class: "ln-dot " + cls }), el("span", { text: text })]); }
     return el("div", {}, [
@@ -710,26 +762,40 @@ export const ME_JS = String.raw`
     var h = CHART.card.querySelector("h2"), t = lifeTitle(); if (!h) return;
     h.textContent = t; h.className = titleClassOf(t); HG.fitTitles(CHART.card);
   }
+  // Live preview: as soon as year, month and day are all chosen the chart is drawn (nothing is saved until 儲存).
+  function previewBirthday(val) {
+    if (!CHART) return;
+    var mine = ++previewSeq;
+    function show(p) { PREVIEW = p; var ch = chartBody(); CHART.holder.textContent = ""; if (ch) CHART.holder.appendChild(ch); retitleLife(); }
+    if (val === null || val === undefined) { show({ birthday: null, chart: null }); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
+    api("GET", "/v1/profile/life-chart?birthday=" + encodeURIComponent(val)).then(function (r) {
+      if (mine !== previewSeq) return;
+      if (r.status === 200) show({ birthday: val, chart: r.body.life_chart });
+      else HG.toast(errText(r));
+    });
+  }
   function refreshBirthday() {
     return api("GET", "/v1/me/profile").then(function (r) {
       if (r.status !== 200 || !CHART) return;
-      S.profile = r.body;
+      PREVIEW = null; S.profile = r.body;
       var ch = chartBody(); CHART.holder.textContent = ""; if (ch) CHART.holder.appendChild(ch);
       retitleLife();
     });
   }
 
   function render() {
-    root.textContent = "";
-    // Same three places as on the page itself: back (where 編輯 is there), 分享, 預覽公開頁.
+    root.textContent = ""; ROWS = [];
+    // Three floating buttons that stay in place while the page scrolls under them: 儲存, 分享公開頁, 預覽.
     var pubUrl = S.profile.fields.member_number.public_url;
-    var shareBtn = el("button", { type: "button", onclick: function () {
+    var shareBtn = el("button", { type: "button", class: "wide", onclick: function () {
       if (!pubUrl) return;
       if (navigator.share) { navigator.share({ title: shownName() ? shownName() + "｜會員中心" : "會員中心", url: pubUrl }).catch(function () {}); return; }
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(pubUrl).then(function () { HG.toast("已複製連結"); }, function () { HG.toast("請手動複製網址"); });
       else HG.toast("請手動複製網址");
-    } }, [HG.shareIcon(), "分享"]);
-    root.appendChild(el("div", { class: "pagebar" }, [el("a", { class: "button", href: ownPage(), text: "上一頁" }), shareBtn, el("a", { class: "button wide", href: publicPath(), text: "預覽公開頁" })]));
+    } }, [HG.shareIcon(), "分享公開頁"]);
+    var saveBtn = el("button", { type: "button", class: "gold", text: "儲存", onclick: function () { saveAll(saveBtn); } });
+    root.appendChild(el("div", { class: "pagebar float" }, [saveBtn, shareBtn, el("a", { class: "button", href: publicPath(), text: "預覽" })]));
     function basicCard() { return card("基本資料", [el("p", { class: "help", text: "公開＝任何人都看得到；隱藏＝不在公開頁顯示（寰宇生態系內的服務仍可能使用）。" })].concat(S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField))); }
     function contactCard() {
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
