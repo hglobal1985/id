@@ -269,6 +269,10 @@ async function renderNotification(
       body = `有會員送出需要審核的「${label}」，請在本頁上方的「待審核」處理。`;
       actions = ["open_review_queue"];
       break;
+    case "policy.updated":
+      title = "隱私權政策已更新";
+      body = "我們更新了隱私權政策：您設定為「隱藏」的資料，仍可能被寰宇生態系內經登記的 App 為提供服務而使用，但不會對外公開，也不會提供給生態系以外的人。詳見頁尾的「隱私權政策」。";
+      break;
     case "amway.review.adjusted":
       title = "資料已調整";
       body = `管理人員已調整您的「${label}」。`;

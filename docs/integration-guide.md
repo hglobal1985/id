@@ -73,7 +73,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 ## 6.7 平台規範補充（2026-11-12.9）
 - **真實姓名**：欄位 `legal_name`（預設不公開）。只在報名付費課程與對帳當下用會員本人的 token 讀 `GET /v1/me/profile` 的 `fields.legal_name`；不保存、不寫日誌、不另建欄位。
 - **獎銜「無」**：選項（含「無」）來自 `GET /v1/amway/field-definitions` 的 `rank.options`；會員值 `fields.rank.value` 為 `null` 或 `"none"` 都代表「無」。對「無」顯示什麼文字由各 App 決定。
-- **顯示 Amway 資料**：只給本人、只放記憶體；給他人看時遵守該會員的公開設定。
+- **會員資料的使用範圍**：會員的「公開／隱藏」只管對外公開頁，不限制寰宇生態系內的 App；業主在後台替每款 App 勾選可用欄位（含隱藏的），App 用 `POST /v1/apps/{app_id}/members/lookup` 讀取（見 6.8、ADR 0022）。
 - **深色模式**：跟隨系統，配色依視覺規範 1.5；業主核准的例外才可保留自己的配色。
 - **測試環境**：正式前用 staging（`https://hglobal-id-staging.hglobal1985-static.workers.dev`，會員、金鑰、App 登記獨立）。`http://localhost` 不能登記；手機用已登記的深層連結，網頁用 https 預覽網址。測試版共用登入鍵名建議 `hglobal.sso.staging`。
 - **新規範流程**：任何新規範先寫進串接指令與更新檢查清單並升版，各 App 只補差異（見 `AGENTS.md`「平台規範」）。
@@ -85,6 +85,11 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **聯絡查詢**：服務金鑰（後台建立，只放伺服器）→ `POST /v1/service/token` → `POST /v1/apps/{app_id}/contacts/lookup`（≤ 50 個 `member_id`、`purpose` 須經業主核准）。信箱用完即丟；中央每次稽核（不記信箱）。
 - **最小權限**：新 App 預設只有 `amway.read`；多的權限由業主在後台勾選；收到 403 不自行繞過。
 - **符合度回報**：`GET /v1/apps/{app_id}/handoff?integrated=<版本>&standards=webhook,delete_copy,no_email_copy,snapshot_reconcile,least_scope`（只列已做到的），後台 App 清單顯示結果。
+
+## 6.9 會員資料查詢（2026-11-13.1，ADR 0022）
+- `POST /v1/apps/{app_id}/members/lookup`，服務 Token；`{"member_ids":[≤50],"fields":["legal_name","rank",…],"use":"process"|"display"}` → `{"members":[{"member_id","fields":{…}}],"not_found":[…]}`。
+- 只能讀在該 App 登入過的會員、只能讀業主在後台勾選的欄位（含會員設為隱藏的）；沒勾回 `403 field_not_allowed`。需要審核的 Amway 欄位只回已審核的；非 Amway 會員的 Amway 欄位為 `null`。
+- 只取需要的欄位；不長期保存、不寫日誌與分析工具、不轉給寰宇生態系以外；中央每次稽核（App、筆數、欄位名稱、用途，不含內容）。對外公開頁仍然只顯示會員設為公開的欄位。
 
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。

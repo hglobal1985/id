@@ -80,6 +80,7 @@ const FormSchema = z
     min_version: z.string().max(20).optional(),
     scopes: z.array(z.string().max(40)).max(20).optional().openapi({ description: "Super admin: switches the App to exactly these scopes (least privilege). Omit to keep what is stored." }),
     contact_purposes: z.array(z.string().max(40)).max(10).optional().openapi({ description: "Purposes the App may look up members' contact e-mail for." }),
+    member_data_fields: z.array(z.string().max(40)).max(60).optional().openapi({ description: "Member data fields the App may read for its members, hidden ones included (POST /v1/apps/{app_id}/members/lookup). Omit to keep what is stored." }),
   })
   .openapi("AppRegistrationForm");
 

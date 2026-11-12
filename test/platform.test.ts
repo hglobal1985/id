@@ -237,6 +237,77 @@ describe("restricted contact lookup (service credential)", () => {
   });
 });
 
+describe("member data for Apps (hidden fields included)", () => {
+  async function setup() {
+    const sa = await person("sa", "管理", ["super_admin"]);
+    const m = await person("m", "會員");
+    use(m);
+    // the member hides everything
+    await req(m, "PUT", "/v1/me/profile/fields/legal_name", { value: "王小明" });
+    await req(m, "PUT", "/v1/me/profile/fields/phone", { value: "+886912345678" });
+    await req(m, "PUT", "/v1/me/profile/visibility", { fields: { legal_name: "private", phone: "private", display_name: "public" } });
+    await req(m, "PUT", "/v1/me/amway/enabled", { enabled: true });
+    await req(m, "PUT", "/v1/me/amway/fields/education_system", { value: "其他體系" });
+    const secret = ((await (await req(sa, "POST", "/v1/admin/apps/learn/service-secret")).json()) as { client_secret: string }).client_secret;
+    const t = ((await (await req(null, "POST", "/v1/service/token", { app_id: "learn", client_secret: secret })).json()) as { access_token: string }).access_token;
+    const lookup = (ids: string[], fields: string[], useAs = "process") => req(null, "POST", "/v1/apps/learn/members/lookup", { member_ids: ids, fields, use: useAs }, { authorization: `Bearer ${t}` });
+    const allow = (fields: string[]) => req(sa, "PUT", "/v1/admin/apps/learn", { name: "寰宇行動大學", member_data_fields: fields });
+    return { sa, m, lookup, allow };
+  }
+
+  it("nothing is readable until the owner allows the field for the App; then hidden fields are returned too", async () => {
+    const { m, lookup, allow } = await setup();
+    let r = await lookup([m.id], ["legal_name"]);
+    expect(r.status).toBe(403);
+    expect(((await r.json()) as { error: { code: string } }).error.code).toBe("field_not_allowed");
+    expect((await allow(["legal_name", "phone", "education_system", "rank"])).status).toBe(200);
+    r = await lookup([m.id], ["legal_name", "phone", "education_system", "rank"], "display");
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ members: [{ member_id: m.id, fields: { legal_name: "王小明", phone: "+886912345678", education_system: "其他體系", rank: null } }], not_found: [] });
+    // a field the owner did not allow is still refused, and unknown fields are invalid
+    expect((await lookup([m.id], ["birthday"])).status).toBe(403);
+    expect((await lookup([m.id], ["nope"])).status).toBe(422);
+  });
+
+  it("only members who signed in to the App; deleted members and strangers are not found; audit has names, not values", async () => {
+    const { m, lookup, allow } = await setup();
+    await allow(["legal_name"]);
+    const stranger = await person("s", "路人");
+    const r = (await (await lookup([m.id, stranger.id], ["legal_name"])).json()) as { members: { member_id: string }[]; not_found: string[] };
+    expect(r.members.map((x) => x.member_id)).toEqual([m.id]);
+    expect(r.not_found).toEqual([stranger.id]);
+    const audit = JSON.stringify(db.raw.prepare("SELECT action, detail FROM audit_log WHERE action = 'members.lookup'").all());
+    expect(audit).toContain("legal_name");
+    expect(audit).not.toContain("王小明");
+    await deleteAccount(db, m.id, now, "r");
+    expect(((await (await lookup([m.id], ["legal_name"])).json()) as { members: unknown[] }).members).toEqual([]);
+  });
+
+  it("a reviewed Amway field counts only once approved; a non-Amway member gets null; more than 50 ids are refused", async () => {
+    const { m, lookup, allow } = await setup();
+    await allow(["rank", "education_center"]);
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'rank', '\"r03\"', NULL, 'not_required', 0, 'x')").run(m.id);
+    let r = (await (await lookup([m.id], ["rank"])).json()) as { members: { fields: { rank: unknown } }[] };
+    expect(r.members[0]!.fields.rank).toBeNull(); // not approved
+    db.raw.prepare("UPDATE amway_field_values SET value_approved = 1 WHERE member_id = ? AND field_key = 'rank'").run(m.id);
+    r = (await (await lookup([m.id], ["rank"])).json()) as typeof r;
+    expect(r.members[0]!.fields.rank).toBe("r03");
+    db.raw.prepare("UPDATE members SET amway_enabled = 0 WHERE id = ?").run(m.id);
+    r = (await (await lookup([m.id], ["rank"])).json()) as typeof r;
+    expect(r.members[0]!.fields.rank).toBeNull();
+    expect((await lookup(Array.from({ length: 51 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`), ["rank"])).status).toBe(422);
+  });
+
+  it("the platform page lists every field with its group, and only a super admin can allow fields", async () => {
+    const { sa } = await setup();
+    const rv = await person("rv", "審核", ["reviewer"]);
+    const p = (await (await req(sa, "GET", "/v1/admin/apps/learn/platform")).json()) as { member_data_options: { key: string; label: string; group: string }[] };
+    expect(p.member_data_options.map((o) => o.key)).toEqual(expect.arrayContaining(["legal_name", "phone", "birthday", "rank", "avatar", "member_number", "upline_diamond"]));
+    expect(p.member_data_options.every((o) => o.label && o.group)).toBe(true);
+    expect((await req(rv, "PUT", "/v1/admin/apps/learn", { name: "x", member_data_fields: ["phone"] })).status).toBe(403);
+  });
+});
+
 describe("plain-language labels", () => {
   it("every scope and contact purpose has a Chinese explanation, and the platform page lists them with their codes", async () => {
     const { SCOPE_LABELS, PURPOSE_LABELS, CONTACT_PURPOSES } = await import("../src/apps/registry");
