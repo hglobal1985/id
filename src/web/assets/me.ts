@@ -482,16 +482,6 @@ export const ME_JS = String.raw`
     ]);
   }
 
-  // The public address with a big share button at its left (the phone's own share sheet; the symbol follows the device).
-  function publicUrlRow(url) {
-    var btn = el("button", { type: "button", class: "share-big", "aria-label": "分享我的公開網址", title: "分享", onclick: function () {
-      if (navigator.share) { navigator.share({ title: shownName() ? shownName() + "｜會員中心" : "會員中心", url: url }).catch(function () {}); return; }
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { HG.toast("已複製連結"); }, function () { HG.toast("請手動複製網址"); });
-      else HG.toast("請手動複製網址");
-    } }, [HG.shareIcon()]);
-    return el("div", { class: "pubrow" }, [btn, el("div", { class: "pubtext" }, [el("span", { class: "help", text: "公開網址" }), el("a", { href: url, text: url })])]);
-  }
-
   // ---- member number (same logic as starry.phd: random, <country><0 + 6 digits>; Amway members may change it) ----
   function numberRow() {
     var f = S.profile.fields.member_number, def = S.def.member_number, canEdit = isAmway();
@@ -499,8 +489,7 @@ export const ME_JS = String.raw`
     var note = canEdit ? f.note : (f.note || def.help_when_not_amway);
     function display() {
       var list = numbers();
-      return el("div", {}, [el("div", { class: "chips" }, list.map(function (e, i) { return el("span", { class: "badge num", text: pid(e) + (i === 0 ? "（預設）" : "") }); })),
-        f.public_url ? publicUrlRow(f.public_url) : null]);
+      return el("div", { class: "chips" }, list.map(function (e, i) { return el("span", { class: "badge num", text: pid(e) + (i === 0 ? "（預設）" : "") }); }));
     }
     var cands = el("div");
     function editor() {
@@ -513,7 +502,7 @@ export const ME_JS = String.raw`
         list.appendChild(row);
       }
       numbers().forEach(addRow);
-      var more = max > 1 ? el("div", { class: "actions" }, [el("button", { type: "button", class: "small", onclick: function () { if (list.children.length < max) addRow({ country: (numbers()[0] || {}).country || "TW", number: "" }); } }, [HG.icon("plus"), document.createTextNode("新增一組")])]) : null;
+      var more = max > 1 ? el("div", { class: "num-more" }, [el("button", { type: "button", class: "small", onclick: function () { if (list.children.length < max) addRow({ country: (numbers()[0] || {}).country || "TW", number: "" }); } }, [HG.icon("plus"), document.createTextNode("新增一組")])]) : null;
       return { node: el("div", {}, [el("div", { class: "help", text: def.help }), list, more]), typing: false, get: function () { return Array.prototype.map.call(list.children, function (r) { return r.getValue(); }); } };
     }
     function save(v) {
@@ -533,14 +522,11 @@ export const ME_JS = String.raw`
         return r;
       });
     }
-    // The public address stays visible under the numbers and follows every change.
-    var urlBox = el("div");
-    function paintUrl() { urlBox.textContent = ""; var u = S.profile.fields.member_number.public_url; if (u) urlBox.appendChild(publicUrlRow(u)); }
     function valid(list) { return list.length > 0 && list.every(function (e) { return e.number.trim(); }); }
     function after() {
-      api("GET", "/v1/me/profile").then(function (r) { if (r.status === 200) { S.profile = r.body; paintUrl(); swap("avatar"); } });
+      api("GET", "/v1/me/profile").then(function (r) { if (r.status === 200) { S.profile = r.body; swap("avatar"); } });
     }
-    var row = makeRow({ label: f.label, note: note, forced: true, display: display, editor: editor, save: save, valid: valid, after: after, noEdit: !canEdit, below: canEdit ? function () { paintUrl(); return urlBox; } : null });
+    var row = makeRow({ label: f.label, note: note, forced: true, display: display, editor: editor, save: save, valid: valid, after: after, noEdit: !canEdit });
     row.appendChild(cands);
     return row;
   }
