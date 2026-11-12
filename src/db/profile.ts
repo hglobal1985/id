@@ -1,4 +1,5 @@
 // Data access for profile field values, visibility and avatar.
+import { avatarKey, dropFiles, storeFile } from "../lib/files";
 import { taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
 import type { FieldValue, Visibility } from "../profile/definitions";
@@ -120,14 +121,15 @@ export function sniffImage(bytes: Uint8Array): "image/jpeg" | "image/png" | "ima
 }
 export { AVATAR_MAX_BYTES };
 
-/** Stores an uploaded avatar in D1 (small, already resized by the page) and points the member at it. */
-export async function saveAvatarUpload(db: D1Database, mime: string, bytes: Uint8Array, issuer: string, w: WriteContext): Promise<string> {
+/** Stores an uploaded avatar (small, already resized by the page): the bytes go to R2 when it is bound, else into D1. Points the member at it. */
+export async function saveAvatarUpload(db: D1Database, mime: string, bytes: Uint8Array, issuer: string, w: WriteContext, files?: R2Bucket): Promise<string> {
   const ts = taipeiIso(w.now);
+  const stored = await storeFile(files, avatarKey(w.memberId), mime, bytes);
   const url = `${issuer}/avatar/${w.memberId}?v=${Math.floor(w.now.getTime() / 1000)}`;
   await db.batch([
     db
       .prepare("INSERT INTO member_avatars (member_id, mime, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (member_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at")
-      .bind(w.memberId, mime, bytes, ts),
+      .bind(w.memberId, mime, stored, ts),
     db.prepare("UPDATE members SET avatar_url = ?, avatar_source = 'upload', updated_at = ? WHERE id = ?").bind(url, ts, w.memberId),
     auditStatement(db, { actorType: "member", actorId: w.memberId, action: "profile.avatar.upload", targetType: "member", targetId: w.memberId, result: "success", appId: w.appId, requestId: w.requestId }, w.now),
   ]);
@@ -135,7 +137,7 @@ export async function saveAvatarUpload(db: D1Database, mime: string, bytes: Uint
 }
 
 /** Uses the member's Google picture (referenced, not copied). Null when there is none. */
-export async function useGoogleAvatar(db: D1Database, w: WriteContext): Promise<string | null> {
+export async function useGoogleAvatar(db: D1Database, w: WriteContext, files?: R2Bucket): Promise<string | null> {
   const m = await db.prepare("SELECT google_picture_url FROM members WHERE id = ?").bind(w.memberId).first<{ google_picture_url: string | null }>();
   const url = m?.google_picture_url && /^https:\/\//.test(m.google_picture_url) ? m.google_picture_url : null;
   if (!url) return null;
@@ -145,10 +147,12 @@ export async function useGoogleAvatar(db: D1Database, w: WriteContext): Promise<
     db.prepare("DELETE FROM member_avatars WHERE member_id = ?").bind(w.memberId),
     auditStatement(db, { actorType: "member", actorId: w.memberId, action: "profile.avatar.google", targetType: "member", targetId: w.memberId, result: "success", appId: w.appId, requestId: w.requestId }, w.now),
   ]);
+  await dropFiles(files, [avatarKey(w.memberId)]);
   return url;
 }
 
-export async function removeAvatar(db: D1Database, w: WriteContext): Promise<boolean> {
+export async function removeAvatar(db: D1Database, w: WriteContext, files?: R2Bucket): Promise<boolean> {
+  await dropFiles(files, [avatarKey(w.memberId)]);
   const ts = taipeiIso(w.now);
   await db.prepare("DELETE FROM member_avatars WHERE member_id = ?").bind(w.memberId).run();
   const res = await db

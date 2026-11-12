@@ -377,7 +377,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     const mime = sniffImage(bytes);
     if (!mime) return invalid(c, "avatar", "not_an_image", "請上傳 JPEG、PNG 或 WebP 圖片") as never;
     const { memberId, clientId } = c.get("auth");
-    const url = await saveAvatarUpload(c.env.DB, mime, bytes, resolveIssuer(c.env, c.req.url), { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() });
+    const url = await saveAvatarUpload(c.env.DB, mime, bytes, resolveIssuer(c.env, c.req.url), { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() }, c.env.FILES);
     await notifyProfileChanged(c, deps, memberId, ["avatar"]);
     return c.json({ avatar: { url, source: "upload" as const } }, 200);
   });
@@ -385,7 +385,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     const denied = missingScope(c, ["profile.avatar.write"]);
     if (denied) return denied as never;
     const { memberId, clientId } = c.get("auth");
-    const url = await useGoogleAvatar(c.env.DB, { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() });
+    const url = await useGoogleAvatar(c.env.DB, { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() }, c.env.FILES);
     if (!url) return invalid(c, "avatar", "no_google_picture", "您的 Google 帳號沒有大頭貼") as never;
     await notifyProfileChanged(c, deps, memberId, ["avatar"]);
     return c.json({ avatar: { url, source: "google" as const } }, 200);
@@ -421,7 +421,7 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     const denied = missingScope(c, ["profile.avatar.write"]);
     if (denied) return denied as never;
     const { memberId, clientId } = c.get("auth");
-    await removeAvatar(c.env.DB, { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() });
+    await removeAvatar(c.env.DB, { memberId, appId: clientId, requestId: c.get("requestId"), now: deps.now() }, c.env.FILES);
     await notifyProfileChanged(c, deps, memberId, ["avatar"]);
     return c.json({ avatar: { url: null, source: "none" as const } }, 200);
   });

@@ -10,6 +10,7 @@ import { ErrorBodySchema, errorBody } from "../errors";
 import { SESSION_COOKIE, readCookie } from "../auth/cookies";
 import { getMember } from "../db/identity";
 import { centerNormOfMember, grantsOfMember, listStaff, rolesOf, setRoles, staffContextByToken } from "../db/staff";
+import { avatarKey, dropFiles } from "../lib/files";
 import { memberBriefs, type MemberBrief } from "../db/member-bulk";
 import { hasDiamondRank, memberInScope, memberScopeOf, searchMemberIds } from "../db/member-scope";
 import { deleteAccount } from "../db/deletion";
@@ -490,6 +491,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (r === "not_found") return c.json(errorBody("not_found", "Member not found", c.get("requestId")), 404);
     if (r === "last_super_admin") return c.json(errorBody("conflict", "至少要保留一位超級管理員", c.get("requestId")), 409);
     await auditStatement(c.env.DB, { actorType: "staff", actorId: staff.memberId, action: "member.delete", targetType: "member", targetId: member_id, appId: null, result: "success", requestId: c.get("requestId") }, deps.now()).run();
+    await dropFiles(c.env.FILES, [avatarKey(member_id)]);
     kickDelivery(c, deps);
     return c.json({ member_id, deleted: true }, 200);
   });

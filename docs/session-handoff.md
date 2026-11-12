@@ -66,6 +66,10 @@ npm run openapi     # 改了 /v1 路由後重新產生 openapi/hglobal-id.v1.jso
 - 看線上速度：Cloudflare 的 Workers 觀測紀錄（telemetry query）有每個請求的牆鐘時間與機房（colo）；CPU 很低但牆鐘很高＝在等資料庫。
 - 已啟用 Smart Placement（`wrangler.jsonc`）；部署後要用觀測紀錄確認通知頁各請求變快。
 
+## 5.7 R2 與溝通習慣（2026-11-14）
+- 頭像已改存 R2（ADR 0026）；舊頭像由排程自動搬。部署後要確認：D1 `member_avatars` 裡 `length(data)>0` 的筆數歸零、R2 `avatars/` 的物件數等於頭像數。
+- 業主是小白：git 細節（分支、提交、合併）自己決定，不要拿來問；回報只講結果（見 AGENTS.md 6.8）。
+
 ## 6. 給新對話的第一句提示（業主貼這段）
 ```
 這個工作階段只處理 hglobal1985/id（寰宇 H-Global1985 中央會員系統）；starry-phd/id 只可唯讀參考。
