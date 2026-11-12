@@ -382,6 +382,11 @@ export const ADMIN_JS = String.raw`
       });
     }
     var STD = { webhook: "收到變動與刪除通知（webhook）並驗證簽章", delete_copy: "收到刪除通知就刪除自己這邊的副本", no_email_copy: "不長期保存聯絡信箱，改用中央查詢", snapshot_reconcile: "交易存當時快照，對帳靠付款代碼不靠姓名", least_scope: "只使用被授權的最小權限" };
+    function cbox(label, checked, onchange) {
+      var b = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": checked ? "true" : "false" }, [el("span", { class: "box" }), el("span", { text: label })]);
+      b.addEventListener("click", function () { var next = b.getAttribute("aria-checked") !== "true"; b.setAttribute("aria-checked", next ? "true" : "false"); onchange(next); });
+      return b;
+    }
     function platform(a, b) {
       api("GET", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/platform").then(function (r) {
         if (r.status !== 200) return;
@@ -391,12 +396,12 @@ export const ADMIN_JS = String.raw`
         function shown(res) { if (res.status === 200 && res.body.secret) { secretBox.textContent = "金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.secret; } else if (res.status === 200 && res.body.client_secret) { secretBox.textContent = "服務金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.client_secret; } else if (!reauth(res)) say(box, false, errText(res)); }
         var chk = {};
         var scopeRows = b.scopes.map(function (sc) {
-          var on = p.scopes.indexOf(sc) >= 0, c = HG.checkbox(sc, on, function (v) { chk[sc] = v; });
-          chk[sc] = on; return c;
+          var on = p.scopes.indexOf(sc) >= 0, c = cbox(sc, on, function (v) { chk[sc] = v; });
+          chk[sc] = on; return el("div", {}, [c]);
         });
         var purposeRows = p.contact_purpose_options.map(function (pp) {
-          var on = p.contact_purposes.indexOf(pp) >= 0, c = HG.checkbox(pp, on, function (v) { chk["purpose:" + pp] = v; });
-          chk["purpose:" + pp] = on; return c;
+          var on = p.contact_purposes.indexOf(pp) >= 0, c = cbox(pp, on, function (v) { chk["purpose:" + pp] = v; });
+          chk["purpose:" + pp] = on; return el("div", {}, [c]);
         });
         function saveScopes() {
           var scopes = b.scopes.filter(function (sc) { return chk[sc]; });
