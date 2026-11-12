@@ -19,7 +19,10 @@ export default {
       }),
     );
     ctx.waitUntil(requeueUnreviewed(env.DB, now).then((n) => { if (n) console.log(JSON.stringify({ job: "requeue", requeued: n })); }, () => undefined));
-    ctx.waitUntil(moveAvatarsToR2(env.DB, env.FILES).then((n) => { if (n) console.log(JSON.stringify({ job: "avatars_to_r2", moved: n })); }, () => undefined));
+    ctx.waitUntil(moveAvatarsToR2(env.DB, env.FILES).then(
+        (r) => { if (r.moved || r.failed.length) console.log(JSON.stringify({ job: "avatars_to_r2", moved: r.moved, failed: r.failed })); },
+        (e) => console.log(JSON.stringify({ job: "avatars_to_r2", error: e instanceof Error ? e.name + ":" + e.message.slice(0, 120) : "error" })),
+      ));
     if (now.getUTCHours() === 19 && now.getUTCMinutes() < 5) {
       ctx.waitUntil(
         Promise.all([runCleanup(env.DB, now), purgeOldEvents(env.DB, now), sweepAvatars(env.DB, env.FILES, now)]).then(([r, purged, swept]) => {

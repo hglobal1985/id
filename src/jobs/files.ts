@@ -10,28 +10,38 @@ const PREFIX = "avatars/";
 const SWEEP_MIN_AGE_MS = 60 * 60 * 1000;
 
 /** Copies avatars still stored in D1 into R2, then replaces the D1 bytes by the "in R2" marker. Returns how many moved. */
-export async function moveAvatarsToR2(db: D1Database, bucket: R2Bucket | undefined): Promise<number> {
-  if (!bucket) return 0;
+export interface MoveResult {
+  moved: number;
+  /** Rows that could not be moved this time, with the error name (never file contents). */
+  failed: string[];
+}
+
+export async function moveAvatarsToR2(db: D1Database, bucket: R2Bucket | undefined): Promise<MoveResult> {
+  const out: MoveResult = { moved: 0, failed: [] };
+  if (!bucket) return out;
   const rows = await db
     .prepare("SELECT member_id, mime, data, updated_at FROM member_avatars WHERE length(data) > 0 ORDER BY updated_at LIMIT ?")
     .bind(BATCH)
     .all<{ member_id: string; mime: string; data: unknown; updated_at: string }>();
-  let moved = 0;
   for (const r of rows.results ?? []) {
     const bytes = blobBytes(r.data);
     if (!bytes.length) continue;
     try {
       await bucket.put(avatarKey(r.member_id), bytes, { httpMetadata: { contentType: r.mime } });
       const check = await bucket.head(avatarKey(r.member_id));
-      if (!check || check.size !== bytes.length) continue;
+      if (!check || check.size !== bytes.length) {
+        out.failed.push(`size_mismatch:${check ? check.size : "missing"}/${bytes.length}`);
+        continue;
+      }
       // Only if the member did not upload a newer one in the meantime.
       const res = await db.prepare("UPDATE member_avatars SET data = ? WHERE member_id = ? AND updated_at = ? AND length(data) > 0").bind(IN_R2, r.member_id, r.updated_at).run();
-      if (res.meta.changes) moved++;
-    } catch {
-      /* try again on the next tick */
+      if (res.meta.changes) out.moved++;
+    } catch (e) {
+      // Try again on the next tick; the error name goes to the log so a stuck move is visible.
+      out.failed.push(e instanceof Error ? `${e.name}:${e.message.slice(0, 120)}` : "error");
     }
   }
-  return moved;
+  return out;
 }
 
 /** Deletes R2 avatar files whose member no longer has an uploaded avatar. Returns how many were removed. */
