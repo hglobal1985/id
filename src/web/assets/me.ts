@@ -769,7 +769,15 @@ export const ME_JS = String.raw`
   }
   function deletionCard() {
     var m = msg();
+    var uuid = S.profile.member_id || "";
     return fold("刪除帳號", [
+      el("div", { class: "uuidbox" }, [
+        el("div", { class: "help", text: "會員唯一識別碼（永遠不會改變；客服與各 App 都以它辨識您，不是機密，但請不要隨意公開）" }),
+        el("div", { class: "inline" }, [el("code", { class: "uuid", text: uuid }), el("button", { type: "button", class: "small", text: "複製", onclick: function () {
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(uuid).then(function () { HG.toast("已複製"); }, function () { HG.toast("請手動複製"); });
+          else HG.toast("請手動複製");
+        } })])
+      ]),
       el("p", { class: "help", text: "按下後立即生效：您的資料會被移除、所有裝置登出，無法復原。為避免他人冒用，需要先重新登入確認。" }),
       el("div", { class: "actions" }, [el("button", { type: "button", class: "danger", text: "刪除帳號", onclick: function () {
         if (!confirm("確定要立即刪除帳號嗎？刪除後無法復原。")) return;
