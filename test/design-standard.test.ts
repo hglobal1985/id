@@ -6,7 +6,8 @@ const doc = readFileSync(new URL("../docs/design-standard.md", import.meta.url),
 
 describe("docs/design-standard.md matches the member site's stylesheet", () => {
   it("lists every colour of the :root palette", () => {
-    const root = /:root\{([^}]*)\}/.exec(SITE_CSS)?.[1] ?? "";
+    // Both the light palette and the dark-mode override block.
+    const root = [...SITE_CSS.matchAll(/:root\{([^}]*)\}/g)].map((m) => m[1]).join(";");
     const hex = [...root.matchAll(/--[a-z-]+:(#[0-9a-f]{6})/gi)].map((m) => (m[1] as string).toLowerCase());
     expect(hex.length).toBeGreaterThanOrEqual(14);
     for (const h of hex) expect(doc, h).toContain(h);

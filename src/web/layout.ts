@@ -83,6 +83,9 @@ export function sitePage(opts: { title: string; body: string; script?: string | 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c2020" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="${opts.index ? "index,follow" : "noindex"}">
 <title>會員中心</title>
 <link rel="stylesheet" href="/assets/site.css">
