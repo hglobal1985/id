@@ -113,7 +113,7 @@ export const ME_JS = String.raw`
     row.appendChild(statusBox); row.appendChild(m);
     if (cfg.below) row.appendChild(cfg.below());
     paintStatus();
-    row.commit = commit; row.isDirty = dirty; row.refreshStatus = paintStatus; row.touched = false;
+    row.commit = commit; row.isDirty = dirty; row.refreshStatus = paintStatus; row.touched = false; row.ed = ed; row.value = function () { return ed ? ed.get() : null; };
     return row;
   }
   // The floating 儲存 button: saves every changed row, one after another, then returns to the member's own page.
@@ -559,7 +559,10 @@ export const ME_JS = String.raw`
         if (!hasNone) return { node: dd.el, get: function () { return dd.get() || null; } };
         var ddBtn = dd.el.querySelector(".dd-btn"); if (noneOn) ddBtn.disabled = true;
         var noneTick = HG.checkbox("無", noneOn, function (on) { noneOn = on; ddBtn.disabled = on; if (on) dd.set(""); });
-        return { node: el("div", { class: "with-none" }, [dd.el, noneTick]), get: function () { return noneOn ? "none" : (dd.get() || null); } };
+        // Until the training system and the regional center are filled in (or ticked 無), the rank cannot be chosen.
+        var lockHint = el("p", { class: "help warn-note", text: "請先填寫直銷商培訓系統與地區教育中心（沒有的話請勾選「無」），才能選獎銜。", hidden: true });
+        function setLocked(locked) { ddBtn.disabled = locked || noneOn; noneTick.disabled = locked; lockHint.hidden = !locked; }
+        return { node: el("div", {}, [el("div", { class: "with-none" }, [dd.el, noneTick]), lockHint]), setLocked: setLocked, get: function () { return noneOn ? "none" : (dd.get() || null); } };
       }
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
       var typingSaves = !d.suggest;
@@ -575,7 +578,7 @@ export const ME_JS = String.raw`
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
     function after() { refreshAmwayData(d.key); }
-    var r = makeRow({ label: REQUIRED.indexOf(d.key) >= 0 ? d.label + "（必填）" : d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after });
+    var r = makeRow({ label: REQUIRED.indexOf(d.key) >= 0 ? d.label + "（必填）" : d.label, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: updateRankLock });
     AROWS[d.key] = r;
     return r;
   }
@@ -591,6 +594,12 @@ export const ME_JS = String.raw`
       if (r[0].status === 200 && r[1].status === 200) { S.amway = r[0].body; S.profile = r[1].body; swap("avatar"); swap("amway"); }
     });
   }
+  // The rank can only be chosen once the training system and the regional center have a value (what is in the boxes counts).
+  function updateRankLock() {
+    var r = AROWS.rank, a = AROWS.education_system, b = AROWS.education_center;
+    if (!r || !r.ed || !r.ed.setLocked) return;
+    r.ed.setLocked(!(a && b && a.value() && b.value()));
+  }
   // After one Amway field was saved: refresh the data and only the bits that depend on it (the editors stay as they are).
   var AROWS = {};
   function refreshAmwayData(savedKey) {
@@ -603,7 +612,7 @@ export const ME_JS = String.raw`
       // The related words of the center depend on the training system: that one row is rebuilt when it changes meaning.
       if (savedKey === "education_system" && wasHglobal !== !!S.amway.hglobal && AROWS.education_center) {
         var cd = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0], old = AROWS.education_center;
-        if (cd) { var neu = amwayFieldRow(cd); old.replaceWith(neu); }
+        if (cd) { var neu = amwayFieldRow(cd); old.replaceWith(neu); updateRankLock(); }
       }
     });
   }
@@ -625,6 +634,7 @@ export const ME_JS = String.raw`
     var items = [{ order: S.def.member_number.order, make: numberRow }];
     if (isAmway()) S.adefs.fields.forEach(function (d) { items.push({ order: d.order, make: function () { return amwayFieldRow(d); } }); });
     items.sort(function (a, b) { return a.order - b.order; }).forEach(function (it) { kids.push(it.make()); });
+    updateRankLock();
     return el("section", { class: "card" }, kids);
   }
 
