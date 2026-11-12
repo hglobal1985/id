@@ -107,7 +107,7 @@ export async function saveApp(db: D1Database, app: AppEntry, mode: "create" | "u
     mode === "create"
       ? db.prepare("INSERT INTO registered_apps (app_id, definition, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?)").bind(app.app_id, definition, ts, actor.memberId, ts, actor.memberId)
       : db.prepare("UPDATE registered_apps SET definition = ?, updated_at = ?, updated_by = ? WHERE app_id = ?").bind(definition, ts, actor.memberId, app.app_id),
-    auditStatement(db, { actorType: "staff", actorId: actor.memberId, action: mode === "create" ? "app.register" : "app.update", targetType: "app", targetId: app.app_id, appId: app.app_id, result: "success", requestId: actor.requestId }, now),
+    auditStatement(db, { actorType: "staff", actorId: actor.memberId, action: mode === "create" ? "app.register" : "app.update", targetType: "app", targetId: app.app_id, appId: app.app_id, result: "success", requestId: actor.requestId, detail: { scopes: app.scopes_restricted ? app.scopes.join(" ") : "(all)", contact_purposes: app.contact_purposes.join(",") } }, now),
   ]);
   clearAppCache();
   return mode === "create" ? "created" : "updated";
@@ -148,6 +148,8 @@ export interface AppStats {
   status_updated_at: string | null;
   integrated_version: string | null;
   integrated_reported_at: string | null;
+  /** Standards the App reported it meets (keys of APP_STANDARDS). */
+  standards: string[];
 }
 
 export async function appStats(db: D1Database, now: Date): Promise<Map<string, AppStats>> {
@@ -155,7 +157,7 @@ export async function appStats(db: D1Database, now: Date): Promise<Map<string, A
   const at = (id: string): AppStats => {
     let s = out.get(id);
     if (!s) {
-      s = { members: 0, active_sessions: 0, last_sign_in_at: null, status_reason: null, status_updated_at: null, integrated_version: null, integrated_reported_at: null };
+      s = { members: 0, active_sessions: 0, last_sign_in_at: null, status_reason: null, status_updated_at: null, integrated_version: null, integrated_reported_at: null, standards: [] };
       out.set(id, s);
     }
     return s;
@@ -164,23 +166,51 @@ export async function appStats(db: D1Database, now: Date): Promise<Map<string, A
     db.prepare("SELECT app_id, COUNT(*) AS n, MAX(last_seen_at) AS last FROM member_apps GROUP BY app_id").all<{ app_id: string; n: number; last: string | null }>(),
     db.prepare("SELECT app_id, COUNT(*) AS n FROM app_sessions WHERE revoked_epoch IS NULL AND expires_epoch > ? GROUP BY app_id").bind(epochSeconds(now)).all<{ app_id: string; n: number }>(),
     db.prepare("SELECT app_id, reason, updated_at FROM app_status_overrides").all<{ app_id: string; reason: string | null; updated_at: string }>(),
-    db.prepare("SELECT app_id, integrated_version, reported_at FROM app_handoff_reports").all<{ app_id: string; integrated_version: string; reported_at: string }>(),
+    db.prepare("SELECT app_id, integrated_version, reported_at, standards FROM app_handoff_reports").all<{ app_id: string; integrated_version: string; reported_at: string; standards: string | null }>(),
   ]);
   for (const r of members.results ?? []) Object.assign(at(r.app_id), { members: r.n, last_sign_in_at: r.last });
   for (const r of sessions.results ?? []) at(r.app_id).active_sessions = r.n;
   for (const r of overrides.results ?? []) Object.assign(at(r.app_id), { status_reason: r.reason, status_updated_at: r.updated_at });
-  for (const r of reports.results ?? []) Object.assign(at(r.app_id), { integrated_version: r.integrated_version, integrated_reported_at: r.reported_at });
+  for (const r of reports.results ?? []) Object.assign(at(r.app_id), { integrated_version: r.integrated_version, integrated_reported_at: r.reported_at, standards: parseStandards(r.standards) });
   return out;
 }
 
-export async function reportIntegratedVersion(db: D1Database, appId: string, version: string, memberId: string, now: Date): Promise<void> {
+/**
+ * The platform standards an App reports meeting (ADR 0021). `webhook`, `scope` and `contact_lookup` are also checked by
+ * the central system itself (see appChecks); the others only the App can know.
+ */
+export const APP_STANDARDS = ["webhook", "delete_copy", "no_email_copy", "snapshot_reconcile", "least_scope"] as const;
+export type AppStandard = (typeof APP_STANDARDS)[number];
+
+export function parseStandards(raw: string | null): string[] {
+  try {
+    const v = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && (APP_STANDARDS as readonly string[]).includes(x)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** `standards`: undefined keeps what was reported before (an App that only reports a version does not erase it). */
+export async function reportIntegratedVersion(db: D1Database, appId: string, version: string, memberId: string, now: Date, standards?: string[]): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO app_handoff_reports (app_id, integrated_version, reported_at, reported_by) VALUES (?, ?, ?, ?)
-       ON CONFLICT (app_id) DO UPDATE SET integrated_version = excluded.integrated_version, reported_at = excluded.reported_at, reported_by = excluded.reported_by`,
+      `INSERT INTO app_handoff_reports (app_id, integrated_version, reported_at, reported_by, standards) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (app_id) DO UPDATE SET integrated_version = excluded.integrated_version, reported_at = excluded.reported_at, reported_by = excluded.reported_by,
+         standards = COALESCE(excluded.standards, app_handoff_reports.standards)`,
     )
-    .bind(appId, version, taipeiIso(now), memberId)
+    .bind(appId, version, taipeiIso(now), memberId, standards ? JSON.stringify(standards) : null)
     .run();
+}
+
+/** What the central system can verify by itself for one App. */
+export async function appChecks(db: D1Database, app: AppEntry): Promise<{ webhook_configured: boolean; webhook_failed_events: number; least_scope: boolean; service_credential: boolean }> {
+  const [w, failed, svc] = await Promise.all([
+    db.prepare("SELECT enabled FROM app_webhooks WHERE app_id = ?").bind(app.app_id).first<{ enabled: number }>(),
+    db.prepare("SELECT COUNT(*) AS n FROM webhook_events WHERE app_id = ? AND status = 'failed'").bind(app.app_id).first<{ n: number }>(),
+    db.prepare("SELECT 1 AS x FROM app_service_credentials WHERE app_id = ?").bind(app.app_id).first(),
+  ]);
+  return { webhook_configured: w?.enabled === 1, webhook_failed_events: failed?.n ?? 0, least_scope: app.scopes_restricted, service_credential: !!svc };
 }
 
 // ---------- sign-in nonces ----------

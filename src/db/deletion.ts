@@ -3,6 +3,7 @@
 // is kept. There is no request queue and no separate "delete my Amway data" step any more.
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
+import { enqueueStatements } from "./webhooks";
 import { getActiveBinding, unbindSpouse } from "./spouse";
 
 export type DeleteResult = "deleted" | "not_found" | "last_super_admin";
@@ -21,7 +22,16 @@ export async function deleteAccount(db: D1Database, memberId: string, now: Date,
   const m = memberId;
   const t = epochSeconds(now);
   const ts = taipeiIso(now);
+  // Every App the member used is told to delete its copy (queued in the same step as the deletion).
+  // Deleting the account must never fail because a notice could not be queued.
+  let tell: D1PreparedStatement[] = [];
+  try {
+    tell = await enqueueStatements(db, m, "member.deleted", null, now);
+  } catch {
+    console.log(JSON.stringify({ job: "webhook.enqueue", error: "member.deleted" }));
+  }
   await db.batch([
+    ...tell,
     db.prepare("DELETE FROM amway_field_values WHERE member_id = ?").bind(m),
     db.prepare("DELETE FROM amway_review_requests WHERE member_id = ?").bind(m),
     db.prepare("DELETE FROM profile_field_values WHERE member_id = ?").bind(m),

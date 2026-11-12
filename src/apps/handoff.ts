@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-12.9";
-export const HANDOFF_UPDATED = "2026-11-12 22:30（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-12.10";
+export const HANDOFF_UPDATED = "2026-11-13 09:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -110,6 +110,15 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "8. 對會員顯示的文字：品牌只用 starry.phd、Amway 這兩個寫法，不要使用它們的中文名稱；畫面上不要出現「寰宇」「H-Global1985」「hglobal」字樣（App 選單裡的選項與隱私權文件除外），網頁標題統一寫「會員中心」。不要提到其他系統的名稱，需要時一律寫「合作營運單位」。",
     `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy（完整隱私說明已合併在同一份文件，只有這一個網址）。App Store 與 Google Play 要求 App 內有刪除帳號入口：放一個按鈕用瀏覽器開啟 ${origin}/my/edit，會員在那裡按「刪除帳號」（重新登入確認後立即生效，沒有申請流程，也沒有「刪除 Amway 資料」）。`,
     "10. 網頁版網址：每一頁都要有自己的網址路徑，用 History API 切換；重新整理、上一頁、分享網址都停留在同一頁。需要登入的頁面，未登入時先記下目前路徑，登入完成後導回原本那一頁（回傳網址必須在已登記的網頁版來源底下）。",
+    "11. 平台資料標準（所有 App 一體適用，先從寰宇行動大學驗收）：",
+    "   - 原則 1：個人資料的正本只在中央；App 只存 member_id。複製資料只限必要，並且要有同步（收事件重讀）與刪除（收刪除事件就刪）的機制。",
+    "   - 原則 2：交易紀錄（報名、付款）存「當時快照」（當時的姓名、金額、課程），不跟著會員改名；對帳靠付款代碼或金流交易編號，不靠姓名。",
+    "   - 原則 3：會員不在線上時 App 需要聯絡方式，一律走中央的聯絡查詢（下方），用完不長期保存副本。",
+    "   - 原則 4：資料變動與刪除由中央用 webhook 通知，App 要照辦。原則 5：每個 App 只拿到需要的最小權限，中央留稽核紀錄。",
+    `   - 事件通知（webhook）：業主在後台「平台設定」替這款 App 設定 webhook 網址（https）與簽章金鑰（金鑰只存在中央與 App 的伺服器環境變數，不要貼到對話、Issue、PR）。事件：member.profile_changed（fields＝變動的欄位名稱陣列，例如 display_name、contact_email、legal_name，不含值）、member.deleted（會員已刪除帳號）、webhook.test（後台測試）。每則事件是 POST 的 JSON：{"id","type","created_at","app_id","member_id","fields"?}，標頭有 X-HG-Event-Id、X-HG-Timestamp（秒）、X-HG-Attempt、X-HG-Signature：v1=<十六進位>，值是 HMAC-SHA256(金鑰, 時間戳 + "." + 原始請求內容)。App 必須：用原始內容（不要重新序列化）驗簽並用常數時間比較、時間戳與現在相差超過 5 分鐘就拒絕、用事件 id 去重（至少送達一次，可能重複、不保證順序）、在 5 秒內回 2xx；失敗中央會在 1 分鐘、5 分鐘、30 分鐘、2 小時、6 小時、24 小時後重試，共 7 次，之後標為失敗（紀錄保存 30 天，業主在後台看得到）。收到 member.deleted：刪除這位會員在 App 內的所有副本（個人資料、聯絡方式、登入與快取）；交易與付款紀錄依法定保存義務保留快照、不再更新、不用於其他用途。收到 member.profile_changed：只在需要時，用會員本人的 Token 或下方查詢重新讀取，不要自己猜新值。`,
+    `   - 聯絡查詢（取代 App 長期保存會員信箱）：業主在後台建立這款 App 的服務金鑰（只顯示一次，只放在 App 的伺服器環境變數，絕不放在手機或網頁用戶端）並核准「用途」（payment_notice、course_notice、account_security）。App 伺服器先 POST ${origin}/v1/service/token {"app_id","client_secret"} 取得 10 分鐘的服務 Token，再 POST ${origin}/v1/apps/<app_id>/contacts/lookup {"member_ids":[最多 50 個],"purpose":"<用途>"}（Authorization: Bearer <服務 Token>）→ {"contacts":[{"member_id","email","email_verified"}],"not_found":[…]}。email 是會員自己填的聯絡信箱（email_verified 為 false），沒有就是已驗證的 Google 信箱。只能查在這款 App 登入過的會員、只能用核准的用途；信箱只用來寄當次通知，不寫進資料庫、日誌或分析工具；每次查詢中央都有稽核（App、筆數、用途，不記信箱）。`,
+    "   - 最小權限：新登記的 App 預設只有登入與資格查詢（amway.read）；要更多權限，由業主在後台「平台設定」勾選並留下紀錄。App 只使用被授權的功能，收到 403 forbidden（缺 scope）不要自己想辦法繞過，回報業主。（既有 App 目前仍是舊制的全部權限，業主確認後才收緊。）",
+    `   - 標準符合度回報：App 的管理頁呼叫 GET ${origin}/v1/apps/<app_id>/handoff?integrated=<版本>&standards=<逗號分隔，只列已做到的>，標準代碼：webhook（收通知並驗簽）、delete_copy（收到刪除就刪副本）、no_email_copy（不長期存聯絡信箱）、snapshot_reconcile（交易存快照、靠付款代碼對帳）、least_scope（只用被授權的權限）。業主在後台 App 清單一眼看得出哪款 App 還沒符合；沒做到的就不要列。`,
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報業主（移除機密需要業主核准，不要自己刪）。",
@@ -142,7 +151,13 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "13. 獎銜選項來自 field-definitions，null 與 \"none\" 都視為「無」，沒有自己複製的獎銜資料表（三、5）。",
     "14. 顯示 Amway 資料：只給本人、只放記憶體；給他人看時遵守公開設定（三、5）。",
     "15. 深色模式跟隨系統，配色符合視覺規範 1.5 或有業主核准的例外；測試用 staging，測試版共用登入鍵名分開（三、5）。",
-    "16. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "16. webhook（三、11）：有接收端點，驗簽（原始內容、常數時間、5 分鐘時間窗）、事件 id 去重、5 秒內回 2xx；後台「送一則測試」成功。",
+    "17. 收到 member.deleted 會刪除會員在 App 內的副本，交易快照依法保留；收到 member.profile_changed 只在需要時重讀。",
+    "18. 沒有長期保存會員聯絡信箱的副本；需要寄通知時用聯絡查詢，用完即丟（三、11）。",
+    "19. 報名與付款存當時快照；對帳用付款代碼或金流交易編號，不用姓名（三、11）。",
+    "20. 只使用被授權的 scope，沒有自己繞過 403；服務金鑰只在伺服器環境變數（三、11）。",
+    "21. 回報標準符合度：handoff?integrated=<版本>&standards=…（只列已做到的）。",
+    "22. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

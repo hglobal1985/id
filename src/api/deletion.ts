@@ -1,4 +1,5 @@
 // Delete my account — only on the member site itself (never through apps), after a fresh sign-in. Effective at once.
+import { kickDelivery } from "../webhooks/notify";
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
@@ -38,6 +39,7 @@ export function registerDeletionRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     if (r === "last_super_admin") return c.json(errorBody("last_super_admin", "系統至少要保留一位超級管理員，請先把角色交給其他人。", c.get("requestId")), 409);
     if (r === "not_found") return c.json(errorBody("unauthenticated", "Sign in required", c.get("requestId")), 401);
     clearCookie(c, SESSION_COOKIE);
+    kickDelivery(c, deps);
     return c.json({ deleted: true as const }, 200);
   });
 }
