@@ -39,7 +39,7 @@ export const ME_JS = String.raw`
     function paint() {
       b.textContent = ""; b.className = "eye " + (vis === "public" ? "pub" : "priv");
       b.appendChild(HG.icon(vis === "public" ? "eye" : "eyeoff")); b.appendChild(document.createTextNode(vis === "public" ? "公開" : "隱藏"));
-      b.title = vis === "public" ? "目前公開，按一下改為隱藏" : "目前隱藏，按一下改為公開";
+      b.title = vis === "public" ? "目前公開，按一下改為隱藏（隱藏＝不在公開頁顯示，寰宇生態系內的服務仍可能使用）" : "目前隱藏（不在公開頁顯示，寰宇生態系內的服務仍可能使用），按一下改為公開";
     }
     b.addEventListener("click", function () {
       var next = vis === "public" ? "private" : "public", f = {};
@@ -730,7 +730,7 @@ export const ME_JS = String.raw`
       else HG.toast("請手動複製網址");
     } }, [HG.shareIcon(), "分享"]);
     root.appendChild(el("div", { class: "pagebar" }, [el("a", { class: "button", href: ownPage(), text: "上一頁" }), shareBtn, el("a", { class: "button wide", href: publicPath(), text: "預覽公開頁" })]));
-    function basicCard() { return card("基本資料", S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField)); }
+    function basicCard() { return card("基本資料", [el("p", { class: "help", text: "公開＝任何人都看得到；隱藏＝不在公開頁顯示（寰宇生態系內的服務仍可能使用）。" })].concat(S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField))); }
     function contactCard() {
       var contact = S.defs.fields.filter(function (d) { return d.group === "contact"; }).sort(function (a, b) { return a.order - b.order; });
       return card("聯絡與地區", [el("p", { class: "help", text: "這個區塊預設全部隱藏，想公開哪一項請按該項的「隱藏」切換。" })].concat(contact.map(profileField)));
