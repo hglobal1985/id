@@ -9,9 +9,8 @@ import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definition
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, isUpToDate } from "../apps/handoff";
 import { APP_STANDARDS, appChecks, appStats, getApp, isAppWebOrigin, listApps, readStoredApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
 import { rolesOf } from "../db/staff";
-import { REAUTH_MAX_AGE, can, type Permission } from "../admin/roles";
+import { can, type Permission } from "../admin/roles";
 import { resolveIssuer } from "../oidc/config";
-import { epochSeconds } from "../lib/time";
 import { bearerAuth } from "./auth";
 
 type C = Context<AppBindings>;
@@ -242,9 +241,6 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const d = deny(c, "apps.manage");
     if (d) return d as never;
     const staff = c.get("staff");
-    if (epochSeconds(deps.now()) - staff.authTime > REAUTH_MAX_AGE) {
-      return c.json(errorBody("reauth_required", "請重新登入後再試", c.get("requestId"), { login_url: "/login?return_to=%2Fadmin" }), 401);
-    }
     const appId = c.req.valid("param").app_id;
     const stored = await readStoredApp(c.env.DB, appId);
     if (!stored) return notFound(c);

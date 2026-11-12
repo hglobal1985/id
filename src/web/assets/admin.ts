@@ -362,7 +362,6 @@ export const ADMIN_JS = String.raw`
         field("額外的 Google 用戶端 ID", aud), field("最低版本", min, "低於這個版本的 App 會被要求更新。"),
         el("p", { class: "help", text: "權限範圍、聯絡信箱用途、webhook 與服務金鑰在「平台設定」。新 App 預設只有最小權限。" }),
         el("div", { class: "inline" }, [el("button", { class: a ? "btn-save" : "primary", text: a ? "儲存" : "建立", onclick: save }), el("button", { text: "取消", onclick: reload }), box]),
-        a ? el("div", { class: "help", text: "儲存需要 10 分鐘內登入過；會跳到登入頁再回來。" }) : null
       ]);
     }
     function handoff(a) {

@@ -144,7 +144,7 @@ describe("PUT /v1/me/profile/fields/{field_key}", () => {
   it("the real name (legal_name): private by default, the member reads and writes it with their own token, never public, never audited with its value", async () => {
     const t = await token();
     const defs = (await (await call("GET", "/v1/profile/field-definitions", { token: t })).json()) as { fields: { key: string; group: string; label: string; visibility: { configurable: boolean; default: string } }[] };
-    expect(defs.fields.find((f) => f.key === "legal_name")).toMatchObject({ group: "basic", label: "本姓", visibility: { configurable: true, default: "private" } });
+    expect(defs.fields.find((f) => f.key === "legal_name")).toMatchObject({ group: "basic", label: "本名", visibility: { configurable: true, default: "private" } });
     let res = await call("PUT", "/v1/me/profile/fields/legal_name", { token: t, body: { value: "  王小明 " } });
     expect(res.status).toBe(200);
     const p = (await (await call("GET", "/v1/me/profile", { token: t })).json()) as { fields: Record<string, { value: unknown; visibility: string }> };
