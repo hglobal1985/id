@@ -273,6 +273,32 @@ describe("fields and review", () => {
     expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
   });
 
+  it("a rank changed while a new center is waiting for review is reviewed too (center 無 → 新竹, then the rank), and the repair job heals values that skipped it", async () => {
+    const m = await member("g-a", "甲");
+    await enable(m);
+    await put(m, "education_system", "寰宇");
+    await put(m, "education_center", "無");
+    await put(m, "rank", "12");
+    expect(await pendingReviews(db)).toEqual([]);
+    await put(m, "education_center", "新竹"); // pending; the rank saved before now waits for the same review
+    expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
+    const res = await put(m, "rank", "15"); // changed in the same save: must stay in review (it used to apply at once)
+    expect(await res.json()).toMatchObject({ pending_value: "15", status: "pending" });
+    expect((await pendingReviews(db)).filter((r) => r.field_key === "rank").map((r) => JSON.parse(r.requested_value))).toEqual(["15"]);
+
+    // A member already in the broken state (rank applied at once while the center is pending) is sent to review by the job.
+    const n = await member("g-b", "乙");
+    await enable(n);
+    await put(n, "education_system", "寰宇");
+    await put(n, "education_center", "新竹");
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'rank', '\"15\"', NULL, 'not_required', 0, 'x')").run(n.id);
+    const { requeueUnreviewed } = await import("../src/jobs/requeue");
+    expect(await requeueUnreviewed(db, new Date())).toBe(1);
+    expect((await pendingReviews(db)).some((r) => r.member_id === n.id && r.field_key === "rank")).toBe(true);
+    expect((await me(n)).fields.rank).toMatchObject({ value: null, pending_value: "15", status: "pending" });
+    expect(await requeueUnreviewed(db, new Date())).toBe(0); // nothing left to heal
+  });
+
   it("a value that skipped review earlier (staff included) goes through the standard review when it is sent again", async () => {
     const m = await member("g-a", "甲");
     await enable(m);

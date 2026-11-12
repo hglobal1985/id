@@ -141,7 +141,9 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   // The member as it will be after this write: the review rule looks at the training system and at whether a center is filled in.
   const systemAfter = key === "education_system" ? { effective: systemKey(value, hg), pending: null } : { effective: systemKey(sys?.value ?? null, hg), pending: systemKey(sys?.pending_value ?? null, hg) };
   const centerRow = rows.get("education_center");
-  const centerAfter = key === "education_center" ? value : (centerRow?.value ?? centerRow?.pending_value ?? null);
+  // A change waiting for review is the member's current intent: with an effective 「無」 (or an approved center) and a new center
+  // pending, the member has a center, so the rank is reviewed together with it (it used to look at the old value and skipped review).
+  const centerAfter = key === "education_center" ? value : (centerRow?.pending_value ?? centerRow?.value ?? null);
   const centerText = typeof centerAfter === "string" ? centerAfter.trim() : "";
   const realCenter = centerText !== "" && !isNone(centerText);
   const reviewCtx: ReviewContext = { system: systemAfter, hasCenter: realCenter };

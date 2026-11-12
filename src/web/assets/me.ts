@@ -339,7 +339,7 @@ export const ME_JS = String.raw`
     var label = el("input", { type: "text", maxlength: 30, value: l.label || "", placeholder: "顯示名稱（不填就顯示：" + (l.platform_name || "平台名稱") + "）", "aria-label": "名稱" });
     var panel = el("div", { class: "soc-panel" }, [
       el("label", { text: "編輯連結：" + (l.platform_name || "") }), url, el("div", { class: "gap" }), label, el("div", { class: "actions" }, [
-        el("button", { type: "button", class: "primary", text: "儲存", onclick: function () {
+        el("button", { type: "button", class: "btn-save", text: "儲存", onclick: function () {
           api("PUT", "/v1/me/social-links/" + encodeURIComponent(l.id), { url: url.value.trim(), label: label.value.trim() }).then(function (r) {
             if (r.status !== 200) { say(m, false, errText(r)); return; }
             refreshSocial();
@@ -804,7 +804,7 @@ export const ME_JS = String.raw`
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(pubUrl).then(function () { HG.toast("已複製連結"); }, function () { HG.toast("請手動複製網址"); });
       else HG.toast("請手動複製網址");
     } }, [HG.shareIcon(), "分享公開頁"]);
-    var saveBtn = el("button", { type: "button", class: "gold", text: "儲存", onclick: function () { saveAll(saveBtn); } });
+    var saveBtn = el("button", { type: "button", class: "btn-save", text: "儲存", onclick: function () { saveAll(saveBtn); } });
     root.appendChild(el("div", { class: "pagebar float" }, [shareBtn, saveBtn, el("a", { class: "button", href: publicPath(), text: "預覽" })]));
     function basicCard() { return card("基本資料", [el("p", { class: "help", text: "公開＝任何人都看得到；隱藏＝不在公開頁顯示（寰宇生態系內的服務仍可能使用）。" })].concat(S.defs.fields.filter(function (d) { return d.group === "basic"; }).sort(function (a, b) { return a.order - b.order; }).map(profileField))); }
     function contactCard() {
