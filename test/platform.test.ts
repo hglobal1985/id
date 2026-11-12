@@ -237,6 +237,13 @@ describe("restricted contact lookup (service credential)", () => {
   });
 });
 
+describe("back-office script", () => {
+  it("does not use the member pages' HG helpers (admin.js does not load common.js; a missing helper made 平台設定 do nothing)", async () => {
+    const { ADMIN_JS } = await import("../src/web/assets/admin");
+    expect(ADMIN_JS).not.toMatch(/\bHG\./);
+  });
+});
+
 describe("standards reported by Apps", () => {
   it("keeps the last report when an App only reports a version, and ignores unknown standards", async () => {
     const sa = await person("sa", "管理", ["super_admin"]);
