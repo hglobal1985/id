@@ -614,8 +614,21 @@ export const ME_JS = String.raw`
       return { node: el("div", { class: "with-none" }, [field, noneBox]), typing: false, get: function () { return none ? "無" : (input.value.trim() || null); } };
     }
     function save(v) { return api("PUT", "/v1/me/amway/fields/" + d.key, { value: v }); }
-    function after() { refreshAmwayData(d.key); }
-    var r = makeRow({ label: d.label, required: REQUIRED.indexOf(d.key) >= 0, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: updateRankLock });
+    function after() { warn.hidden = true; refreshAmwayData(d.key); }
+    // A field a reviewer already approved (the regional center and the rank): changing it sends it to review again.
+    var warn = el("p", { class: "help warn-note", text: "變更已審核欄位，需重新等待人工審核", hidden: true });
+    function reviewAgain(v) {
+      var cur = S.amway.fields[d.key];
+      if (d.key !== "education_center" && d.key !== "rank") return false;
+      if (!cur || cur.status !== "approved" || cur.value === null || cur.value === undefined) return false;
+      if (v === null || v === undefined || JSON.stringify(v) === JSON.stringify(cur.value)) return false;
+      var ctr = AROWS.education_center, centerNow = ctr ? ctr.value() : null;
+      if (!systemIsHglobal()) return false;                                   // only members of the training system 寰宇 are reviewed
+      if (d.key === "education_center") return v !== "無";
+      return !!centerNow && centerNow !== "無";                                // the rank is reviewed together with a real center
+    }
+    function onChange(v) { updateRankLock(); warn.hidden = !reviewAgain(v); }
+    var r = makeRow({ label: d.label, required: REQUIRED.indexOf(d.key) >= 0, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: onChange, below: function () { return warn; } });
     AROWS[d.key] = r;
     return r;
   }
