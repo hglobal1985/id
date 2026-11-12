@@ -17,6 +17,8 @@ export interface Env {
   OIDC_SIGNING_JWK_PREVIOUS?: string;
   /** Secret (optional): signing key the App webhook secrets are derived from. Without it no webhook is sent (fail closed). */
   WEBHOOK_SIGNING_KEY?: string;
+  /** R2 bucket for avatars and social icons (wrangler.jsonc `r2_buckets`). Absent in local tests: files then stay in D1. */
+  FILES?: R2Bucket;
   /** Rate Limiting bindings (wrangler.jsonc `ratelimits`). */
   RL_READ?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   RL_WRITE?: { limit(o: { key: string }): Promise<{ success: boolean }> };

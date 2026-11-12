@@ -17,6 +17,8 @@
       "d1_databases": [
         { "binding": "DB", "database_name": "hglobal-id-staging", "database_id": "dd723fe4-afa0-4748-96eb-a57cb66b414c", "migrations_dir": "migrations" }
       ],
+      // R2: uploaded avatars (the bytes; D1 keeps who owns them). ADR 0026.
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "hglobal-id-files-staging" }],
       // Workers Rate Limiting (per member): reads 120/min, writes 30/min.
       "unsafe": {
         "bindings": [
@@ -39,6 +41,8 @@
       "d1_databases": [
         { "binding": "DB", "database_name": "hglobal-id", "database_id": "c0c3f5bf-5641-4d08-b170-4243c76cc72e", "migrations_dir": "migrations" }
       ],
+      // R2: uploaded avatars (the bytes; D1 keeps who owns them). ADR 0026.
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "hglobal-id-files" }],
       // Workers Rate Limiting (per member): reads 120/min, writes 30/min.
       "unsafe": {
         "bindings": [

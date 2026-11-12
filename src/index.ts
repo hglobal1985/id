@@ -3,6 +3,7 @@ import type { Env } from "./env";
 import { runCleanup } from "./jobs/cleanup";
 import { deliverDue, purgeOldEvents } from "./db/webhooks";
 import { requeueUnreviewed } from "./jobs/requeue";
+import { moveAvatarsToR2, sweepAvatars } from "./jobs/files";
 
 const app = createApp();
 
@@ -18,10 +19,11 @@ export default {
       }),
     );
     ctx.waitUntil(requeueUnreviewed(env.DB, now).then((n) => { if (n) console.log(JSON.stringify({ job: "requeue", requeued: n })); }, () => undefined));
+    ctx.waitUntil(moveAvatarsToR2(env.DB, env.FILES).then((n) => { if (n) console.log(JSON.stringify({ job: "avatars_to_r2", moved: n })); }, () => undefined));
     if (now.getUTCHours() === 19 && now.getUTCMinutes() < 5) {
       ctx.waitUntil(
-        Promise.all([runCleanup(env.DB, now), purgeOldEvents(env.DB, now)]).then(([r, purged]) => {
-          console.log(JSON.stringify({ job: "cleanup", purged_members: r.purgedMembers, purged_webhook_events: purged }));
+        Promise.all([runCleanup(env.DB, now), purgeOldEvents(env.DB, now), sweepAvatars(env.DB, env.FILES, now)]).then(([r, purged, swept]) => {
+          console.log(JSON.stringify({ job: "cleanup", purged_members: r.purgedMembers, purged_webhook_events: purged, swept_avatar_files: swept }));
         }),
       );
     }

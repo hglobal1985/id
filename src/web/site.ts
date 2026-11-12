@@ -35,6 +35,7 @@ import { heroBadges } from "../db/badges";
 import { BLOCKS, BLOCK_PREFIX } from "../profile/layout";
 import { fieldDefinitions } from "../profile/definitions";
 import { blobBytes } from "../lib/blob";
+import { avatarKey, loadFile } from "../lib/files";
 import { ADMIN_JS } from "./assets/admin";
 
 type C = Context<AppBindings>;
@@ -143,11 +144,13 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       .bind(c.req.param("id"))
       .first<{ mime: string; data: unknown }>();
     if (!row) return c.body("Not found", 404);
+    const bytes = await loadFile(c.env.FILES, avatarKey(c.req.param("id")), row.data);
+    if (!bytes) return c.body("Not found", 404);
     c.header("content-type", row.mime);
     c.header("cache-control", "public, max-age=3600");
     c.header("x-content-type-options", "nosniff");
     c.header("content-security-policy", "default-src 'none'; sandbox");
-    return c.body(blobBytes(row.data), 200);
+    return c.body(bytes, 200);
   });
 
   // /my/<id>: the owner's own page (menu, share, edit); /my/<id>/edit: editing. The plain /<id> is the clean public page.

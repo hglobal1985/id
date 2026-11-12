@@ -8,6 +8,7 @@ import { centralOnly } from "./auth";
 import { deleteAccount } from "../db/deletion";
 import { REAUTH_MAX_AGE } from "../admin/roles";
 import { epochSeconds } from "../lib/time";
+import { avatarKey, dropFiles } from "../lib/files";
 import { SESSION_COOKIE, clearCookie } from "../auth/cookies";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -38,6 +39,7 @@ export function registerDeletionRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     const r = await deleteAccount(c.env.DB, auth.memberId, deps.now(), c.get("requestId"));
     if (r === "last_super_admin") return c.json(errorBody("last_super_admin", "系統至少要保留一位超級管理員，請先把角色交給其他人。", c.get("requestId")), 409);
     if (r === "not_found") return c.json(errorBody("unauthenticated", "Sign in required", c.get("requestId")), 401);
+    await dropFiles(c.env.FILES, [avatarKey(auth.memberId)]);
     clearCookie(c, SESSION_COOKIE);
     kickDelivery(c, deps);
     return c.json({ deleted: true as const }, 200);
