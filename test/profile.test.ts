@@ -118,6 +118,20 @@ describe("GET /v1/me/profile", () => {
     expect(p.fields.contact_email).toMatchObject({ value: null, visibility: "private" });
     expect(p.avatar).toMatchObject({ url: null, always_public: true });
     expect(p.info).toMatchObject({ registration_country: "JP", account_status: "active", zodiac: null });
+    expect(typeof p.info.google_email === "string" || p.info.google_email === null).toBe(true); // the edit page pre-fills the contact e-mail with it
+  });
+});
+
+describe("GET /v1/profile/life-chart (live preview, nothing saved)", () => {
+  it("returns the chart for a complete date, refuses a bad date, and stores nothing", async () => {
+    const t = await token();
+    const ok = await call("GET", "/v1/profile/life-chart?birthday=1985-07-03", { token: t });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ zodiac: "巨蟹座", life_chart: { birthday_number: 3 } });
+    expect((await call("GET", "/v1/profile/life-chart?birthday=1985-13-45", { token: t })).status).toBe(422);
+    expect((await call("GET", "/v1/profile/life-chart?birthday=1985-7-3", { token: t })).status).toBe(422);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM profile_field_values WHERE field_key = 'birthday'").get()?.n).toBe(0);
+    expect((await call("GET", "/v1/profile/life-chart?birthday=1985-07-03")).status).toBe(401);
   });
 });
 
