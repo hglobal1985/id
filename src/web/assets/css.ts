@@ -112,14 +112,14 @@ button[disabled]{opacity:.5;cursor:default}
 /* avatar bubble: photo or two initials; sizes are classes (no inline styles) */
 .avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;object-fit:cover;background:linear-gradient(135deg,var(--av1),var(--av2));color:#fff;font-weight:700;flex:0 0 auto;width:96px;height:96px;font-size:38px;overflow:hidden}
 .avatar.sm{width:32px;height:32px;font-size:13px}.avatar.md{width:64px;height:64px;font-size:25px}.avatar.lg{width:80px;height:80px;font-size:32px}
-.hero{display:flex;align-items:center;gap:14px;margin:4px 0 14px}
+.hero{display:flex;align-items:center;gap:8px;margin:4px 0 14px}
 .hero-main{min-width:0;flex:1}
 .nameline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}.nameline h1{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;min-width:0}
 .nm-0{font-size:1.4rem}.nm-1{font-size:1.15rem}.nm-2{font-size:.95rem}.nm-3{font-size:.8rem}
 .hero .sub{flex-wrap:nowrap;white-space:nowrap;min-width:0}.hero .sub .badge{overflow:hidden;text-overflow:ellipsis}
-.badges{display:inline-flex;flex-wrap:wrap;gap:4px;max-width:100%}
-/* beside the picture the boxes fit their text and every box uses the same font size (no shrinking) */
-.hero .rank:is(.rk0,.rk1,.rk2,.rk3){width:auto;max-width:100%;height:auto;min-height:1.5rem;padding:2px 9px;font-size:.78rem;text-overflow:ellipsis}
+.badges{display:inline-flex;flex-wrap:wrap;gap:3px;max-width:100%}
+/* beside the picture the boxes fit their text and every box uses the same font size (no shrinking); the three boxes share one row when they fit (tight gaps and side padding make room), else only the 獎銜 box moves to a second row */
+.hero .rank:is(.rk0,.rk1,.rk2,.rk3){width:auto;max-width:100%;height:auto;min-height:1.5rem;padding:2px 8px;font-size:.78rem;text-overflow:ellipsis}
 /* picture cropper */
 .crop-back{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
 .crop-box{background:var(--card,#fff);border-radius:16px;padding:16px;max-width:340px;width:100%;box-shadow:var(--shadow)}
