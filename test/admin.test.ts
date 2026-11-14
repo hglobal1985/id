@@ -448,6 +448,33 @@ describe("options and vocabularies", () => {
     expect((await member(a, "PUT", "/v1/me/profile/fields/occupation", { value: "航太及太空業" })).status).toBe(422);
   });
 
+  it("行業類別 order: ▲▼ move a term one place, the drop-down follows; other pools cannot be ordered", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const a = await person("a", "甲");
+    const sec = await person("sec", "秘書", ["secretary"]);
+    const labels = async () => ((await (await member(a, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; options?: { label: string }[] }[] }).fields.find((f) => f.key === "occupation")?.options?.map((o) => o.label) ?? [];
+    const first = await labels();
+    expect(first.slice(0, 3)).toEqual(["農林漁牧業", "礦業及土石採取業", "製造業"]);
+    const list = (await (await admin(sa, "GET", "/v1/admin/vocab/occupation")).json()) as { ordered: boolean; terms: { term: string }[] };
+    expect(list.ordered).toBe(true);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/move", { term: "製造業", direction: "up" })).status).toBe(200);
+    expect((await labels()).slice(0, 3)).toEqual(["農林漁牧業", "製造業", "礦業及土石採取業"]);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/move", { term: "農林漁牧業", direction: "down" })).status).toBe(200);
+    expect((await labels()).slice(0, 3)).toEqual(["製造業", "農林漁牧業", "礦業及土石採取業"]);
+    // At the ends nothing moves, and it is not an error.
+    const top = await admin(sa, "POST", "/v1/admin/vocab/occupation/move", { term: "製造業", direction: "up" });
+    expect(((await top.json()) as { moved: boolean }).moved).toBe(false);
+    // A term a member could have typed into another pool, an unknown term, a pool without an order, and a non-super-admin.
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/move", { term: "不存在的行業", direction: "up" })).status).toBe(404);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/job_title/move", { term: "經理", direction: "up" })).status).toBe(422);
+    expect((await admin(sec, "POST", "/v1/admin/vocab/occupation/move", { term: "製造業", direction: "up" })).status).toBe(403);
+    // A new term goes to the end and can be moved up like the others.
+    await admin(sa, "POST", "/v1/admin/vocab/occupation/add", { term: "太空旅遊業" });
+    expect((await labels()).at(-1)).toBe("太空旅遊業");
+    await admin(sa, "POST", "/v1/admin/vocab/occupation/move", { term: "太空旅遊業", direction: "up" });
+    expect((await labels()).slice(-2)).toEqual(["太空旅遊業", "其他"]);
+  });
+
   it("頭銜 (job_title): tags like 公司／單位, with related words; what members type joins the vocabulary, which the super admin edits, merges and deletes", async () => {
     const sa = await person("sa", "超管", ["super_admin"]);
     const a = await person("a", "甲");
