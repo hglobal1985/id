@@ -232,6 +232,26 @@ export async function addTerm(db: D1Database, pool: PoolKey, term: string, a: Ac
   return true;
 }
 
+/**
+ * Moves a term one place up or down in a pool the administrator orders (the drop-down shows the list in this order).
+ * The whole pool is renumbered 1..n in the order shown, so terms that never had a place (typed by members) get one too.
+ */
+export async function moveTerm(db: D1Database, pool: PoolKey, term: string, direction: "up" | "down", a: Actor): Promise<"ok" | "edge" | "not_found" | "not_ordered"> {
+  if (!ORDERED_POOLS.includes(pool)) return "not_ordered";
+  const list = await listTerms(db, pool);
+  const i = list.findIndex((t) => normTerm(t.term) === normTerm(term));
+  if (i < 0) return "not_found";
+  const j = direction === "up" ? i - 1 : i + 1;
+  if (j < 0 || j >= list.length) return "edge";
+  [list[i], list[j]] = [list[j]!, list[i]!];
+  const ts = taipeiIso(a.now);
+  await db.batch([
+    ...list.map((t, k) => db.prepare("UPDATE vocab_terms SET sort_order = ?, updated_at = ? WHERE pool = ? AND norm = ?").bind(k + 1, ts, pool, normTerm(t.term))),
+    audit(db, a, "vocab.move", pool),
+  ]);
+  return "ok";
+}
+
 /** Marks (or unmarks) an education-system term as meaning H-Global1985. */
 export async function setHglobalTerm(db: D1Database, term: string, flag: boolean, a: Actor): Promise<boolean> {
   const r = await db.prepare("UPDATE vocab_terms SET hglobal = ?, updated_at = ? WHERE pool = 'education_system' AND norm = ?").bind(flag ? 1 : 0, taipeiIso(a.now), normTerm(term)).run();

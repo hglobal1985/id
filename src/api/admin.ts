@@ -22,8 +22,8 @@ import { REVIEWER_ADJUSTABLE, getAmwayField, isNone, validateAmwayValue } from "
 import { FEATURES, PERMISSION_INFO, PERMISSIONS, ROLE_GRANTS, ROLES, ROLE_LABELS, SCOPE_LABELS, can, grantsOf, hasGrant, permissionsOf, validateGrants, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
-import { addTerm, deleteTerm, listTerms, mergeTerms, renameTerm, setHglobalTerm } from "../db/vocab";
-import { POOLS, POOL_KEYS, isPool } from "../vocab/terms";
+import { addTerm, deleteTerm, listTerms, mergeTerms, moveTerm, renameTerm, setHglobalTerm } from "../db/vocab";
+import { CLOSED_POOLS, ORDERED_POOLS, POOLS, POOL_KEYS, isPool } from "../vocab/terms";
 import { loadOverview } from "../db/overview";
 import { loadLayout, saveLayout } from "../db/layout";
 import { BLOCK_PREFIX, LAYOUT_GROUPS, LAYOUT_GROUP_LABELS, defaultLayout, validateLayout } from "../profile/layout";
@@ -209,6 +209,15 @@ const vocabRenameRoute = createRoute({
   security,
   request: { params: PoolParam, body: { required: true, content: json(z.object({ from: z.string().min(1).max(100), to: z.string().min(1).max(100) })) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
+});
+const vocabMoveRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/vocab/{pool}/move",
+  tags: ["admin"],
+  summary: "Move a term one place up or down (only pools kept in the administrator's order: 行業類別, 地區教育中心)",
+  security,
+  request: { params: PoolParam, body: { required: true, content: json(z.object({ term: z.string().min(1).max(100), direction: z.enum(["up", "down"]) })) } },
+  responses: { 200: { description: "Moved (or already at the end)", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
 });
 const vocabMergeRoute = createRoute({
   method: "post",
@@ -595,7 +604,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (d) return d as never;
     const pool = poolOr404(c, c.req.valid("param").pool);
     if (!pool) return noPool(c) as never;
-    return c.json({ pool, label: POOLS[pool].label, terms: await listTerms(c.env.DB, pool) }, 200);
+    return c.json({ pool, label: POOLS[pool].label, ordered: ORDERED_POOLS.includes(pool), closed: CLOSED_POOLS.includes(pool), terms: await listTerms(c.env.DB, pool) }, 200);
   });
 
   const invalidTerm = (c: C) => c.json(errorBody("invalid_field", "詞不可空白，最多 100 字", c.get("requestId"), { field_key: "term", reason: "format" }), 422);
@@ -618,6 +627,18 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const r = await renameTerm(c.env.DB, pool, from, to, actor(c));
     if (!r.ok) return (r.reason === "invalid" ? invalidTerm(c) : c.json(errorBody("not_found", "找不到這個詞", c.get("requestId")), 404)) as never;
     return c.json({ members_updated: r.members }, 200);
+  });
+
+  app.openapi(vocabMoveRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
+    if (d) return d as never;
+    const pool = poolOr404(c, c.req.valid("param").pool);
+    if (!pool) return noPool(c) as never;
+    const { term, direction } = c.req.valid("json");
+    const r = await moveTerm(c.env.DB, pool, term, direction, actor(c));
+    if (r === "not_found") return c.json(errorBody("not_found", "找不到這個詞", c.get("requestId")), 404) as never;
+    if (r === "not_ordered") return c.json(errorBody("invalid_field", "這組關聯詞不能調整順序", c.get("requestId"), { field_key: "pool", reason: "not_ordered" }), 422) as never;
+    return c.json({ moved: r === "ok" }, 200);
   });
 
   app.openapi(vocabMergeRoute, async (c) => {
