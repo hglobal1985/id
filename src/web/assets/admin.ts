@@ -194,7 +194,7 @@ export const ADMIN_JS = String.raw`
   }
 
   // 詞庫：each suggestion vocabulary is curated on its own (edit, merge, delete); members' saved values follow.
-  function vocab(poolKey) {
+  function vocab(poolKey, keepY) {
     api("GET", "/v1/admin/vocab").then(function (r) {
       if (r.status !== 200) { pane.appendChild(card("關聯詞", [el("p", { class: "msg bad", text: errText(r) })])); return; }
       var pools = r.body.pools, cur = poolKey || pools[0].pool, bar = el("div", { class: "tabs" });
@@ -204,34 +204,53 @@ export const ADMIN_JS = String.raw`
       pane.appendChild(bar);
       api("GET", "/v1/admin/vocab/" + cur).then(function (t) {
         var terms = t.body.terms, box = m(), picked = {};
-        function reload() { pane.textContent = ""; vocab(cur); }
+        // Reloading after an edit, merge or delete keeps the page where it was (no jump back to the top).
+        function reload() { var y = window.scrollY; pane.textContent = ""; vocab(cur, y); }
         function done(res) { if (res.status === 200) reload(); else say(box, false, errText(res)); }
         var add = el("input", { type: "text", placeholder: "新增一個詞", maxlength: 100 });
         var into = el("input", { type: "text", placeholder: "合併後的詞", maxlength: 100 });
         var ordered = !!t.body.ordered;
-        var rows = terms.map(function (x, i) {
-          var chk = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": "false", "aria-label": "選取 " + x.term, onclick: function () {
+        // The buttons sit on the left in fixed places and the term on the right; ▲▼ move the row where it is (no reload, the page
+        // keeps its place), saved one request after another in the background, so the owner can tap again and again.
+        var rowsBox = el("div"), saving = Promise.resolve();
+        function move(i, dir) {
+          var j = i + dir; if (j < 0 || j >= terms.length) return;
+          var before = rowsBox.children[i], top0 = before ? before.getBoundingClientRect().top : null;
+          var x = terms[i]; terms[i] = terms[j]; terms[j] = x;
+          paint();
+          // The page follows the moved row, so it stays under the finger: the same spot can be tapped again and again.
+          var after = rowsBox.children[j];
+          if (top0 !== null && after) window.scrollBy(0, after.getBoundingClientRect().top - top0);
+          saving = saving.then(function () { return api("POST", "/v1/admin/vocab/" + cur + "/move", { term: x.term, direction: dir < 0 ? "up" : "down" }); }).then(function (res) { if (res.status !== 200) say(box, false, errText(res)); });
+        }
+        function rowOf(x, i) {
+          var chk = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": picked[x.term] ? "true" : "false", "aria-label": "選取 " + x.term, onclick: function () {
             picked[x.term] = !picked[x.term]; chk.setAttribute("aria-checked", picked[x.term] ? "true" : "false");
           } }, [el("span", { class: "box" })]);
-          var kids = [chk, el("strong", { text: (ordered ? (i + 1) + ". " : "") + x.term }), el("span", { class: "help", text: "使用 " + x.uses + " 次" })];
-          // Lists kept in the owner's order (行業類別, 地區教育中心): ▲▼ move a term one place, saved at once; the drop-down follows.
+          var tools = [];
           if (ordered) {
-            kids.push(el("button", { type: "button", class: "small", text: "▲", "aria-label": "上移 " + x.term, disabled: i === 0, onclick: function () { api("POST", "/v1/admin/vocab/" + cur + "/move", { term: x.term, direction: "up" }).then(done); } }));
-            kids.push(el("button", { type: "button", class: "small", text: "▼", "aria-label": "下移 " + x.term, disabled: i === terms.length - 1, onclick: function () { api("POST", "/v1/admin/vocab/" + cur + "/move", { term: x.term, direction: "down" }).then(done); } }));
+            tools.push(el("button", { type: "button", class: "small", text: "▲", "aria-label": "上移 " + x.term, disabled: i === 0, onclick: function () { move(i, -1); } }));
+            tools.push(el("button", { type: "button", class: "small", text: "▼", "aria-label": "下移 " + x.term, disabled: i === terms.length - 1, onclick: function () { move(i, 1); } }));
           }
-          if (cur === "education_system") kids.push(el("button", { class: x.hglobal ? "primary" : "", text: x.hglobal ? "✓ 代表 H-Global1985" : "標示為 H-Global1985", onclick: function () {
-            api("POST", "/v1/admin/vocab/education_system/hglobal", { term: x.term, hglobal: !x.hglobal }).then(done);
-          } }));
-          kids.push(el("button", { class: "btn-edit", text: "編輯", onclick: function () {
+          tools.push(el("button", { class: "btn-edit", text: "編輯", onclick: function () {
             var to = prompt("把「" + x.term + "」改成：", x.term); if (to === null || !to.trim() || to.trim() === x.term) return;
             api("POST", "/v1/admin/vocab/" + cur + "/rename", { from: x.term, to: to.trim() }).then(done);
           } }));
-          kids.push(el("button", { class: "danger", text: "刪除", onclick: function () {
+          tools.push(el("button", { class: "danger", text: "刪除", onclick: function () {
             if (!confirm("從建議中刪除「" + x.term + "」？（會員已填的內容不會被改）")) return;
             api("POST", "/v1/admin/vocab/" + cur + "/delete", { term: x.term }).then(done);
           } }));
-          return el("div", { class: "row" }, [el("div", { class: "inline" }, kids)]);
-        });
+          if (cur === "education_system") tools.push(el("button", { class: x.hglobal ? "primary" : "", text: x.hglobal ? "✓ 代表 H-Global1985" : "標示為 H-Global1985", onclick: function () {
+            api("POST", "/v1/admin/vocab/education_system/hglobal", { term: x.term, hglobal: !x.hglobal }).then(done);
+          } }));
+          return el("div", { class: "row vocab-row" }, [el("div", { class: "vocab-tools" }, tools), el("div", { class: "vocab-name" }, [el("strong", { text: (ordered ? (i + 1) + ". " : "") + x.term }), el("div", { class: "help", text: "使用 " + x.uses + " 次" })]), chk]);
+        }
+        function paint() {
+          rowsBox.textContent = "";
+          if (!terms.length) { rowsBox.appendChild(el("p", { class: "help", text: "這組關聯詞還沒有詞。" })); return; }
+          terms.forEach(function (x, i) { rowsBox.appendChild(rowOf(x, i)); });
+        }
+        paint();
         pane.appendChild(card(t.body.label + "（" + terms.length + " 個詞）", [
           t.body.closed ? el("p", { class: "help", text: "這一組是會員資料頁「" + t.body.label + "」下拉選單的清單：會員只能從這裡選，不會自動新增；用 ▲▼ 調整順序，改了立刻生效。" }) : null,
           cur === "education_system" ? el("p", { class: "help", text: "標示為「代表寰宇」的詞：會員填這個詞又填了「地區教育中心」時，中心與獎銜需要由相同中心的審核員審核；只填系統不需審核。" }) : null,
@@ -243,7 +262,8 @@ export const ADMIN_JS = String.raw`
             api("POST", "/v1/admin/vocab/" + cur + "/merge", { froms: froms, into: into.value.trim() }).then(done);
           } })]),
           box
-        ].concat(rows.length ? rows : [el("p", { class: "help", text: "這組關聯詞還沒有詞。" })])));
+        , rowsBox]));
+        if (keepY) window.scrollTo(0, keepY);
       });
     });
   }
