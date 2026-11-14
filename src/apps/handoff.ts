@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-15.2";
-export const HANDOFF_UPDATED = "2026-11-15 13:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-15.3";
+export const HANDOFF_UPDATED = "2026-11-15 15:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -92,7 +92,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 深色模式：跟隨系統設定自動切換。配色以視覺規範 1.5 的深色色表為準；經業主明確核准保留自己配色的 App（目前：行動大學）除外，仍須跟隨系統、對比至少 4.5:1。",
     "   - 一律公開的欄位（暱稱、居住國家／地區、生命靈數九宮格，以及會員編號、頭像）：沒有填寫就不顯示；欄位定義的 visibility.configurable 為 false，畫面上仍顯示和其他欄位一樣的圓角方框與眼睛圖案「公開」，但不能按（沒有切換）；PUT /v1/me/profile/visibility 對這些欄位回 422 always_public。所有 Amway 欄位（直銷商培訓系統、地區教育中心、獎銜、推薦人、上手、皇冠大使）都有公開／隱藏切換，預設值看欄位定義的 visibility.default（皇冠大使預設隱藏，其餘預設公開）。暱稱欄位已刪除。",
     "   - 勾選「我是Amway會員」後，直銷商培訓系統、地區教育中心、獎銜三欄都是必填：系統與中心旁各有一個「無」勾選框，勾了就送出值 \"無\"（算已填，不審核、不顯示方框、不影響資格）；獎銜要等系統與中心都有值（或為無）才能送出，否則 PUT /v1/me/amway/fields/rank 回 422 invalid_field（reason system_center_required）。畫面上三欄標示「（必填）」，缺的時候提示請填寫。",
-    "   - 名字旁的方框：名字右邊依序顯示「系統」（直銷商培訓系統）、「中心」（地區教育中心）、「獎銜」（只顯示已審核的，「創辦人」三個字改寫成 F）三個小方框，只在勾選「我是Amway會員」且有填寫時出現；GET /v1/me/profile 的 badges 已算好文字與字級（size 0–3，字多自動縮小到固定五個中文字寬）；訪客看到的公開頁，被隱藏的欄位就沒有對應方框。系統方框直接顯示會員填的詞（例如「寰宇」）。頁首名字固定一行顯示，字多時自動縮小字級；「會員編號」文字加國碼的完整編號（例如 TW9475831）也固定在同一行。",
+    "   - 名字旁的方框：名字右邊依序顯示「系統」（直銷商培訓系統）、「中心」（地區教育中心）、「獎銜」（只顯示已審核的，「創辦人」三個字改寫成 F）三個小方框，只在勾選「我是Amway會員」且有填寫時出現；排版（2026-11-15.3 起）：頭像右邊三個方框盡量排在同一列，字級固定不縮小，方框左右內距 8、方框之間 3、頭像與文字之間 8；一列放不下時，只把「獎銜」整個移到第二行（系統與中心仍在第一行）；GET /v1/me/profile 的 badges 已算好文字與字級（size 0–3，字多自動縮小到固定五個中文字寬）；訪客看到的公開頁，被隱藏的欄位就沒有對應方框。系統方框直接顯示會員填的詞（例如「寰宇」）。頁首名字固定一行顯示，字多時自動縮小字級；「會員編號」文字加國碼的完整編號（例如 TW9475831）也固定在同一行。",
     "   - 學歷：大學、碩士、博士各一列，每列「校名＋系名」放在同一行，只顯示「大學」「碩士」「博士」三個名稱（不要顯示欄位全名）。碩士、博士預設整列隱藏：大學列下方放「新增碩士學歷」按鈕，按了才顯示碩士列；有碩士列才出現「新增博士學歷」。已經有資料的列一律顯示。欄位定義的 row 資訊（key、label、optional_after）就是用來分列的。",
     "   - 會員編號（member_number）與公開網址：公開網址是 ${origin}/<國碼二碼緊接編號>，例如 TW9475831（二碼國碼＋編號，中間沒有空格）；欄位值的 country、number 組成這個代碼（編號本身已含國碼的不重複加）。國家選單照欄位定義 options 的順序（台灣、鄰近國家，其餘依國際電話區碼）。尚未勾選「我是Amway會員」時，欄位旁顯示「隨機產生，不可修改」且不提供編輯；勾選後改顯示「建議修改會員編號」並可編輯（文字取自 GET /v1/me/profile 的 member_number.note；會員自己改過一次編號後，note 就永久消失，不再提醒）。每次取消勾選「我是Amway會員」，系統會重新隨機產生一組編號（國碼＋0 開頭的 7 位亂數，不夠用時自動加位數），PUT /v1/me/amway/enabled 的回應帶 member_number；取消勾選時若已綁定夫妻會先解除綁定。",
     `   - 勾選「我是Amway會員」：PUT ${origin}/v1/me/amway/enabled {"enabled":true|false}，打勾或取消立即生效，不要有二次確認，也沒有同意畫面或隱私說明確認頁；打勾後立刻顯示 Amway 欄位（GET ${origin}/v1/amway/field-definitions 與 GET ${origin}/v1/me/amway），每個 Amway 欄位也有「公開／隱藏」切換。「地區教育中心」（education_center）永遠顯示、是自由輸入的文字；只有 GET /v1/me/amway 的 hglobal 為 true（直銷商培訓系統填了代表 H-Global1985 的詞，例如「寰宇」）時，才依欄位定義的 suggest_when_hglobal 顯示專屬清單：點進欄位不用打字就直接列出整份清單（GET /v1/vocab/suggestions?pool=education_center&q= 空字串回傳全部），打字時自動篩選；這個「點開就顯示全部」的規則只適用地區教育中心，不要套用在其他欄位。不是寰宇的話維持純文字、不要有任何關聯詞。`,
