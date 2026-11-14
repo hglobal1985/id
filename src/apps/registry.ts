@@ -103,10 +103,13 @@ function purposeList(v: unknown): readonly string[] {
   return out;
 }
 
+/**
+ * The member data fields an App may read. A saved list can name a field that was deleted later (使用語言 was, 2026-11-14): such an
+ * entry is dropped, never an error, because an unreadable registration takes the whole App offline (fail closed). Typing an
+ * unknown field into the back-office form is still refused (see definitionFromForm).
+ */
 function dataFieldList(v: unknown): readonly string[] {
-  const out = list(v, /^[a-z_]{2,40}$/, "可使用的會員資料欄位", 60);
-  if (!out.every((x) => MEMBER_DATA_KEYS.includes(x))) throw new AppDefinitionError("可使用的會員資料欄位有不認得的項目。");
-  return out;
+  return list(v, /^[a-z_]{2,40}$/, "可使用的會員資料欄位", 60).filter((x) => MEMBER_DATA_KEYS.includes(x));
 }
 
 /** Validates one App definition. Throws AppDefinitionError with a message the back office can show. */
@@ -197,6 +200,7 @@ export function definitionFromForm(form: AppForm, options: { defaults?: boolean;
   if (!webOrigins.length && options.defaults) webOrigins.push(`https://${appId}.hglobal1985.com`);
   const returnUrls = form.return_urls === undefined && k ? [...k.return_urls] : clean(form.return_urls);
   if (!returnUrls.length && options.defaults) returnUrls.push(`${(form.scheme ?? "").trim() || compact}://auth/google`);
+  if (form.member_data_fields?.some((x) => !MEMBER_DATA_KEYS.includes(x))) throw new AppDefinitionError("可使用的會員資料欄位有不認得的項目。");
   return parseApp({
     app_id: appId,
     name: form.name ?? "",
