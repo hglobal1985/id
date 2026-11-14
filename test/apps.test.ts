@@ -113,6 +113,14 @@ describe("registry rules", () => {
     });
   });
 
+  it("a saved registration that names a deleted data field still loads (the App must not go offline), but the form refuses unknown fields", () => {
+    // 2026-11-14: 使用語言 was deleted while an App's saved list still named it; the whole App became "broken" and answered 404.
+    const stored = { app_id: "ok", name: "n", status: "active", scopes: [], min_version: "1.0.0", member_data_fields: ["legal_name", "languages", "job_title"] };
+    expect(parseApp(stored).member_data_fields).toEqual(["legal_name", "job_title"]);
+    expect(() => definitionFromForm({ app_id: "shop", name: "店", member_data_fields: ["legal_name", "languages"] }, { defaults: true })).toThrow(AppDefinitionError);
+    expect(definitionFromForm({ app_id: "shop", name: "店", member_data_fields: ["legal_name"] }, { defaults: true }).member_data_fields).toEqual(["legal_name"]);
+  });
+
   it("rejects bad definitions", () => {
     const base = { app_id: "ok", name: "n", status: "active", scopes: [], min_version: "1.0.0" };
     expect(parseApp(base).app_id).toBe("ok");
