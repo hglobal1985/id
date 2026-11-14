@@ -285,6 +285,8 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
       let value = stored?.value ?? null;
       // Until the member sets a display name, show the name from sign-up.
       if (def.key === "display_name" && value === null) value = member.display_name;
+      // A field with a default (介面語言 = 繁體中文) shows it until the member chooses something else; the default is not stored.
+      if (value === null && def.default_value !== undefined) value = def.default_value;
       fields[def.key] = { value, visibility: visibilityOf(def.key, visibility.get(def.key), def.visibility.default), updated_at: stored?.updated_at ?? null };
     }
     const numbers = await ensureMemberNumber(c.env.DB, member.id, member.registration_country, deps.now(), c.get("requestId"));

@@ -159,7 +159,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-14.5", digest: "8b7f66286b801802" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-14.6", digest: "9630fe8ac8641630" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);

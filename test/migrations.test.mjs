@@ -228,5 +228,19 @@ describe("D1 migrations", () => {
     expect(val("m1")).toEqual(["經理"]);
     expect(val("m2")).toEqual(["講師", "顧問"]);
   });
+
+  it("0026 removes the 使用語言 values and visibility, and nothing else", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 26)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-14T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('m1','g1','active','${ts}','${ts}')`);
+    const pv = db.prepare("INSERT INTO profile_field_values (member_id, field_key, value, updated_at) VALUES (?, ?, ?, ?)");
+    pv.run("m1", "languages", JSON.stringify(["中文"]), ts);
+    pv.run("m1", "locale", JSON.stringify("en"), ts);
+    db.prepare("INSERT INTO profile_visibility (member_id, field_key, visibility, updated_at) VALUES ('m1','languages','public',?)").run(ts);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0026"))), "utf8"));
+    expect(db.prepare("SELECT field_key FROM profile_field_values").all().map((r) => r.field_key)).toEqual(["locale"]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM profile_visibility").get().n).toBe(0);
+  });
 });
 
