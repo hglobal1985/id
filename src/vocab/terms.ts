@@ -10,9 +10,9 @@ export interface PoolInfo {
 }
 
 export const POOLS = {
-  occupation: { label: "行業與工作", profileFields: ["occupation"], amwayFields: [] },
+  occupation: { label: "行業類別（會員用選單選擇，由這裡維護清單）", profileFields: ["occupation"], amwayFields: [] },
   organization: { label: "公司／單位", profileFields: ["organization"], amwayFields: [] },
-  job_title: { label: "職稱", profileFields: ["job_title"], amwayFields: [] },
+  job_title: { label: "頭銜", profileFields: ["job_title"], amwayFields: [] },
   interests: { label: "興趣與專長", profileFields: ["interests"], amwayFields: [] },
   school: { label: "學校名稱（大學、碩士、博士共用）", profileFields: ["university", "grad_school", "phd_school"], amwayFields: [] },
   dept: { label: "系所名稱（大學、碩士、博士共用）", profileFields: ["university_dept", "grad_dept", "phd_dept"], amwayFields: [] },
@@ -73,7 +73,10 @@ export function matchScore(term: string, query: string): number {
 }
 
 /** Pools whose terms are kept in the administrator's own order (the sort order wins over how often a term was used). */
-export const ORDERED_POOLS: readonly string[] = ["education_center"];
+export const ORDERED_POOLS: readonly string[] = ["education_center", "occupation"];
+
+/** Pools that are a closed list: members choose from it in a drop-down; what they could type never joins it. */
+export const CLOSED_POOLS: readonly string[] = ["occupation"];
 
 export function rankTerms<T extends { term: string; uses: number; sort_order?: number }>(terms: readonly T[], query: string, limit: number, ordered = false): T[] {
   const place = (t: T) => (t.sort_order && t.sort_order > 0 ? t.sort_order : 1e9);

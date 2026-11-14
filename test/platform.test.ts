@@ -322,9 +322,13 @@ describe("plain-language labels", () => {
 });
 
 describe("back-office script", () => {
-  it("does not use the member pages' HG helpers (admin.js does not load common.js; a missing helper made 平台設定 do nothing)", async () => {
+  it("the back-office page loads the shared helpers (common.js) before admin.js, because admin.js uses HG (a missing helper once made 平台設定 do nothing)", async () => {
     const { ADMIN_JS } = await import("../src/web/assets/admin");
-    expect(ADMIN_JS).not.toMatch(/\bHG\./);
+    expect(ADMIN_JS).toMatch(/\bHG\./);
+    const sa = await person("sa", "管理", ["super_admin"]);
+    const html = await (await app.request("/admin", { headers: { cookie: `__Host-hgid_session=${sa.cookie}` } }, env)).text();
+    expect(html.indexOf('src="/assets/common.js"')).toBeGreaterThan(-1);
+    expect(html.indexOf('src="/assets/common.js"')).toBeLessThan(html.indexOf('src="/assets/admin.js"'));
   });
 });
 

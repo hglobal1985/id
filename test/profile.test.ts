@@ -74,7 +74,7 @@ describe("field definitions API", () => {
   it("describes every field the API accepts, with groups, scopes, options and info blocks", async () => {
     const res = await call("GET", "/v1/profile/field-definitions", { token: await token() });
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("private, max-age=300");
+    expect(res.headers.get("cache-control")).toBe("private, max-age=60");
     const d = (await res.json()) as { fields: { key: string; scope: string; options?: { value: string; label: string }[] }[]; info: { key: string; collapsed: boolean }[] };
     expect(d.fields.map((f) => f.key)).toEqual(["member_number", ...FIELD_KEYS]);
     expect(d.fields.find((f) => f.key === "contact_email")?.scope).toBe("profile.contact.write");
@@ -84,7 +84,8 @@ describe("field definitions API", () => {
     expect(d.info.map((i) => i.key)).toEqual(["zodiac", "life_path_number", "talent_number"]); // no 帳號資訊 block
     // Related-word vocabularies, rows of the education block and the member-number countries (same order as starry.phd).
     const byKey = Object.fromEntries((d.fields as unknown as { key: string; label: string; suggest?: string; ui?: string; row?: { key: string; label: string }; options?: { value: string; label: string }[] }[]).map((f) => [f.key, f]));
-    expect(byKey.occupation).toMatchObject({ type: "tags", suggest: "occupation" });
+    expect(byKey.occupation).toMatchObject({ type: "select", label: "行業類別", options_pool: "occupation" });
+    expect(byKey.occupation?.options?.length).toBeGreaterThan(20); // the built-in Taiwan industry list
     expect(byKey.interests).toMatchObject({ label: "興趣與專長", type: "tags", suggest: "interests" });
     expect(Object.keys(byKey)).not.toContain("website"); // replaced by social links
     expect(byKey.university).toMatchObject({ label: "大學校名", suggest: "school", row: { key: "university", label: "大學" } });

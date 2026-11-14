@@ -358,7 +358,7 @@ describe("options and vocabularies", () => {
     expect(await sug(a, "中")).toEqual(["中山 288", "台中 136"]);
     expect((await sug(a, "")).length).toBe(16); // opening the field shows the whole list
     // The "whole list on open" rule is only for the regional center: other vocabularies need a typed character.
-    expect(((await (await member(a, "GET", "/v1/vocab/suggestions?pool=occupation&q=")).json()) as { suggestions: string[] }).suggestions).toEqual([]);
+    expect(((await (await member(a, "GET", "/v1/vocab/suggestions?pool=job_title&q=")).json()) as { suggestions: string[] }).suggestions).toEqual([]);
     // Anyone may type any text; only H-Global1985 members add to the vocabulary.
     expect((await member(a, "PUT", "/v1/me/amway/fields/education_center", { value: "我的自訂中心" })).status).toBe(200);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'education_center' AND term = '我的自訂中心'").get()?.n).toBe(0);
@@ -387,8 +387,8 @@ describe("options and vocabularies", () => {
     await member(a, "PUT", "/v1/me/amway/fields/upline_platinum", { value: "陳大華" });
     await member(b, "PUT", "/v1/me/amway/fields/upline_platinum", { value: "陳大華" });
     await member(c, "PUT", "/v1/me/amway/fields/upline_platinum", { value: "陳大花" });
-    await member(a, "PUT", "/v1/me/profile/fields/occupation", { value: ["工程師", "老師"] });
-    await member(b, "PUT", "/v1/me/profile/fields/occupation", { value: ["工程師"] });
+    await member(a, "PUT", "/v1/me/profile/fields/job_title", { value: ["工程師", "老師"] });
+    await member(b, "PUT", "/v1/me/profile/fields/job_title", { value: ["工程師"] });
 
     expect((await admin(sec, "GET", "/v1/admin/vocab")).status).toBe(403);
     const pools = (await (await admin(sa, "GET", "/v1/admin/vocab")).json()) as { pools: { pool: string; terms: number }[] };
@@ -404,29 +404,60 @@ describe("options and vocabularies", () => {
     expect(((await (await admin(sa, "GET", "/v1/admin/vocab/upline_platinum")).json()) as { terms: { term: string; uses: number }[] }).terms).toEqual([{ term: "陳大華", uses: 3, hglobal: false }]);
 
     // Editing a tag term rewrites the item inside members' lists.
-    res = await admin(sa, "POST", "/v1/admin/vocab/occupation/rename", { from: "工程師", to: "軟體工程師" });
+    res = await admin(sa, "POST", "/v1/admin/vocab/job_title/rename", { from: "工程師", to: "軟體工程師" });
     expect(res.status).toBe(200);
-    const pa = (await (await member(a, "GET", "/v1/me/profile")).json()) as { fields: { occupation: { value: string[] } } };
-    expect(pa.fields.occupation.value).toEqual(["軟體工程師", "老師"]);
+    const pa = (await (await member(a, "GET", "/v1/me/profile")).json()) as { fields: { job_title: { value: string[] } } };
+    expect(pa.fields.job_title.value).toEqual(["軟體工程師", "老師"]);
 
     // Deleting only removes the suggestion.
-    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/delete", { term: "老師" })).status).toBe(200);
-    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/delete", { term: "老師" })).status).toBe(404);
-    expect(((await (await member(a, "GET", "/v1/me/profile")).json()) as { fields: { occupation: { value: string[] } } }).fields.occupation.value).toContain("老師");
+    expect((await admin(sa, "POST", "/v1/admin/vocab/job_title/delete", { term: "老師" })).status).toBe(200);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/job_title/delete", { term: "老師" })).status).toBe(404);
+    expect(((await (await member(a, "GET", "/v1/me/profile")).json()) as { fields: { job_title: { value: string[] } } }).fields.job_title.value).toContain("老師");
     expect((await admin(sa, "GET", "/v1/admin/vocab/nope")).status).toBe(404);
-    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/add", { term: "  " })).status).toBe(422);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/job_title/add", { term: "  " })).status).toBe(422);
   });
 
-  it("職稱 (job_title): tags like 行業與工作, with related words; what members type joins the vocabulary, which the super admin edits, merges and deletes", async () => {
+  it("行業類別 (occupation): a drop-down over a built-in Taiwan list the super admin curates; members choose, typed text never joins the list", async () => {
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const a = await person("a", "甲");
+    const b = await person("b", "乙");
+    type Defs = { fields: { key: string; type: string; options?: { value: string; label: string }[]; suggest?: string }[] };
+    const defs = async (p: P) => (await (await member(p, "GET", "/v1/profile/field-definitions")).json()) as Defs;
+    const occ = (await defs(a)).fields.find((f) => f.key === "occupation");
+    expect(occ).toMatchObject({ type: "select" });
+    expect(occ?.suggest).toBeUndefined(); // no related-word box any more
+    const labels = (occ?.options ?? []).map((o) => o.label);
+    expect(labels.slice(0, 3)).toEqual(["農林漁牧業", "礦業及土石採取業", "製造業"]);
+    expect(labels).toEqual(expect.arrayContaining(["金融及保險業", "醫療及保健業", "學生", "其他"]));
+    // Members choose from the list; free text is refused and never joins the list.
+    expect((await member(a, "PUT", "/v1/me/profile/fields/occupation", { value: "製造業" })).status).toBe(200);
+    const bad = await member(a, "PUT", "/v1/me/profile/fields/occupation", { value: "我自己亂打的行業" });
+    expect(bad.status).toBe(422);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'occupation' AND term = '我自己亂打的行業'").get()?.n).toBe(0);
+    // The list is on the 關聯詞 page: the super admin adds, edits, merges and deletes.
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/add", { term: "太空旅遊業" })).status).toBe(200);
+    expect((await member(b, "PUT", "/v1/me/profile/fields/occupation", { value: "太空旅遊業" })).status).toBe(200);
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/rename", { from: "太空旅遊業", to: "航太及太空業" })).status).toBe(200);
+    const val = async (p: P) => ((await (await member(p, "GET", "/v1/me/profile")).json()) as { fields: { occupation: { value: string } } }).fields.occupation.value;
+    expect(await val(b)).toBe("航太及太空業");
+    expect((await defs(a)).fields.find((f) => f.key === "occupation")?.options?.map((o) => o.label)).toContain("航太及太空業");
+    // Deleting a term only removes it from the list; a member who already has it keeps it and can still save.
+    expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/delete", { term: "航太及太空業" })).status).toBe(200);
+    expect(await val(b)).toBe("航太及太空業");
+    expect((await member(b, "PUT", "/v1/me/profile/fields/occupation", { value: "航太及太空業" })).status).toBe(200);
+    expect((await member(a, "PUT", "/v1/me/profile/fields/occupation", { value: "航太及太空業" })).status).toBe(422);
+  });
+
+  it("頭銜 (job_title): tags like 公司／單位, with related words; what members type joins the vocabulary, which the super admin edits, merges and deletes", async () => {
     const sa = await person("sa", "超管", ["super_admin"]);
     const a = await person("a", "甲");
     const b = await person("b", "乙");
     const c = await person("c", "丙");
     const defs = (await (await member(a, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; label: string; type: string; suggest?: string; scope: string; order: number; group: string }[] };
-    expect(defs.fields.find((f) => f.key === "job_title")).toMatchObject({ label: "職稱", type: "tags", suggest: "job_title", scope: "profile.basic.write" });
-    expect(defs.fields.find((f) => f.key === "occupation")?.label).toBe("行業與工作");
+    expect(defs.fields.find((f) => f.key === "job_title")).toMatchObject({ label: "頭銜", type: "tags", suggest: "job_title", scope: "profile.basic.write" });
+    expect(defs.fields.find((f) => f.key === "occupation")).toMatchObject({ label: "行業類別", type: "select" });
     const basic = defs.fields.filter((f) => f.group === "basic").sort((x, y) => x.order - y.order).map((f) => f.key);
-    expect(basic.indexOf("job_title")).toBe(basic.indexOf("occupation") + 1); // right below 行業與工作
+    expect(basic.indexOf("job_title")).toBe(basic.indexOf("occupation") + 1); // right below 行業類別
     expect((await member(a, "PUT", "/v1/me/profile/fields/job_title", { value: ["經理", "講師"] })).status).toBe(200);
     expect((await member(b, "PUT", "/v1/me/profile/fields/job_title", { value: ["經理"] })).status).toBe(200);
     expect((await member(c, "PUT", "/v1/me/profile/fields/job_title", { value: ["經裡"] })).status).toBe(200);

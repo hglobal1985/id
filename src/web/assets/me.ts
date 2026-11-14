@@ -205,7 +205,10 @@ export const ME_JS = String.raw`
         return { node: t.el, typing: false, watch: t.el.querySelector(".chips-in"), get: function () { var a = t.get(); return a.length ? a : null; } };
       }
       if (def.type === "select" && !def.ui) {
-        var dd = HG.dropdown({ options: [{ value: "", label: "（未選擇）" }].concat(def.options || []), value: v || "", block: true });
+        // A long list (行業類別) can be searched; a saved value that is no longer on the list still shows.
+        var opts = (def.options || []).slice();
+        if (v && !opts.some(function (o) { return o.value === v; })) opts.push({ value: v, label: v });
+        var dd = HG.dropdown({ options: [{ value: "", label: "（未選擇）" }].concat(opts), value: v || "", block: true, searchable: opts.length > 12 });
         return { node: dd.el, get: function () { return dd.get() || null; } };
       }
       if (def.type === "textarea") { input = el("textarea", { maxlength: def.max_length, "aria-label": def.label }); input.value = v || ""; return { node: input, get: function () { return input.value.trim() || null; } }; }

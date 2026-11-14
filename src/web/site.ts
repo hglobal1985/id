@@ -182,7 +182,7 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (!(await isStaffMember(c.env.DB, s.member_id))) {
       return page(c, sitePage({ title: "後台", nav: await navFor(c, deps, "/admin"), body: '<section class="card"><h2>沒有權限</h2><p>此頁面只開放給管理人員。</p></section>' }), 403);
     }
-    return page(c, sitePage({ title: "後台", admin: true, nav: await navFor(c, deps, "/admin"), body: '<div id="app"><p class="help">載入中…</p></div>', script: "/assets/admin.js" }));
+    return page(c, sitePage({ title: "後台", admin: true, nav: await navFor(c, deps, "/admin"), body: '<div id="app"><p class="help">載入中…</p></div>', script: ["/assets/common.js", "/assets/admin.js"] }));
   });
 
   // H-Global1985 Apps: the 9-dot launcher leads here. Public (names and web addresses only); stopped Apps are hidden.
