@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-14.2";
-export const HANDOFF_UPDATED = "2026-11-14 18:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-14.3";
+export const HANDOFF_UPDATED = "2026-11-14 21:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -120,6 +120,15 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `   - 聯絡查詢（取代 App 長期保存會員信箱）：業主在後台建立這款 App 的服務金鑰（只顯示一次，只放在 App 的伺服器環境變數，絕不放在手機或網頁用戶端）並核准「用途」（payment_notice、course_notice、account_security）。App 伺服器先 POST ${origin}/v1/service/token {"app_id","client_secret"} 取得 10 分鐘的服務 Token，再 POST ${origin}/v1/apps/<app_id>/contacts/lookup {"member_ids":[最多 50 個],"purpose":"<用途>"}（Authorization: Bearer <服務 Token>）→ {"contacts":[{"member_id","email","email_verified"}],"not_found":[…]}。email 是會員自己填的聯絡信箱（email_verified 為 false），沒有就是已驗證的 Google 信箱。只能查在這款 App 登入過的會員、只能用核准的用途；信箱只用來寄當次通知，不寫進資料庫、日誌或分析工具；每次查詢中央都有稽核（App、筆數、用途，不記信箱）。`,
     "   - 最小權限：新登記的 App 預設只有登入與資格查詢（amway.read）；要更多權限，由業主在後台「平台設定」勾選並留下紀錄。App 只使用被授權的功能，收到 403 forbidden（缺 scope）不要自己想辦法繞過，回報業主。（既有 App 目前仍是舊制的全部權限，業主確認後才收緊。）",
     `   - 標準符合度回報：App 的管理頁呼叫 GET ${origin}/v1/apps/<app_id>/handoff?integrated=<版本>&standards=<逗號分隔，只列已做到的>，標準代碼：webhook（收通知並驗簽）、delete_copy（收到刪除就刪副本）、no_email_copy（不長期存聯絡信箱）、snapshot_reconcile（交易存快照、靠付款代碼對帳）、least_scope（只用被授權的權限）。業主在後台 App 清單一眼看得出哪款 App 還沒符合；沒做到的就不要列。`,
+    "12. 下拉重新整理（平台標準，業主 2026-11-14；所有 App、所有頁面一體適用）：每一個畫面都要支援「在頁面最上方往下拉 = 重新整理」，用來取代網頁版沒有重新整理按鈕的缺陷（手機瀏覽器、加到主畫面的網頁、App 內嵌網頁都一樣）。",
+    "   - 範圍：App 的每一個畫面都要有（列表、詳情、會員資料頁、通知頁、設定頁…），不可只做首頁。",
+    "   - 手勢：頁面捲到最頂端時，手指往下拖超過約 70 px 再放開才觸發。拖動時要有跟手的指示：未過門檻顯示「下拉重新整理」，過了門檻變「放開重新整理」，載入中轉圈；顏色用視覺規範的主色，不新增顏色。沒過門檻就放開，彈回原位、什麼都不做。",
+    "   - 觸發後：重新讀取這一頁用到的資料（重新呼叫這頁的 API，必要時先換發 Access Token），並順便重讀 GET config（status、min_version）。不要整個 App 重新載入、不要登出、不要清掉共用登入。完成後指示消失；失敗時用 toast 顯示一行錯誤，可再拉一次。",
+    "   - 有未儲存的修改時（例如資料頁顯示「尚未儲存」）：先問「放棄尚未儲存的修改並重新整理？」，確認才重新讀取，取消就不動。",
+    "   - 不可誤觸發：頁面不在最頂端時不觸發；手指在輸入框、下拉清單、彈出視窗、裁切視窗、可橫向捲動的區域內拖動時不觸發；正在載入時不重複觸發；連續兩次觸發至少間隔 2 秒（中央有每分鐘 120 次的讀取限制）。",
+    "   - 網頁版做法：用 touchstart／touchmove／touchend 自己實作，並在 CSS 設定 overscroll-behavior-y: contain，避免和瀏覽器內建的下拉重新整理重複觸發；不用外部套件。電腦（滑鼠）不需要。",
+    "   - 原生 App（Expo／React Native）做法：用 ScrollView／FlatList 的 RefreshControl（onRefresh、refreshing），tintColor 用主色；內容不夠長的畫面也要放在可捲動的容器裡，才能下拉。",
+    "   - 驗收：每個畫面都在手機上實際拉一次，確認資料真的重新讀取了（例如在中央會員網站改了暱稱，下拉後 App 顯示新暱稱）。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報業主（移除機密需要業主核准，不要自己刪）。",
@@ -159,7 +168,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "20. 只使用被授權的 scope，沒有自己繞過 403；服務金鑰只在伺服器環境變數（三、11）。",
     "21. 回報標準符合度：handoff?integrated=<版本>&standards=…（只列已做到的）。",
     "22. 職稱（欄位 job_title，三、5）：已出現在資料頁（照欄位定義產生）、輸入時顯示 suggest=job_title 的關聯詞、可點選也可自由輸入；其他 App 與本 App 用同一個欄位，不要自己另建職稱欄位或詞庫。（2026-11-14.2 新增）",
-    "23. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "23. 下拉重新整理（三、12）：每一個畫面都支援在最上方往下拉重新整理；有未儲存修改時先確認；不重載整個 App、不登出；網頁版有 overscroll-behavior-y: contain，原生用 RefreshControl。（2026-11-14.3 新增）",
+    "24. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }
