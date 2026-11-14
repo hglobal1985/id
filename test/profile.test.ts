@@ -356,10 +356,22 @@ describe("field rules (unit)", () => {
   });
   it("every definition has a write scope and the documented field keys", () => {
     expect(FIELD_KEYS).toEqual([
-      "display_name", "legal_name", "motto", "bio", "occupation", "job_title", "organization", "languages", "interests",
+      "display_name", "legal_name", "motto", "bio", "occupation", "job_title", "organization", "interests",
       "university", "university_dept", "grad_school", "grad_dept", "phd_school", "phd_dept", "locale", "contact_email", "phone", "country", "region", "city", "birthday",
     ]);
     for (const f of fieldDefinitions()) expect(f.scope).toMatch(/^profile\.(basic|contact|birthday)\.write$/);
+  });
+  it("使用語言 is gone, and 介面語言 starts as 繁體中文 without being stored", async () => {
+    expect(FIELD_KEYS).not.toContain("languages");
+    const defs = (await (await call("GET", "/v1/profile/field-definitions", { token: await token() })).json()) as { fields: { key: string; default_value?: string }[] };
+    expect(defs.fields.find((f) => f.key === "locale")?.default_value).toBe("zh-TW");
+    const t = await token();
+    const read = async () => ((await (await call("GET", "/v1/me/profile", { token: t })).json()) as { fields: { locale: { value: string | null; updated_at: string | null } } }).fields.locale;
+    expect(await read()).toMatchObject({ value: "zh-TW", updated_at: null });
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM profile_field_values WHERE field_key = 'locale'").get()).toEqual({ n: 0 });
+    expect((await call("PUT", "/v1/me/profile/fields/locale", { token: t, body: { value: "en" } })).status).toBe(200);
+    expect((await read()).value).toBe("en");
+    expect((await call("PUT", "/v1/me/profile/fields/languages", { token: t, body: { value: ["中文"] } })).status).toBe(404);
   });
   it("zodiac and life path number", () => {
     expect(zodiacSign("2000-01-19")).toBe("摩羯座");

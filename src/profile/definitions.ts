@@ -6,7 +6,7 @@
 import { countryRows } from "./countries";
 import { isForcedPublic } from "./visibility";
 
-export const DEFINITIONS_VERSION = "2026-11-14.3";
+export const DEFINITIONS_VERSION = "2026-11-14.4";
 
 export type FieldType = "text" | "textarea" | "url" | "email" | "phone" | "date" | "select" | "tags";
 export type Visibility = "public" | "private";
@@ -36,6 +36,8 @@ export interface FieldDefinition {
   ui?: "autocomplete";
   /** Fields sharing a row on the page (for example 大學: school + department). */
   row?: { key: string; label: string; optional_after?: string };
+  /** Shown (not stored) while the member has not chosen a value: 介面語言 starts as 繁體中文. */
+  default_value?: string;
   visible_when?: null;
   visibility: { configurable: boolean; default: Visibility };
 }
@@ -139,7 +141,6 @@ const RAW: FieldDefinition[] = [
   // 職稱 (2026-11-14, tags since 2026-11-14.3): like 行業與工作 and 公司／單位, several items with related words from the 職稱 vocabulary; sits right below 行業與工作.
   basic({ key: "job_title", group: "basic", order: 55, label: "職稱", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "job_title" }),
   basic({ key: "organization", group: "basic", order: 60, label: "公司／單位", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 80, suggest: "organization" }),
-  basic({ key: "languages", group: "basic", order: 80, label: "使用語言", type: "tags", max_items: 20, item_max_length: 30 }),
   basic({ key: "interests", group: "basic", order: 90, label: "興趣與專長", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 30, item_max_length: 30, suggest: "interests" }),
   basic({ key: "university", group: "education", order: 10, label: "大學校名", type: "text", max_length: 100, suggest: "school", row: { key: "university", label: "大學" } }),
   basic({ key: "university_dept", group: "education", order: 20, label: "大學系名", type: "text", max_length: 100, suggest: "dept", row: { key: "university", label: "大學" } }),
@@ -147,7 +148,7 @@ const RAW: FieldDefinition[] = [
   basic({ key: "grad_dept", group: "education", order: 40, label: "碩士系名", type: "text", max_length: 100, suggest: "dept", row: { key: "master", label: "碩士", optional_after: "university" } }),
   basic({ key: "phd_school", group: "education", order: 50, label: "博士校名", type: "text", max_length: 100, suggest: "school", row: { key: "doctor", label: "博士", optional_after: "master" } }),
   basic({ key: "phd_dept", group: "education", order: 60, label: "博士系名", type: "text", max_length: 100, suggest: "dept", row: { key: "doctor", label: "博士", optional_after: "master" } }),
-  basic({ key: "locale", group: "basic", order: 160, label: "介面語言", type: "select", options: LOCALES, visibility: "private" }),
+  basic({ key: "locale", group: "basic", order: 160, label: "介面語言", type: "select", options: LOCALES, default_value: "zh-TW", visibility: "private" }),
   contact({ key: "contact_email", group: "contact", order: 10, label: "聯絡信箱", help: "修改後立即生效，不影響登入。", type: "email", max_length: 254 }),
   contact({ key: "phone", group: "contact", order: 20, label: "手機", help: "可加國碼，例如 +886912345678。", type: "phone", max_length: 20 }),
   contact({ key: "country", group: "contact", order: 30, label: "居住國家／地區", help: "輸入國名或代碼，從建議中選擇。", type: "select", ui: "autocomplete" }),

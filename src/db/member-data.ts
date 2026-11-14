@@ -2,6 +2,7 @@
 // public page shows; it does not limit the Apps of the ecosystem: an App reads any field the owner allowed it, for
 // members who signed in to that App. Every call is audited (App, count, field NAMES, use; never values).
 import { getAmwayField } from "../amway/fields";
+import { getFieldDefinition } from "../profile/definitions";
 import { readAmwayFields } from "./amway";
 import { auditStatement } from "./audit";
 import { MEMBER_DATA_KEYS } from "../apps/data-fields";
@@ -37,7 +38,7 @@ export async function lookupMemberData(db: D1Database, appId: string, use: strin
       const pm = profileKeys.map(() => "?").join(",");
       const vals = await db.prepare(`SELECT field_key, value FROM profile_field_values WHERE member_id = ? AND field_key IN (${pm})`).bind(m.id, ...profileKeys).all<{ field_key: string; value: string }>();
       const byKey = new Map((vals.results ?? []).map((v) => [v.field_key, parse(v.value)]));
-      for (const k of profileKeys) out[k] = byKey.get(k) ?? (k === "display_name" ? m.dn : null);
+      for (const k of profileKeys) out[k] = byKey.get(k) ?? (k === "display_name" ? m.dn : (getFieldDefinition(k)?.default_value ?? null));
     }
     if (fields.includes("avatar")) out.avatar = m.av;
     if (fields.includes("member_number")) {
