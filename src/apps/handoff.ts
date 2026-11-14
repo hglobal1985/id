@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-15.3";
-export const HANDOFF_UPDATED = "2026-11-15 15:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-15.4";
+export const HANDOFF_UPDATED = "2026-11-15 17:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -143,6 +143,13 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 第 1 顆：x 0.28、y 0.12，大小 15，延遲 0 ms，週期 2600 ms；第 2 顆：x 0.74、y 0.42，大小 12，延遲 900 ms，週期 3000 ms；第 3 顆：x 0.36、y 0.74，大小 14，延遲 1700 ms，週期 2800 ms；第 4 顆：x 0.80、y 0.90，大小 10，延遲 2300 ms，週期 3200 ms。每顆一個週期：260 ms 由小（0.2 倍、逆時針 -35 度）變大（1 倍、0 度）並由透明變為完全亮，接著 420 ms 淡出，其餘時間隱形。大小以徽章高度 72 為基準，隨徽章尺寸等比縮放（高度 92 時乘 92/72）。",
     "   - 無障礙：使用者的系統開啟「減少動態效果」時，兩種特效都關閉，只顯示靜態徽章；徽章要有文字說明（例如「鑽石徽章」，用獎銜名稱加上「徽章」）。",
     "   - 沒有徽章的獎銜（badge_url 為 null）或圖片載入失敗：整個徽章區塊不顯示（不留空位、不放預設圖），載入失敗要靜默隱藏。",
+    "14. 同中心會員名單（平台功能，業主 2026-11-15；給需要讓某個教育中心的音控或會長「從名單點選同中心的會員」的 App，例如指派小編。不可以用手動貼會員 ID 取代）：",
+    `   - 呼叫：GET ${origin}/v1/eligibility/center-members?q=<關鍵字>&limit=<預設 20、最多 50>&cursor=<上一頁的 next_cursor>&center=<中心名稱，只有總部角色可用>。用呼叫者本人在這款 App 的會員 Access Token（需要 amway.read），不是服務 Token。`,
+    "   - 誰可以查：有 sound（音控）或 president（會長）職務、且有已審核教育中心的人，只看到自己那個中心（帶別的中心的 center 會回 403）；super_admin 與 secretary 可帶 center=<中心名稱>（以地區教育中心詞庫為準，不存在回 404；沒帶 center 又沒有自己的中心回 422）；其他人一律 403。不是 App 內登入的 Token 也是 403。",
+    "   - 名單範圍：教育中心已審核且與目標中心相同（以 center.key 正規化比對）、帳號啟用、Amway 開啟的會員，不含呼叫者自己；沒有登入過這款 App 的會員也會列出，用 signed_in_app（true／false）讓 App 標示。q 只比對顯示名稱（不比對本名）；空白 q 回第一頁。",
+    "   - 回傳：{ center:{key,label}, members:[{member_id, display_name, avatar_url（或 null）, signed_in_app}], next_cursor（或 null）}。只給挑人需要的最少欄位，沒有信箱、電話、獎銜或其他 Amway 欄位。",
+    "   - 授權：業主要在後台「平台設定」替這款 App 勾選會員資料的 display_name（要顯示頭像再勾 avatar，沒勾 avatar 時 avatar_url 一律是 null），否則回 403 field_not_allowed；App 不得自行繞過。中央每次查詢都有稽核（呼叫者、App、中心、筆數；不記搜尋字與姓名），被拒絕的也記。",
+    "   - App 端規則：被指派的人（例如小編）的身分只存在這款 App，只存必要的 member_id 與當下顯示名稱；不要保存整份名單、不要把搜尋字寫進日誌；之後要確認對方仍在同一中心，用對方本人的 GET /v1/eligibility/context 的 center.key 比對。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報業主（移除機密需要業主核准，不要自己刪）。",
@@ -185,7 +192,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "23. 下拉重新整理（三、12）：每一個畫面都支援在最上方往下拉重新整理；有未儲存修改時先確認；不重載整個 App、不登出；網頁版有 overscroll-behavior-y: contain，原生用 RefreshControl。（2026-11-14.3 新增）",
     "24. 欄位異動（三、5）：已移除「使用語言」；「介面語言」沒選過時顯示繁體中文（default_value），不把預設值寫回中央。（2026-11-14.6 新增）",
     "25. 獎銜徽章（三、13）：讀 rank 選項的 badge_url／badge、不存圖庫；緊貼獎銜標籤右邊、顯示高度 92、只佔頭像高度 48（上下各溢出約 22）、呼吸 1.1 倍 2.6 秒不改透明度、4 顆星形閃光球（位置與參數照三、13）、減少動態效果時只顯示靜態徽章、沒有徽章或載入失敗就整塊不顯示。（2026-11-15.2 新增）",
-    "26. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "26. 同中心會員名單（三、14）：只在需要挑人的功能使用；用呼叫者本人的 Token；不自己手貼會員 ID 選人；不保存名單副本與搜尋字；403／404／422 照規則處理；業主已在平台設定勾選 display_name。（2026-11-15.4 新增，沒有這類功能的 App 可略過）",
+    "27. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }
