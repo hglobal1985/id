@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-14.4";
-export const HANDOFF_UPDATED = "2026-11-14 23:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-14.5";
+export const HANDOFF_UPDATED = "2026-11-14 23:50（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -78,7 +78,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 電腦版的 Enter 鍵：電腦（滑鼠加鍵盤）上輸入法選字要按 Enter，所以所有可自訂輸入的欄位（行業與工作、職稱、公司、興趣與專長、大學系名、地區教育中心…）按 Enter 都不要有任何動作（不送出、不確認標籤、不選建議）；用逗號等符號、空格、點選建議、按「儲存」來完成。手機上才保留 Enter 確認標籤。輸入法組字中（isComposing）也不要處理分隔符號。",
     `   - 職稱（2026-11-14 新增，欄位 job_title；2026-11-14.4 起改為多項 tags，與「行業與工作」「公司／單位」「興趣與專長」同一種自動標籤格式）：基本資料區塊，順序在「行業與工作」之後、「公司／單位」之前；最多 10 項、每項最長 50 字、預設公開、寫入範圍 profile.basic.write。輸入時遇到逗號、頓號等分隔符號或空白（電腦版不用 Enter）就確認一項變成可移除的標籤；輸入時用 GET ${origin}/v1/vocab/suggestions?pool=job_title&q=<已輸入的字> 顯示關聯詞（定義裡的 suggest 就是 "job_title"），可點選也可自己打。值是文字陣列：寫入走 PUT ${origin}/v1/me/profile/fields/job_title，body {"value":["經理","講師"]}；讀取在 GET ${origin}/v1/me/profile 的 fields.job_title.value。若 App 先前把職稱當成單一文字，請改成 tags 並容忍舊的文字值（顯示時當成一項）。會員輸入過的職稱自動進入關聯詞庫，由業主在後台「詞庫」編輯、合併、刪除（會連帶更新所有會員已存的職稱，App 不用處理）。畫面照欄位定義產生，標籤用定義的 label，不要寫死。「職業」欄位已改名為「行業與工作」（欄位代碼 occupation 不變），標籤同樣跟著欄位定義。`,
     `   - 多項欄位（tags）：輸入時遇到 , ; : - # * / \\ ' ， 、 ； ： 。 . 或空白字元或按 Enter，就確認為一個項目（變成可移除的標籤）。`,
-    "   - 頭像區：上傳圖片、Google頭像、移除頭像三個按鈕排成一整列，放在頭像正下方（再下面才是社群連結圖示列）。會員編號欄位的「公開網址」最左邊放一個超大的分享按鈕，呼叫手機的原生分享選單（navigator.share，不支援時複製連結）；按鈕圖示依裝置不同：iPhone／iPad 用方框加向上箭頭，Android 用三點相連的分享符號（符合各平台原生圖示）。",
+    "   - 頭像區：上傳圖片、Google頭像、移除頭像三個按鈕排成一整列且顏色相同（都是一般白底按鈕，「移除頭像」不要用危險紅色；2026-11-14.5 起），放在頭像正下方（再下面才是社群連結圖示列）。會員編號欄位的「公開網址」最左邊放一個超大的分享按鈕，呼叫手機的原生分享選單（navigator.share，不支援時複製連結）；按鈕圖示依裝置不同：iPhone／iPad 用方框加向上箭頭，Android 用三點相連的分享符號（符合各平台原生圖示）。",
     "   - 生日欄位（date 型態）：不要用日期選擇器或年曆，改成年、月、日三個各自獨立的自訂下拉選單並排一列；月份顯示阿拉伯數字加英文縮寫（1 Jan、2 Feb … 12 Dec）；欄位說明不再寫「格式：YYYY-MM-DD」。",
     "   - 生日與生命靈數是同一個區塊（block 是 birthday）：區塊大標題寫成「xxx生命靈數 x年x月x日」（沒有「的」、沒有括號，生命靈數與日期之間一個空格），xxx 是暱稱，年月日是會員的生日（例如「小美生命靈數 1985年7月3日」）；標題強制一行不換行，字太多就自動縮小字體；會員把生日設為隱藏時，對外只寫「xxx生命靈數」，不要露出日期。檢視畫面不要再另外顯示「生日」列和「生命靈數」小標題（日期已在大標題）；只有編輯畫面保留生日輸入欄。GET /v1/profile/field-definitions 的 blocks 只有 avatar、amway、basic、education、contact、birthday 六個，依 order 排列。",
     `   - 社群連結（取代原本的「個人網站」欄位，一律顯示）：名片照片下方一列置中的小圖示，每列 5 個；圖示總數超過兩排時改縮小，每列 7 個。最後一個是「＋」圖示，下方寫「新增連結」。每個圖示下方有「複製」小標籤（複製該網址），點圖示在新視窗開啟連結。可選平台與圖示由 GET ${origin}/v1/social/platforms 取得（順序與圖示由後台決定，不要寫死；custom 為 true 的是「自定義」）；GET／POST ${origin}/v1/me/social-links（body {"platform_key","url","label"?}，網址沒打 http:// 或 https:// 時由中央補上 https://、打了就照會員輸入的保留（只收這兩種開頭），最多 30 個，同一平台可重複新增）、DELETE ${origin}/v1/me/social-links/{id}；「自定義」連結可用 PUT ${origin}/v1/me/social-links/{id}/icon 直接送圖片位元組（先縮成約 64 px 的小圖，不超過 16 KB）。`,
