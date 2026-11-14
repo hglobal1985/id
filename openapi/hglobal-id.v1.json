@@ -1035,6 +1035,66 @@
           "center"
         ]
       },
+      "CenterMembers": {
+        "type": "object",
+        "properties": {
+          "center": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "member_id": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "avatar_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "signed_in_app": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "member_id",
+                "display_name",
+                "avatar_url",
+                "signed_in_app"
+              ]
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "center",
+          "members",
+          "next_cursor"
+        ]
+      },
       "SocialPlatform": {
         "type": "object",
         "properties": {
@@ -3675,6 +3735,115 @@
           },
           "403": {
             "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/eligibility/center-members": {
+      "get": {
+        "tags": [
+          "eligibility"
+        ],
+        "summary": "The members of one regional center, for a center's staff to pick a person (for example to name an editor). The caller's own member token; never a service token.",
+        "description": "Who may ask: a member with the position `sound` (音控) or `president` (會長) who has an approved regional center sees only their own center (a `center` parameter naming another center is refused with 403); `super_admin` and `secretary` may add `center=<name from the 地區教育中心 vocabulary>` to list any center; everyone else gets 403. Who is listed: active members with Amway on whose center is approved and equals the target center (compared by `center.key`), not the caller; members who never used the calling App are listed too (`signed_in_app` says which). Only the least needed is returned: no email, phone, rank or other Amway field. `q` searches the display name only. The calling App must have `display_name` (and `avatar` for pictures) ticked for it in the back office, like any use of member data (ADR 0022). Every query is audited (caller, App, center, count; never the search text or names).",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 50,
+              "description": "Part of the display name; empty lists the first page"
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "description": "Default 20, at most 50"
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 300,
+              "description": "`next_cursor` of the previous page"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 60,
+              "description": "super_admin and secretary only: the center to list (name from the 地區教育中心 vocabulary)"
+            },
+            "required": false,
+            "name": "center",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CenterMembers"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden, or field_not_allowed when the App was not allowed the display name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "the named center is not in the vocabulary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid cursor, or a center is required",
             "content": {
               "application/json": {
                 "schema": {

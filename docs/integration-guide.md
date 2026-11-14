@@ -115,6 +115,15 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **顯示標準**（完整內容在串接指令三、13，檢查清單 25）：會員抬頭裡緊貼獎銜標籤右邊；顯示高度 92、版面只佔頭像高度 48（上下各溢出約 22）；呼吸 1.1 倍／2.6 秒（只改大小）；4 顆星形閃光球（位置依圖案範圍比例，高度 72 為基準等比縮放）；「減少動態效果」時只顯示靜態徽章；無徽章或載入失敗整塊不顯示。
 - App 不自己存圖庫、不自己新增徽章；新增獎銜時由業主在中央後台「獎銜徽章」上傳。
 
+## 6.13 同中心會員名單（2026-11-15.4，ADR 0028）
+給需要讓教育中心的音控或會長「從名單點選同中心會員」的 App（例如指派小編；不可用手動貼會員 ID）。
+- `GET /v1/eligibility/center-members?q=&limit=&cursor=&center=`：呼叫者本人的 App 會員 Token（`amway.read`）。
+- **誰可查**：`sound`（音控）、`president`（會長）且有已審核教育中心 → 只回自己的中心（指定別的中心回 403）；`super_admin`、`secretary` 可帶 `center=<詞庫中的中心名稱>`（不存在 404；沒帶且沒有自己的中心 422）；其他人 403；非 App 內登入的 Token 403。
+- **名單**：教育中心已審核且相同（`center.key`）、帳號啟用、Amway 開啟，不含自己；沒登入過這款 App 的也列出（`signed_in_app`）。`q` 只比對顯示名稱。`limit` 預設 20、上限 50，`cursor` 翻頁。
+- **回傳**：`{center:{key,label}, members:[{member_id, display_name, avatar_url|null, signed_in_app}], next_cursor|null}`；沒有信箱、電話、獎銜或其他 Amway 欄位。
+- **授權**：業主要在後台「平台設定」替 App 勾 `display_name`（頭像再勾 `avatar`，沒勾時 `avatar_url` 為 null），否則 `403 field_not_allowed`。每次查詢都有稽核（不記搜尋字與姓名）。
+- App 只存被指派者的 `member_id` 與當下顯示名稱；確認對方仍在同中心用對方本人的 `GET /v1/eligibility/context`。
+
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 

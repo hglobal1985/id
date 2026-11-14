@@ -1,6 +1,6 @@
 # 新對話交接包（給接手的 AI）
 
-寫於 2026-11-14。狀態：production 與 staging 都在 main 最新一版；串接指令 `2026-11-15.3`；資料庫遷移到 `0024`；本機 `npm run ci` 255 個測試全過（以 main 為準）。
+寫於 2026-11-14。狀態：production 與 staging 都在 main 最新一版；串接指令 `2026-11-15.4`；資料庫遷移到 `0024`；本機 `npm run ci` 255 個測試全過（以 main 為準）。
 這份文件不含任何機密或個資（公開 repo）。先讀 `AGENTS.md`（規則的權威），再讀本檔，再看交接 Issue `hglobal1985/id#2` 最後幾則留言。
 
 ## 1. 怎麼跟業主合作（最重要）
@@ -77,6 +77,7 @@ npm run openapi     # 改了 /v1 路由後重新產生 openapi/hglobal-id.v1.jso
 - **刪欄位前必查（2026-11-15 事故）**：刪除或改名會員欄位（如「使用語言」）前，要確認 `registered_apps.definition.member_data_fields`、`profile_layout`、各 App 勾選清單有沒有引用。曾因刪欄位使 `learn` 的登記被判「損壞」而回 404（約 1 小時）；現在 `parseApp` 會忽略已刪除的欄位，但仍要檢查。
 - 2026-11-15：後台「關聯詞」頁，**有排序的清單（行業類別、地區教育中心）每個詞旁有 ▲▼**，按一下立刻存、下拉選單跟著變；版面是「四顆按鈕（▲▼編輯刪除）固定在左、詞在右」，按 ▲▼ 不重新載入、頁面跟著捲動讓被移動的那一列留在手指位置，可在同一點連按（`POST /v1/admin/vocab/{pool}/move`，`ORDERED_POOLS`）；行業類別是「封閉清單」（`CLOSED_POOLS`，會員只能選，不會自動新增）。
 - **獎銜徽章圖庫（2026-11-15，ADR 0027）**：24 張圖在中央 R2（`badges/<獎銜代碼>.png`），公開網址 `/badges/<代碼>.png?v=<版本>`；`GET /v1/amway/field-definitions` 的 rank 選項有 `badge_url`／`badge`；後台「獎銜徽章」（`badges.manage`）上傳、更換、移除，新增獎銜後要在這裡上傳徽章；顯示標準在串接指令三、13（檢查清單 25）。行動大學的舊圖庫（`learn` bucket 的 `Pin-Level/`）沒動，由行動大學改讀 `badge_url` 後自己刪。注意：`src/db/badges.ts` 是會員抬頭的名字方框徽章，獎銜徽章圖是 `src/db/rank-badges.ts`，不要混淆。
+- **同中心會員名單（2026-11-15，ADR 0028）**：`GET /v1/eligibility/center-members`，給行動大學讓音控／會長指派小編時從名單點選；規則與隱私見 ADR 0028 與串接指令三、14（檢查清單 26）。行動大學要在後台「平台設定」被勾 `display_name`（和 `avatar`）才能用。
 
 ## 6. 給新對話的第一句提示（業主貼這段）
 ```
