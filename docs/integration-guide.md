@@ -91,12 +91,10 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - 只能讀在該 App 登入過的會員、只能讀業主在後台勾選的欄位（含會員設為隱藏的）；沒勾回 `403 field_not_allowed`。需要審核的 Amway 欄位只回已審核的；非 Amway 會員的 Amway 欄位為 `null`。
 - 只取需要的欄位；不長期保存、不寫日誌與分析工具、不轉給寰宇生態系以外；中央每次稽核（App、筆數、欄位名稱、用途，不含內容）。對外公開頁仍然只顯示會員設為公開的欄位。
 
-## 6.10 職稱欄位（2026-11-14.2；2026-11-14.4 改為 tags）
-- 欄位 `job_title`（職稱）：基本資料區塊、順序在「行業與工作」（`occupation`，原稱「職業」）之後、「公司／單位」之前；`tags`（多項，最多 10 項、每項 ≤ 50 字）、預設公開、寫入範圍 `profile.basic.write`。值是文字陣列，與行業與工作、公司／單位、興趣與專長同一種自動標籤格式。
-- 定義的 `suggest` 為 `job_title`，輸入時呼叫 `GET /v1/vocab/suggestions?pool=job_title&q=…` 顯示關聯詞（可點選、不強迫）。
-- 讀取：`GET /v1/me/profile` 的 `fields.job_title.value`（陣列）；編輯：`PUT /v1/me/profile/fields/job_title`（`{"value":["經理"]}`，`null` 清除）。其他會員的職稱走 `POST /v1/apps/{app_id}/members/lookup`（業主在後台勾選 `job_title`）。
-- 輸入過的職稱自動進入關聯詞庫，業主在後台「詞庫」編輯、合併、刪除，會連帶更新所有會員已存的值。欄位定義版本 `2026-11-14.3`。
-- 「職業」標籤改為「行業與工作」，欄位代碼不變。
+## 6.10 頭銜與行業類別欄位（2026-11-15.1）
+- **頭銜**（`job_title`，2026-11-15 起標籤由「職稱」改稱「頭銜」，代碼不變）：`tags`（多項，最多 10 項、每項 ≤ 50 字）、預設公開、`profile.basic.write`；順序在「行業類別」之後、「公司／單位」之前。定義的 `suggest` 為 `job_title`，輸入時呼叫 `GET /v1/vocab/suggestions?pool=job_title&q=…` 顯示關聯詞。值是文字陣列：`PUT /v1/me/profile/fields/job_title`（`{"value":["經理"]}`）。輸入過的頭銜自動進詞庫，業主在後台「關聯詞」編輯、合併、刪除。
+- **行業類別**（`occupation`，原稱「職業」「行業與工作」，代碼不變）：改為**單選下拉選單**（`type: "select"`），沒有關聯詞輸入。選項在欄位定義的 `options`（`value` 與 `label` 相同，順序即顯示順序），內建台灣常見行業別，業主在後台「關聯詞」頁維護（新增、改名、合併、刪除，App 不用改）。選項多，下拉要可搜尋。值是單一文字：`PUT /v1/me/profile/fields/occupation`（`{"value":"製造業"}`、`null` 清除），必須在目前清單內，否則 `422 not_an_option`；已存的值就算之後從清單刪除，仍會顯示、可原樣保存。舊版的標籤陣列請改成單選並容忍舊陣列值。
+- 其他會員的這兩個欄位走 `POST /v1/apps/{app_id}/members/lookup`（業主在後台勾選 `job_title`、`occupation`）。欄位定義版本 `2026-11-15.1`。
 
 ## 6.10.1 欄位異動（2026-11-14.6）
 - 刪除「使用語言」（`languages`）；中央已刪除會員存的舊值。畫面照欄位定義產生，自然消失。

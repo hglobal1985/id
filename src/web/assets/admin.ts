@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["members.read", "會員", members],
-    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "基本資料設定", layoutTab], ["social.manage", "社群平台", socialAdmin], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
+    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "欄位順序", layoutTab], ["social.manage", "社群平台", socialAdmin], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -105,9 +105,9 @@ export const ADMIN_JS = String.raw`
     var out = el("div"), info = el("p", { class: "help" }), filt = el("div", { class: "filters" });
     var qi = el("input", { type: "text", placeholder: "會員編號、姓名或會員識別碼", maxlength: 100 });
     function pick(label, key, opts) {
-      var sel = el("select", { "aria-label": label }, [el("option", { value: "", text: label + "：全部" })].concat(opts.map(function (o) { return el("option", { value: o.value, text: o.label }); })));
-      sel.addEventListener("change", function () { f[key] = sel.value; });
-      return sel;
+      // The shared dropdown (never a native select): choosing a value only sets the filter; 查詢 runs it.
+      var dd = HG.dropdown({ options: [{ value: "", label: label + "：全部" }].concat(opts), value: "", block: true, searchable: opts.length > 8, onchange: function (v) { f[key] = v; } });
+      return dd.el;
     }
     function run() {
       f.q = qi.value.trim();
@@ -156,14 +156,15 @@ export const ADMIN_JS = String.raw`
       function view(f) { var st = d.amway[f.key]; return f.label + "：" + show(st ? st.value : null, f.key) + (st && st.pending_value ? "（待審：" + show(st.pending_value, f.key) + "）" : ""); }
       var rows = defs.filter(function (f) { return adjustable.indexOf(f.key) >= 0; }).map(function (f) {
         if (!d.can_manage) return el("div", { class: "row" }, [el("div", { text: view(f) })]);
-        var st = d.amway[f.key], box = m(), cur = st ? st.value : null, ctl;
+        var st = d.amway[f.key], box = m(), cur = st ? st.value : null, ctl, dd = null;
         if (f.type === "select") {
-          ctl = el("select", {}, [el("option", { value: "", text: "（無）" })].concat((f.options || []).map(function (o) { return el("option", { value: o.value, text: o.label }); })));
-          ctl.value = cur || "";
+          dd = HG.dropdown({ options: [{ value: "", label: "（無）" }].concat(f.options || []), value: cur || "" });
+          ctl = dd.el;
         } else { ctl = el("input", { type: "text", maxlength: f.max_length || 50 }); ctl.value = cur || ""; }
+        function current() { return String(dd ? dd.get() : ctl.value).trim(); }
         return el("div", { class: "row" }, [el("label", { text: view(f) }),
           el("div", { class: "inline" }, [ctl, el("button", { text: "修改", onclick: function () {
-            api("PUT", "/v1/admin/members/" + id + "/amway/" + f.key, { value: ctl.value.trim() === "" ? null : ctl.value.trim() }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已修改並通知會員" : errText(res)); });
+            api("PUT", "/v1/admin/members/" + id + "/amway/" + f.key, { value: current() === "" ? null : current() }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已修改並通知會員" : errText(res)); });
           } }), box])]);
       });
       var box2 = m(), kids = [
@@ -240,12 +241,12 @@ export const ADMIN_JS = String.raw`
     });
   }
 
-  // 基本資料設定: the order of the fields on every member's page (per group), set once for everyone.
+  // 欄位順序: the order of the fields on every member's page (per group), set once for everyone.
   function layoutTab() {
     api("GET", "/v1/admin/profile-layout").then(function (r) {
-      if (r.status !== 200) { pane.appendChild(card("基本資料設定", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      if (r.status !== 200) { pane.appendChild(card("欄位順序", [el("p", { class: "msg bad", text: errText(r) })])); return; }
       var groups = r.body.groups, box = m();
-      pane.appendChild(el("h1", { text: "基本資料設定" }));
+      pane.appendChild(el("h1", { text: "欄位順序" }));
       pane.appendChild(el("p", { class: "help", text: "設定「基本資料」「聯絡與地區」「Amway 專區」每個欄位由上到下的順序，全體會員的資料頁、公開頁和 App 都會照這個順序顯示。按 ▲ ▼ 調整，最後按「儲存順序」。學歷、生日、會員編號的位置固定。" }));
       groups.forEach(function (g) {
         var list = el("div");

@@ -165,7 +165,8 @@ describe("public profile /<member number>", () => {
     const n = db.raw.prepare("SELECT number FROM member_numbers WHERE member_id = ?").get(a.id)?.number as string;
     await req(a, "PUT", "/v1/me/profile/fields/university", { value: "政治大學" });
     await req(a, "PUT", "/v1/me/profile/fields/university_dept", { value: "資訊管理學系" });
-    await req(a, "PUT", "/v1/me/profile/fields/occupation", { value: ["工程師", "老師"] });
+    await req(a, "PUT", "/v1/me/profile/fields/job_title", { value: ["工程師", "老師"] });
+    expect((await req(a, "PUT", "/v1/me/profile/fields/occupation", { value: "製造業" })).status).toBe(200);
     await req(a, "PUT", "/v1/me/profile/fields/birthday", { value: "1990-07-23" });
     await req(a, "PUT", "/v1/me/profile/fields/motto", { value: "慢慢來" });
     let html = await (await req(null, "GET", `/${n}`)).text();
@@ -183,7 +184,7 @@ describe("public profile /<member number>", () => {
     await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
     await req(a, "PUT", "/v1/me/amway/fields/upline_diamond", { value: "陳大華" });
     await req(a, "PUT", "/v1/me/amway/fields/upline_crown_ambassador", { value: "秘密皇冠" });
-    await req(a, "PUT", "/v1/me/profile/visibility", { fields: { university: "public", university_dept: "public", occupation: "public" } });
+    await req(a, "PUT", "/v1/me/profile/visibility", { fields: { university: "public", university_dept: "public", occupation: "public", job_title: "public" } });
     const mine = await (await req(a, "GET", `/my/${n}`)).text();
     expect(mine).toContain('id="share"');
     expect(mine).toContain(`/my/${n}/edit`);
@@ -191,7 +192,8 @@ describe("public profile /<member number>", () => {
     html = await (await req(a, "GET", `/${n}`)).text();
     expect(html).toContain("大學");
     expect(html).toContain("政治大學　資訊管理學系");
-    expect(html).toContain('<span class="chip">工程師</span>');
+    expect(html).toContain('<span class="chip">工程師</span>'); // 頭銜 (tags)
+    expect(html).toContain("製造業"); // 行業類別 (drop-down choice)
     expect(html).toContain("上手鑽石");
     expect(html).toContain("陳大華");
     expect(html).toContain("星座：獅子座");

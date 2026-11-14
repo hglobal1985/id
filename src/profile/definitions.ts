@@ -6,7 +6,7 @@
 import { countryRows } from "./countries";
 import { isForcedPublic } from "./visibility";
 
-export const DEFINITIONS_VERSION = "2026-11-14.4";
+export const DEFINITIONS_VERSION = "2026-11-15.1";
 
 export type FieldType = "text" | "textarea" | "url" | "email" | "phone" | "date" | "select" | "tags";
 export type Visibility = "public" | "private";
@@ -32,6 +32,8 @@ export interface FieldDefinition {
   options?: FieldOption[];
   /** Vocabulary the field draws related words from (GET /v1/vocab/suggestions); free typing is always allowed. */
   suggest?: string;
+  /** A `select` whose options are the terms of this vocabulary pool (kept in the back office, filled in when served). The pool is a closed list: members choose, they do not add terms. */
+  options_pool?: string;
   /** Type-to-search box over a fixed list (`options`): the member types, the list narrows. Never a native <select>. */
   ui?: "autocomplete";
   /** Fields sharing a row on the page (for example 大學: school + department). */
@@ -137,9 +139,10 @@ const RAW: FieldDefinition[] = [
   basic({ key: "legal_name", group: "basic", order: 20, label: "本名", help: "（窗口對賬用途）", type: "text", max_length: 50, visibility: "private" }),
   basic({ key: "motto", group: "basic", order: 30, label: "座右銘", type: "text", max_length: 100 }),
   basic({ key: "bio", group: "basic", order: 40, label: "自我介紹", type: "textarea", max_length: 1000 }),
-  basic({ key: "occupation", group: "basic", order: 50, label: "行業與工作", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "occupation" }),
+  // 行業類別 (formerly 職業): one choice from the list kept in the back office 關聯詞 page (pool `occupation`). The options are filled in when the definitions are served.
+  basic({ key: "occupation", group: "basic", order: 50, label: "行業類別", type: "select", options_pool: "occupation" }),
   // 職稱 (2026-11-14, tags since 2026-11-14.3): like 行業與工作 and 公司／單位, several items with related words from the 職稱 vocabulary; sits right below 行業與工作.
-  basic({ key: "job_title", group: "basic", order: 55, label: "職稱", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "job_title" }),
+  basic({ key: "job_title", group: "basic", order: 55, label: "頭銜", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "job_title" }),
   basic({ key: "organization", group: "basic", order: 60, label: "公司／單位", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 80, suggest: "organization" }),
   basic({ key: "interests", group: "basic", order: 90, label: "興趣與專長", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 30, item_max_length: 30, suggest: "interests" }),
   basic({ key: "university", group: "education", order: 10, label: "大學校名", type: "text", max_length: 100, suggest: "school", row: { key: "university", label: "大學" } }),
@@ -290,6 +293,8 @@ export function validateFieldValue(def: FieldDefinition, raw: unknown, today: Da
         const code = resolveCountry(v);
         return code ? { ok: true, value: code } : fail("not_an_option", "找不到這個國家／地區，請從建議中選擇");
       }
+      // A pool-backed select is checked against the live list by the API (the list lives in the database).
+      if (def.options_pool) return { ok: true, value: v };
       if (!(def.options ?? []).some((o) => o.value === v)) return fail("not_an_option", "請從選項中選擇");
       return { ok: true, value: v };
     }

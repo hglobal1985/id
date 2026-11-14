@@ -176,7 +176,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .dateparts{display:flex;gap:8px}.dateparts .dd{flex:1 1 0;min-width:0}.dateparts .dd-btn{padding:6px 10px}
 .permline{display:flex;flex-wrap:wrap;gap:2px 16px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}.permname{flex:1 1 100%;font-weight:700;font-size:.95rem}.chkwrap{display:inline-flex;align-items:center;gap:6px}.chk[disabled]{opacity:.75;cursor:default}
 .filters{display:grid;gap:8px;margin:8px 0}
-.filters select{width:100%;min-height:44px}
+.filters .dd{width:100%}
 .member-row .linklike{border:0;background:transparent;padding:0;min-height:0;color:var(--green);font-weight:700;text-align:left;text-decoration:underline}
 /* life number chart (same drawing data as the starry.phd member center) */
 .ln-card{max-width:440px;margin-inline:auto;background:var(--chart-bg);color:var(--chart-fg);border:1px solid var(--line);border-radius:18px;padding:12px 14px}

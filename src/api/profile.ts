@@ -9,7 +9,7 @@ import { ErrorBodySchema, errorBody } from "../errors";
 import { getMember } from "../db/identity";
 import { AVATAR_MAX_BYTES, readProfile, removeAvatar, saveAvatarUpload, sniffImage, useGoogleAvatar, writeField, writeVisibility } from "../db/profile";
 import { allTerms, canonicalTerms, recordTerms, suggestTerms } from "../db/vocab";
-import { POOLS, isPool, poolOfField } from "../vocab/terms";
+import { POOLS, isPool, normTerm, poolOfField } from "../vocab/terms";
 import { randomMotto } from "../profile/mottos";
 import { AMWAY_KEYS } from "../amway/fields";
 import { loadLayout } from "../db/layout";
@@ -258,12 +258,16 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     const denied = missingScope(c, ["profile.read"]);
     if (denied) return denied as never;
     const layout = await loadLayout(c.env.DB);
-    c.header("cache-control", "private, max-age=300");
+    // A pool-backed drop-down (行業類別) gets the live list from the back office 關聯詞 page.
+    const defs = await Promise.all(
+      fieldDefinitions().map(async (f) => (f.options_pool && isPool(f.options_pool) ? { ...f, options: (await allTerms(c.env.DB, f.options_pool, 500)).map((t) => ({ value: t, label: t })) } : f)),
+    );
+    c.header("cache-control", "private, max-age=60");
     return c.json(
       {
         version: DEFINITIONS_VERSION,
         groups: GROUPS,
-        fields: [{ ...MEMBER_NUMBER_DEFINITION, order: layout.get("member_number") ?? MEMBER_NUMBER_DEFINITION.order, options: memberNumberCountryOptions() }, ...applyOrder(fieldDefinitions(), layout)] as z.infer<typeof FieldDefinitionSchema>[],
+        fields: [{ ...MEMBER_NUMBER_DEFINITION, order: layout.get("member_number") ?? MEMBER_NUMBER_DEFINITION.order, options: memberNumberCountryOptions() }, ...applyOrder(defs, layout)] as z.infer<typeof FieldDefinitionSchema>[],
         blocks: BLOCKS.map((b) => ({ ...b, order: layout.get(BLOCK_PREFIX + b.key) ?? b.order })),
         info: INFO_BLOCKS.map((b) => ({ ...b })),
         avatar: AVATAR_DEFINITION as unknown as Record<string, unknown>,
@@ -341,7 +345,17 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     // Fields with a vocabulary: an existing spelling wins ("taipei university" is saved as "Taipei University"),
     // and what was typed is remembered as a related word for everyone.
     const pool = poolOfField(field_key);
-    if (pool && v.value !== null) {
+    if (def.options_pool && isPool(def.options_pool) && typeof v.value === "string") {
+      // A closed list: the choice must be on the current list (or be what the member already has, so a term the owner
+      // removed later does not block saving the rest of the page). Typed text never joins the list.
+      const terms = await allTerms(c.env.DB, def.options_pool, 1000);
+      const hit = terms.find((t) => normTerm(t) === normTerm(v.value as string));
+      if (hit) v.value = hit;
+      else {
+        const current = (await readProfile(c.env.DB, memberId)).values.get(field_key)?.value;
+        if (current !== v.value) return invalid(c, field_key, "not_an_option", "請從清單中選擇");
+      }
+    } else if (pool && v.value !== null) {
       const list = Array.isArray(v.value) ? v.value : [v.value];
       const canon = await canonicalTerms(c.env.DB, pool, list);
       v.value = Array.isArray(v.value) ? [...new Set(canon)] : (canon[0] ?? v.value);
