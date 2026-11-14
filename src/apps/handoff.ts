@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-15.1";
-export const HANDOFF_UPDATED = "2026-11-15 01:30（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-15.2";
+export const HANDOFF_UPDATED = "2026-11-15 13:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -131,6 +131,18 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 網頁版做法：用 touchstart／touchmove／touchend 自己實作，並在 CSS 設定 overscroll-behavior-y: contain，避免和瀏覽器內建的下拉重新整理重複觸發；不用外部套件。電腦（滑鼠）不需要。",
     "   - 原生 App（Expo／React Native）做法：用 ScrollView／FlatList 的 RefreshControl（onRefresh、refreshing），tintColor 用主色；內容不夠長的畫面也要放在可捲動的容器裡，才能下拉。",
     "   - 驗收：每個畫面都在手機上實際拉一次，確認資料真的重新讀取了（例如在中央會員網站改了暱稱，下拉後 App 顯示新暱稱）。",
+    "13. 獎銜徽章顯示標準（平台標準，業主 2026-11-15；所有 App 一體適用，先從寰宇行動大學驗收）：每個獎銜可以有一張徽章圖，圖庫放在中央，所有 App 讀同一套。",
+    `   - 資料來源：GET ${origin}/v1/amway/field-definitions 裡 rank 欄位的每個選項都有 badge_url（徽章圖的公開絕對網址，沒有徽章的獎銜是 null）與 badge（{width, height, art_top, art_bottom}：畫布 380×720，以及圖案在畫布裡的上緣與下緣像素，沒有徽章是 null）。目前 33 個獎銜選項中 24 個有徽章；none、r03、r06、r09、r12、r12a、r15、r18、r21 是 null。會員目前的獎銜代碼用 GET ${origin}/v1/me/amway 的 fields.rank（已審核的值），拿代碼去對照選項就得到 badge_url。`,
+    "   - 圖片網址格式：https://<中央網址>/badges/<獎銜代碼>.png?v=<版本>（例如 /badges/f_double_diamond.png?v=1）。公開、image/png、長期快取（一年、immutable）；圖片更新時版本號會變、網址跟著換，所以一律直接用 API 給的完整網址，不要自己拼網址、不要寫死、不要保存圖片副本。img 載入不需要 CORS（用 canvas 才需要，中央已允許所有來源讀取）。選項清單可快取最長 5 分鐘。",
+    "   - App 只讀 badge_url：不自己存圖庫、不自己新增或修改徽章（新增獎銜時由業主在中央後台「獎銜徽章」上傳）。徽章網址只是「獎銜 → 圖」的對照，不含任何會員資料。",
+    "   - 位置：顯示在「會員抬頭」（首頁與設定頁最上方：大頭照＋姓名＋獎銜標籤那一列），徽章緊貼在獎銜標籤的右邊（與標籤之間只留很小的間距，約 -4～0 像素），不要放到最右邊。",
+    "   - 大小：徽章圖顯示高度 92（約為大頭照高度 48 的 1.9 倍），寬度依畫布比例 380:720（約 49）。所有獎銜用同一個縮放比例：獎銜越高圖案越長，不要各自縮到一樣高。",
+    "   - 版面：徽章不可改變抬頭這一列的上下間距。版面上只佔「大頭照高度 48」的位置，徽章本體垂直置中，上下各溢出約 22 到列外（overflow 要設為可見）。實作上用外層固定高度 48、內層絕對定位置中。",
+    "   - 特效有兩種，同時存在。(a) 呼吸：整個徽章（含閃光球）等比例放大到 1.1 倍再縮回，慢速來回，一個週期約 2.6 秒（放大 1.3 秒＋縮小 1.3 秒，ease-in-out）；只改大小，不可改變透明度（不要做成半透明閃爍）。",
+    "   - (b) 星形閃光球：徽章圖案上有 4 顆小星形光球，錯開時間此起彼落地「亮起→旋轉→淡出」。每顆由中心白色亮點、十字光芒、斜十字光芒（較淡）、金色柔光暈組成（光芒色 #fffdf0，光暈 rgba(255,236,150,.55)＋金色 #ffd54a 發光；這幾個色碼是業主核准的徽章特效例外，不受「只用視覺規範色碼」限制）。位置以「圖案範圍」的比例計算：x 為圖寬的比例、y 為圖案上緣（art_top）到下緣（art_bottom）的比例，所以一定落在圖案上。",
+    "   - 第 1 顆：x 0.28、y 0.12，大小 15，延遲 0 ms，週期 2600 ms；第 2 顆：x 0.74、y 0.42，大小 12，延遲 900 ms，週期 3000 ms；第 3 顆：x 0.36、y 0.74，大小 14，延遲 1700 ms，週期 2800 ms；第 4 顆：x 0.80、y 0.90，大小 10，延遲 2300 ms，週期 3200 ms。每顆一個週期：260 ms 由小（0.2 倍、逆時針 -35 度）變大（1 倍、0 度）並由透明變為完全亮，接著 420 ms 淡出，其餘時間隱形。大小以徽章高度 72 為基準，隨徽章尺寸等比縮放（高度 92 時乘 92/72）。",
+    "   - 無障礙：使用者的系統開啟「減少動態效果」時，兩種特效都關閉，只顯示靜態徽章；徽章要有文字說明（例如「鑽石徽章」，用獎銜名稱加上「徽章」）。",
+    "   - 沒有徽章的獎銜（badge_url 為 null）或圖片載入失敗：整個徽章區塊不顯示（不留空位、不放預設圖），載入失敗要靜默隱藏。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報業主（移除機密需要業主核准，不要自己刪）。",
@@ -172,7 +184,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "22. 頭銜（欄位 job_title，三、5；原稱「職稱」）與行業類別（欄位 occupation）：頭銜是 tags 多項標籤、輸入時顯示 suggest=job_title 的關聯詞；行業類別是單選下拉選單（選項來自定義的 options、可搜尋、不用原生 select），在頭銜之前；其他 App 與本 App 用同一個欄位，不要自己另建職稱欄位或詞庫。（2026-11-14.2 新增）",
     "23. 下拉重新整理（三、12）：每一個畫面都支援在最上方往下拉重新整理；有未儲存修改時先確認；不重載整個 App、不登出；網頁版有 overscroll-behavior-y: contain，原生用 RefreshControl。（2026-11-14.3 新增）",
     "24. 欄位異動（三、5）：已移除「使用語言」；「介面語言」沒選過時顯示繁體中文（default_value），不把預設值寫回中央。（2026-11-14.6 新增）",
-    "25. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "25. 獎銜徽章（三、13）：讀 rank 選項的 badge_url／badge、不存圖庫；緊貼獎銜標籤右邊、顯示高度 92、只佔頭像高度 48（上下各溢出約 22）、呼吸 1.1 倍 2.6 秒不改透明度、4 顆星形閃光球（位置與參數照三、13）、減少動態效果時只顯示靜態徽章、沒有徽章或載入失敗就整塊不顯示。（2026-11-15.2 新增）",
+    "26. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

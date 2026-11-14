@@ -53,6 +53,7 @@ hr.part{border:0;border-top:2px solid var(--line);margin:28px 0 20px}
 .note{display:inline-block;margin-left:8px;padding:1px 10px;border-radius:999px;background:var(--orange-soft);color:var(--orange);font-size:13px;font-weight:600}
 .inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .vocab-row{display:flex;align-items:center;gap:8px}.vocab-tools{display:flex;gap:6px;flex:none}.vocab-name{flex:1 1 0;min-width:0;overflow-wrap:anywhere}.vocab-row .chk{flex:none}
+.adm-badge{height:72px;width:auto;flex:none;border-radius:8px;background:var(--panel)}.adm-badge.none{width:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;border:1px dashed var(--line)}
 .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 0}
 .chips{display:flex;flex-wrap:wrap;gap:6px 8px;margin:6px 0}
 .chip{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;background:var(--green-soft);color:var(--green-d);font-size:.95rem}

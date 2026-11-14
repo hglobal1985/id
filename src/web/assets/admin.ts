@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["members.read", "會員", members],
-    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "欄位順序", layoutTab], ["social.manage", "社群平台", socialAdmin], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
+    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "欄位順序", layoutTab], ["social.manage", "社群平台", socialAdmin], ["badges.manage", "獎銜徽章", function () { badgesAdmin(); }], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -303,6 +303,63 @@ export const ADMIN_JS = String.raw`
   }
 
   // 社群平台: the platforms a member can pick for a social link (name, order, icon). Icons are shrunk in the page first.
+  // 獎銜徽章: the badge picture of each rank, shared by every App (they read badge_url from the API). Uploading a picture
+  // measures where its artwork sits (the transparent top and bottom are ignored) and sends that range along, so the Apps
+  // can place their sparkle effect on the artwork. A new rank added later shows up here and gets its picture uploaded here.
+  function badgesAdmin(keepY) {
+    api("GET", "/v1/admin/rank-badges").then(function (r) {
+      if (r.status !== 200) { pane.appendChild(card("獎銜徽章", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      var ranks = r.body.ranks, box = m(), have = ranks.filter(function (x) { return x.badge_url; }).length;
+      function reload() { var y = window.scrollY; pane.textContent = ""; badgesAdmin(y); }
+      function measure(file, cb) {
+        var img = new Image(), url = URL.createObjectURL(file);
+        img.onload = function () {
+          URL.revokeObjectURL(url);
+          if (img.naturalWidth !== 380 || img.naturalHeight !== 720) { cb(null, "圖片尺寸必須是 380×720（透明背景），這張是 " + img.naturalWidth + "×" + img.naturalHeight); return; }
+          var c = document.createElement("canvas"); c.width = 380; c.height = 720;
+          var g = c.getContext("2d"); g.drawImage(img, 0, 0);
+          var px = g.getImageData(0, 0, 380, 720).data, top = -1, bottom = -1;
+          for (var y = 0; y < 720; y++) {
+            var any = false;
+            for (var x = 0; x < 380; x++) { if (px[(y * 380 + x) * 4 + 3] > 8) { any = true; break; } }
+            if (any) { if (top < 0) top = y; bottom = y + 1; }
+          }
+          if (top < 0) { cb(null, "這張圖片全部是透明的"); return; }
+          cb({ top: top, bottom: bottom });
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); cb(null, "這個檔案無法讀取，請用 PNG"); };
+        img.src = url;
+      }
+      function rowFor(x) {
+        var file = el("input", { type: "file", accept: "image/png", hidden: true, "aria-label": "選擇 " + x.label + " 的徽章圖" });
+        file.addEventListener("change", function () {
+          var f = file.files && file.files[0]; if (!f) return;
+          measure(f, function (art, why) {
+            if (!art) { say(box, false, why); return; }
+            fetch("/v1/admin/rank-badges/" + encodeURIComponent(x.value) + "?art_top=" + art.top + "&art_bottom=" + art.bottom, { method: "PUT", credentials: "same-origin", headers: { "content-type": "image/png" }, body: f })
+              .then(function (res) { return res.json().catch(function () { return null; }).then(function (body) { return { status: res.status, body: body }; }); })
+              .then(function (res) { if (res.status === 200) reload(); else say(box, false, errText(res)); });
+          });
+        });
+        var tools = [
+          el("button", { type: "button", class: "small", text: x.badge_url ? "更換圖片" : "上傳圖片", onclick: function () { file.click(); } }),
+          x.badge_url ? el("button", { type: "button", class: "small danger", text: "移除", onclick: function () {
+            if (!confirm("移除「" + x.label + "」的徽章？各 App 就不再顯示它。")) return;
+            api("DELETE", "/v1/admin/rank-badges/" + encodeURIComponent(x.value)).then(function (res) { if (res.status === 200) reload(); else say(box, false, errText(res)); });
+          } }) : null,
+          file
+        ];
+        var pic = x.badge_url ? el("img", { class: "adm-badge", src: x.badge_url, alt: x.label + " 徽章" }) : el("div", { class: "adm-badge none", text: "無" });
+        return el("div", { class: "row vocab-row" }, [el("div", { class: "vocab-tools" }, tools), el("div", { class: "vocab-name" }, [el("strong", { text: x.label }), el("div", { class: "help", text: x.badge ? "圖案範圍 " + x.badge.art_top + "–" + x.badge.art_bottom + "（畫布 " + x.badge.width + "×" + x.badge.height + "）" : "沒有徽章" })]), pic]);
+      }
+      pane.appendChild(el("h1", { text: "獎銜徽章" }));
+      pane.appendChild(el("p", { class: "help", text: "每個獎銜的徽章圖，所有 App 都讀取這裡的圖（App 不自己存圖）。圖片要求：PNG、380×720、透明背景、不超過 256 KB；上傳時會自動量出圖案的上下範圍。沒有徽章的獎銜，App 不顯示徽章。新增獎銜後，請在這裡替它上傳徽章。" }));
+      if (!r.body.storage) pane.appendChild(el("p", { class: "msg bad", text: "圖庫（R2）尚未啟用，無法上傳。" }));
+      pane.appendChild(card("獎銜（" + have + " 個有徽章，共 " + ranks.length + " 個）", [box].concat(ranks.map(rowFor))));
+      if (keepY) window.scrollTo(0, keepY);
+    });
+  }
+
   function socialAdmin() {
     api("GET", "/v1/admin/social-platforms").then(function (r) {
       if (r.status !== 200) { pane.appendChild(card("社群平台", [el("p", { class: "msg bad", text: errText(r) })])); return; }

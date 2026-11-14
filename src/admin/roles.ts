@@ -21,6 +21,7 @@ export type Permission =
   | "members.read" // look up members (read only)
   | "social.manage" // social platforms: names, order, icons
   | "layout.manage" // order of the profile fields on every member page
+  | "badges.manage" // rank badge pictures (獎銜徽章)
   | "vocab.manage" // suggestion vocabularies (關聯詞): edit, merge, delete
   | "audit.read"
   | "staff.manage" // give positions and permissions
@@ -47,6 +48,7 @@ export const PERMISSION_INFO: Record<Permission, { label: string; scopes: Scope[
   "apps.manage": { label: "登記新 App、編輯 App 登記", scopes: ["all"] },
   "vocab.manage": { label: "管理關聯詞", scopes: ["all"] },
   "layout.manage": { label: "基本資料欄位順序與區塊", scopes: ["all"] },
+  "badges.manage": { label: "管理獎銜徽章", scopes: ["all"] },
   "social.manage": { label: "管理社群平台", scopes: ["all"] },
   "staff.manage": { label: "指派職務與權限", scopes: ["all"] },
 };
@@ -133,6 +135,7 @@ export const FEATURES: FeatureRow[] = [
   { label: "登記新 App、編輯 App 登記", roles: rolesWithAny("apps.manage") },
   { label: "管理關聯詞", roles: rolesWithAny("vocab.manage") },
   { label: "基本資料欄位順序與區塊", roles: rolesWithAny("layout.manage") },
+  { label: "管理獎銜徽章", roles: rolesWithAny("badges.manage") },
   { label: "管理社群平台", roles: rolesWithAny("social.manage") },
   { label: "指派職務與權限（管理人員）", roles: rolesWithAny("staff.manage") },
 ];
