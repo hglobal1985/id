@@ -23,6 +23,8 @@ import { FEATURES, PERMISSION_INFO, PERMISSIONS, ROLE_GRANTS, ROLES, ROLE_LABELS
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { addTerm, deleteTerm, listTerms, mergeTerms, moveTerm, renameTerm, setHglobalTerm } from "../db/vocab";
+import { BADGE_MAX_BYTES, badgeInfo, checkArtRange, checkBadgePng, isRankCode, listBadges, rankExists, removeBadge, saveBadge } from "../db/rank-badges";
+import { resolveIssuer } from "../oidc/config";
 import { CLOSED_POOLS, ORDERED_POOLS, POOLS, POOL_KEYS, isPool } from "../vocab/terms";
 import { loadOverview } from "../db/overview";
 import { loadLayout, saveLayout } from "../db/layout";
@@ -209,6 +211,26 @@ const vocabRenameRoute = createRoute({
   security,
   request: { params: PoolParam, body: { required: true, content: json(z.object({ from: z.string().min(1).max(100), to: z.string().min(1).max(100) })) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
+});
+const BadgeParam = z.object({ value: z.string().max(40) });
+const badgesListRoute = createRoute({ method: "get", path: "/v1/admin/rank-badges", tags: ["admin"], summary: "Every 獎銜 option with its badge picture (super admin)", security, responses: { 200: { description: "Ranks", content: json(Any) }, ...common } });
+const badgePutRoute = createRoute({
+  method: "put",
+  path: "/v1/admin/rank-badges/{value}",
+  tags: ["admin"],
+  summary: "Upload or replace the badge of a rank: the raw PNG bytes (380x720, transparent background, at most 256 KB) with the artwork range `art_top` and `art_bottom` (pixels of the 720-high canvas) as query parameters. The public address changes (version), so caches never serve the old picture.",
+  security,
+  request: { params: BadgeParam, query: z.object({ art_top: z.coerce.number().int(), art_bottom: z.coerce.number().int() }) },
+  responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("not_found"), 413: err("too_large"), 422: err("invalid_field"), 503: err("storage unavailable") },
+});
+const badgeDeleteRoute = createRoute({
+  method: "delete",
+  path: "/v1/admin/rank-badges/{value}",
+  tags: ["admin"],
+  summary: "Remove the badge of a rank (the API returns null for it afterwards)",
+  security,
+  request: { params: BadgeParam },
+  responses: { 200: { description: "Removed", content: json(Any) }, ...common, 404: err("not_found") },
 });
 const vocabMoveRoute = createRoute({
   method: "post",
@@ -627,6 +649,45 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const r = await renameTerm(c.env.DB, pool, from, to, actor(c));
     if (!r.ok) return (r.reason === "invalid" ? invalidTerm(c) : c.json(errorBody("not_found", "找不到這個詞", c.get("requestId")), 404)) as never;
     return c.json({ members_updated: r.members }, 200);
+  });
+
+  // ---------- rank badges (ADR 0027) ----------
+  app.openapi(badgesListRoute, async (c) => {
+    const d = deny(c, "badges.manage");
+    if (d) return d as never;
+    const [ranks, badges] = await Promise.all([
+      c.env.DB.prepare("SELECT value, label FROM amway_options WHERE field_key = 'rank' AND active = 1 ORDER BY sort_order, value").all<{ value: string; label: string }>(),
+      listBadges(c.env.DB),
+    ]);
+    const issuer = resolveIssuer(c.env, c.req.url);
+    return c.json({ ranks: (ranks.results ?? []).map((r) => ({ value: r.value, label: r.label, ...(badges.get(r.value) ? badgeInfo(issuer, badges.get(r.value)!) : { badge_url: null, badge: null }) })), storage: !!c.env.FILES }, 200);
+  });
+
+  app.openapi(badgePutRoute, async (c) => {
+    const d = deny(c, "badges.manage");
+    if (d) return d as never;
+    const { value } = c.req.valid("param");
+    if (!isRankCode(value) || !(await rankExists(c.env.DB, value))) return c.json(errorBody("not_found", "沒有這個獎銜", c.get("requestId")), 404) as never;
+    if (!c.env.FILES) return c.json(errorBody("server_error", "圖庫尚未啟用", c.get("requestId")), 503) as never;
+    const q = c.req.valid("query");
+    const art = checkArtRange(q.art_top, q.art_bottom);
+    if (!art.ok) return c.json(errorBody("invalid_field", "圖案上下緣不正確（需 0 ≤ 上緣 < 下緣 ≤ 720）", c.get("requestId"), { field_key: "art_top", reason: "range" }), 422) as never;
+    const declared = Number(c.req.header("content-length") ?? "0");
+    if (declared > BADGE_MAX_BYTES) return c.json(errorBody("too_large", "圖片太大（上限 256 KB）", c.get("requestId")), 413) as never;
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const png = checkBadgePng(bytes);
+    if (!png.ok) return c.json(errorBody(bytes.length > BADGE_MAX_BYTES ? "too_large" : "invalid_field", png.message, c.get("requestId"), { field_key: "badge", reason: "not_a_badge" }), bytes.length > BADGE_MAX_BYTES ? 413 : 422) as never;
+    if (!(await saveBadge(c.env.DB, c.env.FILES, value, bytes, art.top, art.bottom, actor(c)))) return c.json(errorBody("server_error", "圖庫暫時無法寫入，請稍後再試", c.get("requestId")), 503) as never;
+    const row = (await listBadges(c.env.DB)).get(value)!;
+    return c.json({ saved: true, ...badgeInfo(resolveIssuer(c.env, c.req.url), row) }, 200);
+  });
+
+  app.openapi(badgeDeleteRoute, async (c) => {
+    const d = deny(c, "badges.manage");
+    if (d) return d as never;
+    const { value } = c.req.valid("param");
+    if (!isRankCode(value) || !(await removeBadge(c.env.DB, c.env.FILES, value, actor(c)))) return c.json(errorBody("not_found", "這個獎銜沒有徽章", c.get("requestId")), 404) as never;
+    return c.json({ removed: true }, 200);
   });
 
   app.openapi(vocabMoveRoute, async (c) => {

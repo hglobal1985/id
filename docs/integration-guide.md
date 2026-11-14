@@ -108,6 +108,13 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **做法**：網頁版自己用 touch 事件實作＋CSS `overscroll-behavior-y: contain`；原生用 `RefreshControl`。
 - 檢查清單第 23 項。
 
+## 6.12 獎銜徽章（2026-11-15.2，所有 App 一體適用）
+圖庫放在中央，所有 App 讀同一套（ADR 0027）。
+- **資料**：`GET /v1/amway/field-definitions` 的 `rank` 選項每個都有 `badge_url`（公開絕對網址，沒有徽章是 `null`）與 `badge`（`{width, height, art_top, art_bottom}`，畫布 380×720 與圖案上下緣，沒有徽章是 `null`）。33 個獎銜中 24 個有徽章，`none`、`r03`、`r06`、`r09`、`r12`、`r12a`、`r15`、`r18`、`r21` 是 `null`。
+- **圖片網址**：`https://id.hglobal1985.com/badges/<獎銜代碼>.png?v=<版本>`（例如 `/badges/f_double_diamond.png?v=1`）；公開、`image/png`、一年 immutable 快取、`access-control-allow-origin: *`。更新時版本號變、網址變：**一律用 API 給的完整網址**，不要自己拼、不要寫死、不要存副本。
+- **顯示標準**（完整內容在串接指令三、13，檢查清單 25）：會員抬頭裡緊貼獎銜標籤右邊；顯示高度 92、版面只佔頭像高度 48（上下各溢出約 22）；呼吸 1.1 倍／2.6 秒（只改大小）；4 顆星形閃光球（位置依圖案範圍比例，高度 72 為基準等比縮放）；「減少動態效果」時只顯示靜態徽章；無徽章或載入失敗整塊不顯示。
+- App 不自己存圖庫、不自己新增徽章；新增獎銜時由業主在中央後台「獎銜徽章」上傳。
+
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 

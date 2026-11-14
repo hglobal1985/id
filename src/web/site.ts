@@ -36,6 +36,7 @@ import { BLOCKS, BLOCK_PREFIX } from "../profile/layout";
 import { fieldDefinitions } from "../profile/definitions";
 import { blobBytes } from "../lib/blob";
 import { avatarKey, loadFile } from "../lib/files";
+import { badgeKey } from "../db/rank-badges";
 import { ADMIN_JS } from "./assets/admin";
 
 type C = Context<AppBindings>;
@@ -137,6 +138,21 @@ export function registerSiteRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   });
 
   app.get("/logout", (c) => c.redirect("/oauth/logout", 302));
+
+  // Rank badge pictures (ADR 0027): public, the same for every member and App. The address carries ?v=<version>, so the picture
+  // can be cached for a year; a replaced picture gets a new version and with it a new address. Served as an image only.
+  app.get("/badges/:file{[a-z0-9_]{1,40}\\.png}", async (c) => {
+    const rank = c.req.param("file").slice(0, -4);
+    const o = await c.env.FILES?.get(badgeKey(rank));
+    if (!o) return c.body("Not found", 404);
+    c.header("content-type", "image/png");
+    c.header("cache-control", "public, max-age=31536000, immutable");
+    c.header("access-control-allow-origin", "*");
+    c.header("cross-origin-resource-policy", "cross-origin");
+    c.header("x-content-type-options", "nosniff");
+    c.header("content-security-policy", "default-src 'none'; sandbox");
+    return c.body(await o.arrayBuffer(), 200);
+  });
 
   // Uploaded avatars (always public). Served as an image only, never as a page.
   app.get("/avatar/:id{[0-9a-f-]{36}}", async (c) => {

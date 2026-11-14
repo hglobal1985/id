@@ -12,6 +12,8 @@ import { amwayDefault, isForcedPublic, visibilityOf } from "../profile/visibilit
 import { readProfile } from "../db/profile";
 import { isPool } from "../vocab/terms";
 import { loadLayout } from "../db/layout";
+import { badgeInfo, listBadges } from "../db/rank-badges";
+import { resolveIssuer } from "../oidc/config";
 import { AMWAY_FIELDS, getAmwayField, isNone, validateAmwayValue, type AmwayValue } from "../amway/fields";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
@@ -31,7 +33,7 @@ const definitionsRoute = createRoute({
   method: "get",
   path: "/v1/amway/field-definitions",
   tags: ["amway"],
-  summary: "Amway field definitions and option lists in the order the super admin set (cache up to 5 minutes). Rank options are in ladder order.",
+  summary: "Amway field definitions and option lists in the order the super admin set (cache up to 5 minutes). Rank options are in ladder order and each carries `badge_url` (the public absolute address of its badge picture, or null when the rank has none) and `badge` ({width, height, art_top, art_bottom}: the 380x720 canvas and where the artwork sits in it, or null). Apps only read these; they keep no badge gallery of their own.",
   security,
   responses: { 200: { description: "Definitions", content: json(z.record(z.unknown()).openapi("AmwayFieldDefinitions")) }, ...common },
 });
@@ -113,8 +115,16 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.openapi(definitionsRoute, async (c) => {
     const denied = missingScope(c, ["amway.read"]);
     if (denied) return denied as never;
-    const options = await listOptions(c.env.DB);
-    const layout = await loadLayout(c.env.DB);
+    const [options, layout, badges] = await Promise.all([listOptions(c.env.DB), loadLayout(c.env.DB), listBadges(c.env.DB)]);
+    const issuer = resolveIssuer(c.env, c.req.url);
+    // Rank options also carry their badge (null when the rank has none); the other lists are unchanged.
+    const optionsOf = (key: string) =>
+      key === "rank"
+        ? (options.get(key) ?? []).map((o) => {
+            const b = badges.get(o.value);
+            return { ...o, ...(b ? badgeInfo(issuer, b) : { badge_url: null, badge: null }) };
+          })
+        : (options.get(key) ?? []);
     c.header("cache-control", "private, max-age=300");
     return c.json(
       {
@@ -126,7 +136,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           ...(f.help ? { help: f.help } : {}),
           type: f.type,
           ...(f.max_length ? { max_length: f.max_length } : {}),
-          ...(f.type !== "text" ? { options: options.get(f.key) ?? [] } : {}),
+          ...(f.type !== "text" ? { options: optionsOf(f.key) } : {}),
           ...(f.suggest ? { suggest: f.suggest } : {}),
           ...(f.suggest_when_hglobal ? { suggest_when_hglobal: true } : {}),
           visible_when: f.visible_when,
