@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-14.1";
-export const HANDOFF_UPDATED = "2026-11-14 12:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-14.2";
+export const HANDOFF_UPDATED = "2026-11-14 18:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -74,8 +74,9 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `4. App 後端驗證會員：用 GET ${origin}/oauth/jwks 的公鑰驗證 Access Token（RS256，標頭 typ 為 at+jwt）：iss 必須是 ${origin}、aud 必須是 ${origin}、app_id 必須是 "${id}"、檢查 exp。快取 JWKS，遇到不認得的 kid 就重新抓取。需要即時確認停用或登出時，改用這個 Token 呼叫中央會員的任一 API（例如 GET ${origin}/v1/me/profile），401 就當作未登入。`,
     `5. 會員資料（App 內原地修改）：GET ${origin}/v1/profile/field-definitions 取得欄位定義，GET ${origin}/v1/me/profile 取得會員目前的值；每個欄位用 PUT ${origin}/v1/me/profile/fields/<field_key>（body {"value":…}，null 清除）單獨儲存，公開／隱藏用 PUT ${origin}/v1/me/profile/visibility。這款 App 能呼叫哪些功能由業主在後台核准（見三、11 最小權限）。畫面請完全依欄位定義產生，不要寫死欄位、名稱或選項；不認得的欄位類型顯示「請更新 App」。編輯方式（平台標準，業主 2026-11-13）：不要有每個欄位各自的「編輯」按鈕；所有欄位一進頁面就是可編輯狀態（下拉選單直接顯示、文字欄位有編輯外框），改了不會自動儲存，欄位旁只顯示「尚未儲存」，要按浮動的「儲存」鈕才一次存全部（依頁面由上到下的順序逐欄呼叫 PUT；獎銜要等系統與中心存好，所以放在後面；有失敗的欄位要在欄位下方顯示原因並停留在頁面，全部成功才回到自己的頁面）。頁面上方三顆按鈕「分享公開頁｜儲存｜預覽」浮動固定（檢視模式同樣位置，中間那顆文字改成「編輯」，編輯與儲存二選一），頁面內容從按鈕下方穿過；所有「編輯」「儲存」按鈕用同一組黃色系、顏色反向（視覺規範有色碼）：儲存＝#f2dc27 實心填滿＋淡色外框 #e6c48c＋深色字；編輯＝淺色填滿 #fdf0e3＋亮色外框 #f2dc27；不是綠色。離開頁面時如果還有沒存的變更，要提醒。生日：年、月、日三個都選好的當下就重畫生命靈數（用 GET ${origin}/v1/profile/life-chart?birthday=YYYY-MM-DD 取預覽，不會儲存），按「儲存」才真的寫入；日期沒選完整就不能儲存。聯絡信箱欄位一開始預設帶入會員自己的 Google 信箱（GET /v1/me/profile 的 info.google_email），會員按「儲存」就存入。直銷商培訓系統與地區教育中心是下拉選單（選項來自 GET /v1/vocab/suggestions?pool=education_system 或 education_center，q 留空就回完整清單；中心的清單只在所選系統是 GET /v1/me/amway 的 hglobal_systems 其中之一時使用，否則是一般輸入框），最後一個選項是「其他」，選了就出現可自訂文字的輸入框；「無」是和輸入框或下拉選單並排在同一行的勾選框：系統、中心的「無」存成文字「無」；獎銜的「無」存成選項代碼 none，且不放在下拉選單裡。系統與中心都還沒有值（也沒勾「無」）時，獎銜的下拉選單與「無」勾選框要停用並提示先填系統與中心。座右銘輸入框高度是兩行。已經人工審核通過的欄位（地區教育中心、獎銜）被會員改了新的值時，欄位下方要立刻顯示橘色提示「變更已審核欄位，需重新等待人工審核」（改回原值就收起；中心改成「無」不用審核，所以不顯示）。必填欄位（暱稱；勾選 Amway 會員後的系統、中心、獎銜）在標題旁有橘色「必填」標籤（欄位已經有值就隱藏；地區教育中心與獎銜一旦經人工審核通過，同一個位置改顯示同外觀同配色的「審核通過」標籤，會員改了值就隱藏）（字 #cc6c0c、底 #fdf0e3、邊 #e6c48c，全圓角，.84 rem 粗體；色碼與未填時的 2 px 橘框見視覺規範）；按「儲存」時如果有必填欄位沒填，什麼都不存，畫面自動捲到第一個沒填的必填欄位、用橘色框標示所有沒填的，並提示欄位名稱。`,
     "   - 欄位型態：text、textarea、url、email、phone、date 用一般輸入框；tags 是多項輸入（職業、公司／單位、興趣與專長、使用語言），值是文字陣列；select 是固定選項；country（居住國家／地區）是手動輸入並從建議中選擇。每個欄位旁都要有「公開／隱藏」切換（眼睛圖示），聯絡與地區、生日、Amway 欄位預設全部隱藏。",
-    `   - 關聯詞：定義裡有 suggest 的欄位（職業、公司／單位、興趣與專長、大學／碩士／博士的校名與系名、直銷商培訓系統、上手鑽石、上手白金、皇冠大使）是「直接打字＋關聯詞」：會員自由輸入，輸入時呼叫 GET ${origin}/v1/vocab/suggestions?pool=<suggest>&q=<已輸入的字> 顯示建議（只要包含輸入的任一個字就會出現，不分順序），點選後填入；不用強迫會員一定要選。推薦人沒有關聯詞。`,
-    "   - 電腦版的 Enter 鍵：電腦（滑鼠加鍵盤）上輸入法選字要按 Enter，所以所有可自訂輸入的欄位（職業、公司、興趣與專長、大學系名、地區教育中心…）按 Enter 都不要有任何動作（不送出、不確認標籤、不選建議）；用逗號等符號、空格、點選建議、按「儲存」來完成。手機上才保留 Enter 確認標籤。輸入法組字中（isComposing）也不要處理分隔符號。",
+    `   - 關聯詞：定義裡有 suggest 的欄位（職業、公司／單位、職稱、興趣與專長、大學／碩士／博士的校名與系名、直銷商培訓系統、上手鑽石、上手白金、皇冠大使）是「直接打字＋關聯詞」：會員自由輸入，輸入時呼叫 GET ${origin}/v1/vocab/suggestions?pool=<suggest>&q=<已輸入的字> 顯示建議（只要包含輸入的任一個字就會出現，不分順序），點選後填入；不用強迫會員一定要選。推薦人沒有關聯詞。`,
+    "   - 電腦版的 Enter 鍵：電腦（滑鼠加鍵盤）上輸入法選字要按 Enter，所以所有可自訂輸入的欄位（職業、公司、職稱、興趣與專長、大學系名、地區教育中心…）按 Enter 都不要有任何動作（不送出、不確認標籤、不選建議）；用逗號等符號、空格、點選建議、按「儲存」來完成。手機上才保留 Enter 確認標籤。輸入法組字中（isComposing）也不要處理分隔符號。",
+    `   - 職稱（2026-11-14 新增，欄位 job_title，基本資料區塊，順序在「公司／單位」之後；text 型態、最長 50 字、預設公開、寫入範圍 profile.basic.write，與暱稱等基本欄位相同）：會員自由輸入，輸入時用 GET ${origin}/v1/vocab/suggestions?pool=job_title&q=<已輸入的字> 顯示關聯詞（定義裡的 suggest 就是 "job_title"），可點選也可自己打；寫入走 PUT ${origin}/v1/me/profile/fields/job_title，讀取在 GET ${origin}/v1/me/profile 的 fields.job_title.value。會員輸入過的職稱會自動進入關聯詞庫，由業主在後台「詞庫」編輯、合併、刪除（編輯與合併會連帶更新所有會員已存的職稱，App 不用處理）。畫面照欄位定義產生即可，標籤用定義的 label，不要寫死。`,
     `   - 多項欄位（tags）：輸入時遇到 , ; : - # * / \\ ' ， 、 ； ： 。 . 或空白字元或按 Enter，就確認為一個項目（變成可移除的標籤）。`,
     "   - 頭像區：上傳圖片、Google頭像、移除頭像三個按鈕排成一整列，放在頭像正下方（再下面才是社群連結圖示列）。會員編號欄位的「公開網址」最左邊放一個超大的分享按鈕，呼叫手機的原生分享選單（navigator.share，不支援時複製連結）；按鈕圖示依裝置不同：iPhone／iPad 用方框加向上箭頭，Android 用三點相連的分享符號（符合各平台原生圖示）。",
     "   - 生日欄位（date 型態）：不要用日期選擇器或年曆，改成年、月、日三個各自獨立的自訂下拉選單並排一列；月份顯示阿拉伯數字加英文縮寫（1 Jan、2 Feb … 12 Dec）；欄位說明不再寫「格式：YYYY-MM-DD」。",
@@ -157,7 +158,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "19. 報名與付款存當時快照；對帳用付款代碼或金流交易編號，不用姓名（三、11）。",
     "20. 只使用被授權的 scope，沒有自己繞過 403；服務金鑰只在伺服器環境變數（三、11）。",
     "21. 回報標準符合度：handoff?integrated=<版本>&standards=…（只列已做到的）。",
-    "22. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "22. 職稱（欄位 job_title，三、5）：已出現在資料頁（照欄位定義產生）、輸入時顯示 suggest=job_title 的關聯詞、可點選也可自由輸入；其他 App 與本 App 用同一個欄位，不要自己另建職稱欄位或詞庫。（2026-11-14.2 新增）",
+    "23. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

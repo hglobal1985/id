@@ -12,6 +12,7 @@ export interface PoolInfo {
 export const POOLS = {
   occupation: { label: "職業", profileFields: ["occupation"], amwayFields: [] },
   organization: { label: "公司／單位", profileFields: ["organization"], amwayFields: [] },
+  job_title: { label: "職稱", profileFields: ["job_title"], amwayFields: [] },
   interests: { label: "興趣與專長", profileFields: ["interests"], amwayFields: [] },
   school: { label: "學校名稱（大學、碩士、博士共用）", profileFields: ["university", "grad_school", "phd_school"], amwayFields: [] },
   dept: { label: "系所名稱（大學、碩士、博士共用）", profileFields: ["university_dept", "grad_dept", "phd_dept"], amwayFields: [] },
