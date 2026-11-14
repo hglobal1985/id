@@ -38,7 +38,7 @@ export const APP_SCOPES: readonly string[] = SUPPORTED_SCOPES.filter((s) => s !=
 /** What each scope allows, in plain words (the back office shows this first, the code in brackets). */
 export const SCOPE_LABELS: Readonly<Record<string, string>> = {
   "profile.read": "讀取會員基本資料與通知（頭像、暱稱、本名、社群連結、站內通知）",
-  "profile.basic.write": "修改基本資料（暱稱、自我介紹、職業、學歷、社群連結、會員編號）",
+  "profile.basic.write": "修改基本資料（暱稱、自我介紹、行業與工作、職稱、學歷、社群連結、會員編號）",
   "profile.avatar.write": "更換或移除頭像",
   "profile.contact.write": "修改聯絡與地區資料（聯絡信箱、手機、居住地）",
   "profile.birthday.write": "修改生日",

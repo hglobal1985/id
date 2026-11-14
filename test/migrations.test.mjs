@@ -214,5 +214,19 @@ describe("D1 migrations", () => {
     expect(db.prepare("SELECT hglobal FROM vocab_terms WHERE pool = 'education_system' AND norm = '寰宇'").get().hglobal).toBe(1);
     db.close();
   });
+
+  it("0025 turns a saved 職稱 text into a one-item list and leaves lists alone", () => {
+    const db = new DatabaseSync(":memory:");
+    for (const f of files.filter((x) => Number(x.slice(0, 4)) < 25)) db.exec(readFileSync(join(dir, f), "utf8"));
+    const ts = "2026-11-14T10:00:00+08:00";
+    db.exec(`INSERT INTO members (id, google_sub, status, created_at, updated_at) VALUES ('m1','g1','active','${ts}','${ts}'), ('m2','g2','active','${ts}','${ts}')`);
+    const pv = db.prepare("INSERT INTO profile_field_values (member_id, field_key, value, updated_at) VALUES (?, ?, ?, ?)");
+    pv.run("m1", "job_title", JSON.stringify("經理"), ts);
+    pv.run("m2", "job_title", JSON.stringify(["講師", "顧問"]), ts);
+    db.exec(readFileSync(join(dir, files.find((x) => x.startsWith("0025"))), "utf8"));
+    const val = (m) => JSON.parse(db.prepare("SELECT value FROM profile_field_values WHERE member_id = ? AND field_key = 'job_title'").get(m).value);
+    expect(val("m1")).toEqual(["經理"]);
+    expect(val("m2")).toEqual(["講師", "顧問"]);
+  });
 });
 

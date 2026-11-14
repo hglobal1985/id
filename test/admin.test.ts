@@ -417,30 +417,30 @@ describe("options and vocabularies", () => {
     expect((await admin(sa, "POST", "/v1/admin/vocab/occupation/add", { term: "  " })).status).toBe(422);
   });
 
-  it("職稱 (job_title): free text with related words; what members type joins the vocabulary, which the super admin edits, merges and deletes", async () => {
+  it("職稱 (job_title): tags like 行業與工作, with related words; what members type joins the vocabulary, which the super admin edits, merges and deletes", async () => {
     const sa = await person("sa", "超管", ["super_admin"]);
     const a = await person("a", "甲");
     const b = await person("b", "乙");
     const c = await person("c", "丙");
-    const defs = (await (await member(a, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; label: string; type: string; suggest?: string; scope: string }[] };
-    expect(defs.fields.find((f) => f.key === "job_title")).toMatchObject({ label: "職稱", type: "text", suggest: "job_title", scope: "profile.basic.write" });
-    expect((await member(a, "PUT", "/v1/me/profile/fields/job_title", { value: "經理" })).status).toBe(200);
-    expect((await member(b, "PUT", "/v1/me/profile/fields/job_title", { value: "經理" })).status).toBe(200);
-    expect((await member(c, "PUT", "/v1/me/profile/fields/job_title", { value: "經裡" })).status).toBe(200);
-    expect((await member(a, "PUT", "/v1/me/profile/fields/job_title", { value: "x".repeat(51) })).status).toBe(422);
-    // Related words: any typed character matches; picking one is not forced.
+    const defs = (await (await member(a, "GET", "/v1/profile/field-definitions")).json()) as { fields: { key: string; label: string; type: string; suggest?: string; scope: string; order: number; group: string }[] };
+    expect(defs.fields.find((f) => f.key === "job_title")).toMatchObject({ label: "職稱", type: "tags", suggest: "job_title", scope: "profile.basic.write" });
+    expect(defs.fields.find((f) => f.key === "occupation")?.label).toBe("行業與工作");
+    const basic = defs.fields.filter((f) => f.group === "basic").sort((x, y) => x.order - y.order).map((f) => f.key);
+    expect(basic.indexOf("job_title")).toBe(basic.indexOf("occupation") + 1); // right below 行業與工作
+    expect((await member(a, "PUT", "/v1/me/profile/fields/job_title", { value: ["經理", "講師"] })).status).toBe(200);
+    expect((await member(b, "PUT", "/v1/me/profile/fields/job_title", { value: ["經理"] })).status).toBe(200);
+    expect((await member(c, "PUT", "/v1/me/profile/fields/job_title", { value: ["經裡"] })).status).toBe(200);
+    expect((await member(a, "PUT", "/v1/me/profile/fields/job_title", { value: ["x".repeat(51)] })).status).toBe(422);
+    expect((await member(a, "PUT", "/v1/me/profile/fields/job_title", { value: "經理" })).status).toBe(422); // a list, not text
     const sug = (await (await member(a, "GET", "/v1/vocab/suggestions?pool=job_title&q=%E7%B6%93")).json()) as { suggestions: string[] };
     expect(sug.suggestions).toEqual(expect.arrayContaining(["經理", "經裡"]));
-    // The super admin fixes the typo by merging: every member's saved value follows.
+    const val = async (p: P) => ((await (await member(p, "GET", "/v1/me/profile")).json()) as { fields: { job_title: { value: string[] } } }).fields.job_title.value;
     expect((await admin(sa, "POST", "/v1/admin/vocab/job_title/merge", { froms: ["經裡"], into: "經理" })).status).toBe(200);
-    const pc = (await (await member(c, "GET", "/v1/me/profile")).json()) as { fields: { job_title: { value: string } } };
-    expect(pc.fields.job_title.value).toBe("經理");
+    expect(await val(c)).toEqual(["經理"]);
     expect((await admin(sa, "POST", "/v1/admin/vocab/job_title/rename", { from: "經理", to: "部門經理" })).status).toBe(200);
-    expect(((await (await member(b, "GET", "/v1/me/profile")).json()) as { fields: { job_title: { value: string } } }).fields.job_title.value).toBe("部門經理");
+    expect(await val(a)).toEqual(["部門經理", "講師"]);
     expect((await admin(sa, "POST", "/v1/admin/vocab/job_title/delete", { term: "部門經理" })).status).toBe(200);
-    expect(((await (await member(b, "GET", "/v1/me/profile")).json()) as { fields: { job_title: { value: string } } }).fields.job_title.value).toBe("部門經理");
-    // Visible on the member's public data like the other basic fields (public by default).
-    expect(((await (await member(a, "GET", "/v1/me/profile")).json()) as { visibility: Record<string, string> }).visibility?.job_title ?? "public").toBe("public");
+    expect(await val(b)).toEqual(["部門經理"]); // deleting only removes the suggestion
   });
 
   it("which education-system terms mean H-Global1985 is set by the super admin", async () => {
