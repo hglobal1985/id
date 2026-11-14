@@ -487,7 +487,7 @@ export const ME_JS = String.raw`
       el("div", { class: "avbtns" }, [
         el("button", { type: "button", text: "上傳圖片", onclick: function () { file.click(); } }),
         el("button", { type: "button", text: "Google頭像", onclick: act("POST", "/v1/me/profile/avatar/google") }),
-        el("button", { type: "button", class: "danger", text: "移除頭像", disabled: !p.avatar.url, onclick: act("DELETE", "/v1/me/profile/avatar") }), file
+        el("button", { type: "button", text: "移除頭像", disabled: !p.avatar.url, onclick: act("DELETE", "/v1/me/profile/avatar") }), file
       ]),
       el("div", { class: "help" }, ["頭像一律公開。"]), m,
       socialBlock()
