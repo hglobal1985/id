@@ -91,6 +91,12 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - 只能讀在該 App 登入過的會員、只能讀業主在後台勾選的欄位（含會員設為隱藏的）；沒勾回 `403 field_not_allowed`。需要審核的 Amway 欄位只回已審核的；非 Amway 會員的 Amway 欄位為 `null`。
 - 只取需要的欄位；不長期保存、不寫日誌與分析工具、不轉給寰宇生態系以外；中央每次稽核（App、筆數、欄位名稱、用途，不含內容）。對外公開頁仍然只顯示會員設為公開的欄位。
 
+## 6.10 職稱欄位（2026-11-14.2）
+- 欄位 `job_title`（職稱）：基本資料區塊、順序在「公司／單位」之後；`text`、最長 50 字、預設公開、寫入範圍 `profile.basic.write`。
+- 會員自由輸入；定義的 `suggest` 為 `job_title`，輸入時呼叫 `GET /v1/vocab/suggestions?pool=job_title&q=…` 顯示關聯詞（可點選、不強迫）。
+- 讀取：`GET /v1/me/profile` 的 `fields.job_title.value`；編輯：`PUT /v1/me/profile/fields/job_title`（`null` 清除）。其他會員的職稱走 `POST /v1/apps/{app_id}/members/lookup`（業主在後台勾選 `job_title`）。
+- 輸入過的職稱自動進入關聯詞庫，業主在後台「詞庫」編輯、合併、刪除，會連帶更新所有會員已存的值。欄位定義版本 `2026-11-14.2`。
+
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 
