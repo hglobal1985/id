@@ -356,7 +356,7 @@ describe("field rules (unit)", () => {
   });
   it("every definition has a write scope and the documented field keys", () => {
     expect(FIELD_KEYS).toEqual([
-      "display_name", "legal_name", "motto", "bio", "occupation", "organization", "job_title", "languages", "interests",
+      "display_name", "legal_name", "motto", "bio", "occupation", "job_title", "organization", "languages", "interests",
       "university", "university_dept", "grad_school", "grad_dept", "phd_school", "phd_dept", "locale", "contact_email", "phone", "country", "region", "city", "birthday",
     ]);
     for (const f of fieldDefinitions()) expect(f.scope).toMatch(/^profile\.(basic|contact|birthday)\.write$/);

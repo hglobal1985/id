@@ -6,7 +6,7 @@
 import { countryRows } from "./countries";
 import { isForcedPublic } from "./visibility";
 
-export const DEFINITIONS_VERSION = "2026-11-14.2";
+export const DEFINITIONS_VERSION = "2026-11-14.3";
 
 export type FieldType = "text" | "textarea" | "url" | "email" | "phone" | "date" | "select" | "tags";
 export type Visibility = "public" | "private";
@@ -135,10 +135,10 @@ const RAW: FieldDefinition[] = [
   basic({ key: "legal_name", group: "basic", order: 20, label: "本名", help: "（窗口對賬用途）", type: "text", max_length: 50, visibility: "private" }),
   basic({ key: "motto", group: "basic", order: 30, label: "座右銘", type: "text", max_length: 100 }),
   basic({ key: "bio", group: "basic", order: 40, label: "自我介紹", type: "textarea", max_length: 1000 }),
-  basic({ key: "occupation", group: "basic", order: 50, label: "職業", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "occupation" }),
+  basic({ key: "occupation", group: "basic", order: 50, label: "行業與工作", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "occupation" }),
+  // 職稱 (2026-11-14, tags since 2026-11-14.3): like 行業與工作 and 公司／單位, several items with related words from the 職稱 vocabulary; sits right below 行業與工作.
+  basic({ key: "job_title", group: "basic", order: 55, label: "職稱", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 50, suggest: "job_title" }),
   basic({ key: "organization", group: "basic", order: 60, label: "公司／單位", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 10, item_max_length: 80, suggest: "organization" }),
-  // 職稱 (2026-11-14): one free-text title (e.g. 經理), with related words from the 職稱 vocabulary. Public by default like the other basic fields.
-  basic({ key: "job_title", group: "basic", order: 70, label: "職稱", help: "自由輸入，輸入時會顯示關聯詞，可直接點選。", type: "text", max_length: 50, suggest: "job_title" }),
   basic({ key: "languages", group: "basic", order: 80, label: "使用語言", type: "tags", max_items: 20, item_max_length: 30 }),
   basic({ key: "interests", group: "basic", order: 90, label: "興趣與專長", help: "可填多個；輸入後按 Enter 或逗號、頓號、空格等符號確認一項。", type: "tags", max_items: 30, item_max_length: 30, suggest: "interests" }),
   basic({ key: "university", group: "education", order: 10, label: "大學校名", type: "text", max_length: 100, suggest: "school", row: { key: "university", label: "大學" } }),
