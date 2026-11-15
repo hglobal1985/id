@@ -198,7 +198,7 @@ export const ADMIN_JS = String.raw`
     api("GET", "/v1/admin/vocab").then(function (r) {
       if (r.status !== 200) { pane.appendChild(card("關聯詞", [el("p", { class: "msg bad", text: errText(r) })])); return; }
       var pools = r.body.pools, cur = poolKey || pools[0].pool, bar = el("div", { class: "tabs" });
-      pools.forEach(function (p) { bar.appendChild(el("button", { class: p.pool === cur ? "on" : "", text: p.label + "（" + p.terms + "）", onclick: function () { pane.textContent = ""; vocab(p.pool); } })); });
+      pools.forEach(function (p) { bar.appendChild(el("button", { class: p.pool === cur ? "on" : "", text: p.label + "（" + p.terms + (p.pending ? "，待核可 " + p.pending : "") + "）", onclick: function () { pane.textContent = ""; vocab(p.pool); } })); });
       pane.appendChild(el("h1", { text: "關聯詞" }));
       pane.appendChild(el("p", { class: "help", text: "會員在自由輸入欄位打過的詞，會自動收進對應的關聯詞，之後輸入時當作關聯詞顯示。這裡可以分開管理每一組關聯詞：編輯詞（已填寫的會員資料會一起改）、勾選多個合併成一個、刪除（只從建議中移除，不影響會員已填的內容）。" }));
       pane.appendChild(bar);
@@ -232,6 +232,10 @@ export const ADMIN_JS = String.raw`
             tools.push(el("button", { type: "button", class: "small", text: "▲", "aria-label": "上移 " + x.term, disabled: i === 0, onclick: function () { move(i, -1); } }));
             tools.push(el("button", { type: "button", class: "small", text: "▼", "aria-label": "下移 " + x.term, disabled: i === terms.length - 1, onclick: function () { move(i, 1); } }));
           }
+          // A term a service suggested waits here: 核可 offers it to everyone, 刪除 refuses it.
+          if (x.pending) tools.unshift(el("button", { type: "button", class: "primary small", text: "核可", onclick: function () {
+            api("POST", "/v1/admin/vocab/" + cur + "/approve", { term: x.term }).then(done);
+          } }));
           tools.push(el("button", { class: "btn-edit", text: "編輯", onclick: function () {
             var to = prompt("把「" + x.term + "」改成：", x.term); if (to === null || !to.trim() || to.trim() === x.term) return;
             api("POST", "/v1/admin/vocab/" + cur + "/rename", { from: x.term, to: to.trim() }).then(done);
@@ -243,7 +247,7 @@ export const ADMIN_JS = String.raw`
           if (cur === "education_system") tools.push(el("button", { class: x.hglobal ? "primary" : "", text: x.hglobal ? "✓ 代表 H-Global1985" : "標示為 H-Global1985", onclick: function () {
             api("POST", "/v1/admin/vocab/education_system/hglobal", { term: x.term, hglobal: !x.hglobal }).then(done);
           } }));
-          return el("div", { class: "row vocab-row" }, [el("div", { class: "vocab-tools" }, tools), el("div", { class: "vocab-name" }, [el("strong", { text: (ordered ? (i + 1) + ". " : "") + x.term }), el("div", { class: "help", text: "使用 " + x.uses + " 次" })]), chk]);
+          return el("div", { class: "row vocab-row" }, [el("div", { class: "vocab-tools" }, tools), el("div", { class: "vocab-name" }, [el("strong", { text: (ordered ? (i + 1) + ". " : "") + x.term }), el("div", { class: x.pending ? "help warn" : "help", text: x.pending ? "待核可（" + (x.suggested_by || "服務") + " 建議）" : "使用 " + x.uses + " 次" })]), chk]);
         }
         function paint() {
           rowsBox.textContent = "";

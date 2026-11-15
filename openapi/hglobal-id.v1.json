@@ -1402,6 +1402,28 @@
           "scope"
         ]
       },
+      "VocabSubmitted": {
+        "type": "object",
+        "properties": {
+          "pool": {
+            "type": "string",
+            "enum": [
+              "job_title"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pool",
+          "value",
+          "created"
+        ]
+      },
       "ContactLookup": {
         "type": "object",
         "properties": {
@@ -2440,6 +2462,94 @@
           },
           "422": {
             "description": "invalid_field (unknown pool)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "platform"
+        ],
+        "summary": "A trusted service suggests a new 職稱 (pool job_title) for the shared vocabulary. It waits for approval before anyone sees it.",
+        "description": "Authentication: the App's service token (POST /v1/service/token), as for the contact lookup; never a member token. Only the pool `job_title` is open; any other pool is refused with 403. `value` is trimmed (full-width folded), at most 50 characters. A spelling already in the vocabulary (ignoring case and full/half width) is not added again: the existing term comes back with `created: false`. A new one is saved as pending (`created: true`) and appears in GET /v1/vocab/suggestions only after the super admin approves it in the back office. Limits: 30 calls a minute per App (429) and at most 200 terms waiting for approval (429). Every new term is audited with the App and the word. Reads and writes no member's own data.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pool": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "pool",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved, or already there",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabSubmitted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_field: empty, too long or malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden: a pool that is not open to services",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited or too many terms waiting",
             "content": {
               "application/json": {
                 "schema": {
@@ -5499,6 +5609,93 @@
         "responses": {
           "200": {
             "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/vocab/{pool}/approve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approve a term suggested by a service: from then on it is offered to everyone (to refuse it, delete it)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "required": true,
+            "name": "pool",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "term": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "term"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approved",
             "content": {
               "application/json": {
                 "schema": {

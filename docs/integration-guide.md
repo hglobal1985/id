@@ -124,6 +124,13 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **授權**：業主要在後台「平台設定」替 App 勾 `display_name`（頭像再勾 `avatar`，沒勾時 `avatar_url` 為 null），否則 `403 field_not_allowed`。每次查詢都有稽核（不記搜尋字與姓名）。
 - App 只存被指派者的 `member_id` 與當下顯示名稱；確認對方仍在同中心用對方本人的 `GET /v1/eligibility/context`。
 
+## 6.14 新增職稱詞條（2026-11-15.5，ADR 0029）
+- `POST /v1/vocab/suggestions`，**服務 token**（`POST /v1/service/token`，與聯絡查詢相同；不是會員登入），body `{"pool":"job_title","value":"區域經理"}`。
+- 只開放 `job_title`（其他詞庫 `403`）；`value` 去除前後空白、最長 50 字（空或過長 `400`）；已有的詞（不分大小寫與全半形）不重複新增，回既有的詞，`created: false`。成功 `200 {pool, value, created}`。
+- 新詞是**待核可**：業主在後台「關聯詞」核可後才出現在別人的建議（`GET /v1/vocab/suggestions`）；刪除＝拒絕。沒帶或帶錯 token `401`。不需要在後台另開權限。
+- 限制：每個 App 每分鐘 30 次、待核可最多 200 個（`429`）；每次新增都有稽核（App、時間、字）。不讀寫任何會員自己的職稱。
+- App 端：`404`／`405`／`501`（沒開放）、`401`、`429`、逾時、`5xx` 先暫存稍後重送；`400` 不重送。
+
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 

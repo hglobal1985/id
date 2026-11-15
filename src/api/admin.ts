@@ -22,7 +22,7 @@ import { REVIEWER_ADJUSTABLE, getAmwayField, isNone, validateAmwayValue } from "
 import { FEATURES, PERMISSION_INFO, PERMISSIONS, ROLE_GRANTS, ROLES, ROLE_LABELS, SCOPE_LABELS, can, grantsOf, hasGrant, permissionsOf, validateGrants, type Permission, type Role } from "../admin/roles";
 import { isSameOriginWrite } from "../auth/csrf";
 import { epochSeconds, taipeiIso } from "../lib/time";
-import { addTerm, deleteTerm, listTerms, mergeTerms, moveTerm, renameTerm, setHglobalTerm } from "../db/vocab";
+import { addTerm, approveTerm, deleteTerm, listTerms, mergeTerms, moveTerm, renameTerm, setHglobalTerm } from "../db/vocab";
 import { BADGE_MAX_BYTES, badgeInfo, checkArtRange, checkBadgePng, isRankCode, listBadges, rankExists, removeBadge, saveBadge } from "../db/rank-badges";
 import { resolveIssuer } from "../oidc/config";
 import { CLOSED_POOLS, ORDERED_POOLS, POOLS, POOL_KEYS, isPool } from "../vocab/terms";
@@ -231,6 +231,15 @@ const badgeDeleteRoute = createRoute({
   security,
   request: { params: BadgeParam },
   responses: { 200: { description: "Removed", content: json(Any) }, ...common, 404: err("not_found") },
+});
+const vocabApproveRoute = createRoute({
+  method: "post",
+  path: "/v1/admin/vocab/{pool}/approve",
+  tags: ["admin"],
+  summary: "Approve a term suggested by a service: from then on it is offered to everyone (to refuse it, delete it)",
+  security,
+  request: { params: PoolParam, body: { required: true, content: json(z.object({ term: z.string().min(1).max(100) })) } },
+  responses: { 200: { description: "Approved", content: json(Any) }, ...common, 404: err("not_found") },
 });
 const vocabMoveRoute = createRoute({
   method: "post",
@@ -616,9 +625,9 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.openapi(vocabPoolsRoute, async (c) => {
     const d = deny(c, "vocab.manage");
     if (d) return d as never;
-    const counts = await c.env.DB.prepare("SELECT pool, COUNT(*) AS n FROM vocab_terms GROUP BY pool").all<{ pool: string; n: number }>();
-    const n = new Map((counts.results ?? []).map((r) => [r.pool, r.n]));
-    return c.json({ pools: POOL_KEYS.map((k) => ({ pool: k, label: POOLS[k].label, terms: n.get(k) ?? 0, fields: [...POOLS[k].profileFields, ...POOLS[k].amwayFields] })) }, 200);
+    const counts = await c.env.DB.prepare("SELECT pool, COUNT(*) AS n, SUM(pending) AS waiting FROM vocab_terms GROUP BY pool").all<{ pool: string; n: number; waiting: number | null }>();
+    const n = new Map((counts.results ?? []).map((r) => [r.pool, r]));
+    return c.json({ pools: POOL_KEYS.map((k) => ({ pool: k, label: POOLS[k].label, terms: (n.get(k)?.n ?? 0) - (n.get(k)?.waiting ?? 0), pending: n.get(k)?.waiting ?? 0, fields: [...POOLS[k].profileFields, ...POOLS[k].amwayFields] })) }, 200);
   });
 
   app.openapi(vocabTermsRoute, async (c) => {
@@ -626,7 +635,7 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (d) return d as never;
     const pool = poolOr404(c, c.req.valid("param").pool);
     if (!pool) return noPool(c) as never;
-    return c.json({ pool, label: POOLS[pool].label, ordered: ORDERED_POOLS.includes(pool), closed: CLOSED_POOLS.includes(pool), terms: await listTerms(c.env.DB, pool) }, 200);
+    return c.json({ pool, label: POOLS[pool].label, ordered: ORDERED_POOLS.includes(pool), closed: CLOSED_POOLS.includes(pool), terms: await listTerms(c.env.DB, pool, true) }, 200);
   });
 
   const invalidTerm = (c: C) => c.json(errorBody("invalid_field", "詞不可空白，最多 100 字", c.get("requestId"), { field_key: "term", reason: "format" }), 422);
@@ -688,6 +697,15 @@ export function registerAdminRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const { value } = c.req.valid("param");
     if (!isRankCode(value) || !(await removeBadge(c.env.DB, c.env.FILES, value, actor(c)))) return c.json(errorBody("not_found", "這個獎銜沒有徽章", c.get("requestId")), 404) as never;
     return c.json({ removed: true }, 200);
+  });
+
+  app.openapi(vocabApproveRoute, async (c) => {
+    const d = deny(c, "vocab.manage");
+    if (d) return d as never;
+    const pool = poolOr404(c, c.req.valid("param").pool);
+    if (!pool) return noPool(c) as never;
+    if (!(await approveTerm(c.env.DB, pool, c.req.valid("json").term, actor(c)))) return c.json(errorBody("not_found", "找不到這個待核可的詞", c.get("requestId")), 404) as never;
+    return c.json({ approved: true }, 200);
   });
 
   app.openapi(vocabMoveRoute, async (c) => {

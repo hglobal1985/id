@@ -394,14 +394,14 @@ describe("options and vocabularies", () => {
     const pools = (await (await admin(sa, "GET", "/v1/admin/vocab")).json()) as { pools: { pool: string; terms: number }[] };
     expect(pools.pools.find((p) => p.pool === "upline_platinum")?.terms).toBe(2);
     const terms = (await (await admin(sa, "GET", "/v1/admin/vocab/upline_platinum")).json()) as { terms: { term: string; uses: number }[] };
-    expect(terms.terms).toEqual([{ term: "陳大華", uses: 2, hglobal: false }, { term: "陳大花", uses: 1, hglobal: false }]);
+    expect(terms.terms).toEqual([{ term: "陳大華", uses: 2, hglobal: false, pending: false, suggested_by: null }, { term: "陳大花", uses: 1, hglobal: false, pending: false, suggested_by: null }]);
 
     // Merge the typo into the right name: every member's saved value follows.
     let res = await admin(sa, "POST", "/v1/admin/vocab/upline_platinum/merge", { froms: ["陳大花"], into: "陳大華" });
     expect(((await res.json()) as { members_updated: number }).members_updated).toBe(1);
     const s = (await (await member(c, "GET", "/v1/me/amway")).json()) as { fields: { upline_platinum: { value: unknown } } };
     expect(s.fields.upline_platinum.value).toBe("陳大華");
-    expect(((await (await admin(sa, "GET", "/v1/admin/vocab/upline_platinum")).json()) as { terms: { term: string; uses: number }[] }).terms).toEqual([{ term: "陳大華", uses: 3, hglobal: false }]);
+    expect(((await (await admin(sa, "GET", "/v1/admin/vocab/upline_platinum")).json()) as { terms: { term: string; uses: number }[] }).terms).toEqual([{ term: "陳大華", uses: 3, hglobal: false, pending: false, suggested_by: null }]);
 
     // Editing a tag term rewrites the item inside members' lists.
     res = await admin(sa, "POST", "/v1/admin/vocab/job_title/rename", { from: "工程師", to: "軟體工程師" });
