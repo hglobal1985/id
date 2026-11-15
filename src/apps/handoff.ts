@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-15.4";
-export const HANDOFF_UPDATED = "2026-11-15 17:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-15.5";
+export const HANDOFF_UPDATED = "2026-11-15 19:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -150,6 +150,12 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 回傳：{ center:{key,label}, members:[{member_id, display_name, avatar_url（或 null）, signed_in_app}], next_cursor（或 null）}。只給挑人需要的最少欄位，沒有信箱、電話、獎銜或其他 Amway 欄位。",
     "   - 授權：業主要在後台「平台設定」替這款 App 勾選會員資料的 display_name（要顯示頭像再勾 avatar，沒勾 avatar 時 avatar_url 一律是 null），否則回 403 field_not_allowed；App 不得自行繞過。中央每次查詢都有稽核（呼叫者、App、中心、筆數；不記搜尋字與姓名），被拒絕的也記。",
     "   - App 端規則：被指派的人（例如小編）的身分只存在這款 App，只存必要的 member_id 與當下顯示名稱；不要保存整份名單、不要把搜尋字寫進日誌；之後要確認對方仍在同一中心，用對方本人的 GET /v1/eligibility/context 的 center.key 比對。",
+    "15. 新增職稱詞條（服務對服務；沒有這類功能的 App 可略過）：App 的伺服器若收到中央詞庫沒有的新職稱（例如課程主講人的職稱），可以送給中央，讓職稱詞庫共用。",
+    `   - 呼叫：POST ${origin}/v1/vocab/suggestions，標頭 Authorization: Bearer <服務 token>（用 POST ${origin}/v1/service/token 取得，與聯絡查詢相同；不是會員登入），body {"pool":"job_title","value":"區域經理"}。只放在伺服器端。`,
+    "   - 規則：只開放 job_title，其他詞庫一律 403；value 去除前後空白、最長 50 字，空白或過長回 400；已經有的詞（不分大小寫與全形半形）不會重複新增，回傳既有的詞且 created 為 false。成功都是 200：{pool, value, created}。",
+    "   - 核可：新增的詞先是「待核可」，業主在中央後台「關聯詞」核可後才會出現在大家的建議清單；App 不需要處理核可。沒有帶或帶錯服務 token 回 401。不需要在後台另外開權限，有服務金鑰的 App 就能呼叫。",
+    "   - 限制：每個 App 每分鐘最多 30 次，等待核可的詞全站最多 200 個（超過回 429，請稍後再送）；中央每次新增都有稽核（App、時間、字）。這支 API 不讀寫任何會員自己的職稱。",
+    "   - 失敗處理：回 404／405／501（中央尚未開放）、401、429、逾時或 5xx，App 先暫存、下次再送；回 400 是內容不合，不要重送。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報業主（移除機密需要業主核准，不要自己刪）。",
@@ -193,7 +199,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "24. 欄位異動（三、5）：已移除「使用語言」；「介面語言」沒選過時顯示繁體中文（default_value），不把預設值寫回中央。（2026-11-14.6 新增）",
     "25. 獎銜徽章（三、13）：讀 rank 選項的 badge_url／badge、不存圖庫；緊貼獎銜標籤右邊、顯示高度 92、只佔頭像高度 48（上下各溢出約 22）、呼吸 1.1 倍 2.6 秒不改透明度、4 顆星形閃光球（位置與參數照三、13）、減少動態效果時只顯示靜態徽章、沒有徽章或載入失敗就整塊不顯示。（2026-11-15.2 新增）",
     "26. 同中心會員名單（三、14）：只在需要挑人的功能使用；用呼叫者本人的 Token；不自己手貼會員 ID 選人；不保存名單副本與搜尋字；403／404／422 照規則處理；業主已在平台設定勾選 display_name。（2026-11-15.4 新增，沒有這類功能的 App 可略過）",
-    "27. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "27. 新增職稱詞條（三、15）：只在伺服器用服務 token 送、只送 job_title、400 不重送、404／405／501／401／429／5xx 暫存重送；不寫死詞條、不讀寫會員自己的職稱。（2026-11-15.5 新增，沒有這類功能的 App 可略過）",
+    "28. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

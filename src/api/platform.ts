@@ -17,6 +17,8 @@ import { currentWebhookSecret, deliverDue, getWebhook, isWebhookUrl, recentEvent
 import { uuidv7 } from "../lib/crypto";
 import { EVENT_RETENTION_SECONDS } from "../webhooks/events";
 import { taipeiIso } from "../lib/time";
+import { allowed } from "../lib/ratelimit";
+import { submitTerm } from "../db/vocab";
 
 type C = Context<AppBindings>;
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -34,6 +36,27 @@ const tokenRoute = createRoute({
   responses: {
     200: { description: "Token", content: json(z.object({ access_token: z.string(), token_type: z.literal("Bearer"), expires_in: z.number().int(), scope: z.string() }).openapi("ServiceToken")) },
     401: err("invalid_client"),
+  },
+});
+
+const VocabSubmitSchema = z.object({ pool: z.string().max(40), value: z.string().max(200) });
+const vocabSubmitRoute = createRoute({
+  method: "post",
+  path: "/v1/vocab/suggestions",
+  tags: ["platform"],
+  summary: "A trusted service suggests a new 職稱 (pool job_title) for the shared vocabulary. It waits for approval before anyone sees it.",
+  description:
+    "Authentication: the App's service token (POST /v1/service/token), as for the contact lookup; never a member token. Only the pool `job_title` is open; any other pool is refused with 403. `value` is trimmed (full-width folded), at most 50 characters. " +
+    "A spelling already in the vocabulary (ignoring case and full/half width) is not added again: the existing term comes back with `created: false`. A new one is saved as pending (`created: true`) and appears in GET /v1/vocab/suggestions only after the super admin approves it in the back office. " +
+    "Limits: 30 calls a minute per App (429) and at most 200 terms waiting for approval (429). Every new term is audited with the App and the word. Reads and writes no member's own data.",
+  security: [{ bearer: [] }],
+  request: { body: { required: true, content: json(VocabSubmitSchema) } },
+  responses: {
+    200: { description: "Saved, or already there", content: json(z.object({ pool: z.literal("job_title"), value: z.string(), created: z.boolean() }).openapi("VocabSubmitted")) },
+    400: err("invalid_field: empty, too long or malformed"),
+    401: err("unauthenticated"),
+    403: err("forbidden: a pool that is not open to services"),
+    429: err("rate_limited or too many terms waiting"),
   },
 });
 
@@ -103,6 +126,37 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     if (!t) return c.json(errorBody("invalid_client", "App 或金鑰不正確", c.get("requestId")), 401) as never;
     return c.json({ access_token: t.token, token_type: "Bearer" as const, expires_in: t.expires_in, scope: "service.lookup" }, 200);
   });
+
+  // Terms from services: 職稱 only, waiting for approval. Authentication comes first, so a bad body from a stranger is a 401, not a 400.
+  app.openapi(
+    vocabSubmitRoute,
+    async (c) => {
+      const appId = await checkServiceToken(c.env, deps, resolveIssuer(c.env, c.req.url), c.req.header("authorization"));
+      if (!appId) return c.json(errorBody("unauthenticated", "Invalid or expired service token", c.get("requestId")), 401) as never;
+      const { pool, value } = c.req.valid("json");
+      c.header("cache-control", "no-store");
+      if (pool !== "job_title") return c.json(errorBody("forbidden", "這個詞庫不開放服務新增", c.get("requestId"), { pool }), 403) as never;
+      if (!(await allowed(c.env.RL_WRITE, `svc-vocab:${appId}`))) {
+        c.header("retry-after", "60");
+        return c.json(errorBody("rate_limited", "Too many requests", c.get("requestId"), { retry_after: 60 }), 429) as never;
+      }
+      const r = await submitTerm(c.env.DB, "job_title", value, appId, c.get("requestId"), deps.now());
+      if (!r.ok && r.reason === "full") {
+        c.header("retry-after", "3600");
+        return c.json(errorBody("rate_limited", "等待核可的詞太多，請稍後再試", c.get("requestId"), { reason: "too_many_pending" }), 429) as never;
+      }
+      if (!r.ok) return c.json(errorBody("invalid_field", "職稱不可空白，最多 50 字", c.get("requestId"), { field_key: "value", reason: "format" }), 400) as never;
+      return c.json({ pool: "job_title" as const, value: r.value, created: r.created }, 200);
+    },
+    (result, c) => {
+      if (result.success) return;
+      return (async () => {
+        const appId = await checkServiceToken(c.env, deps, resolveIssuer(c.env, c.req.url), c.req.header("authorization"));
+        if (!appId) return c.json(errorBody("unauthenticated", "Invalid or expired service token", c.get("requestId")), 401);
+        return c.json(errorBody("invalid_field", "請求內容不正確：需要 {\"pool\":\"job_title\",\"value\":\"…\"}", c.get("requestId"), { field_key: "value", reason: "format" }), 400);
+      })() as never;
+    },
+  );
 
   app.openapi(lookupRoute, async (c) => {
     const appId = await checkServiceToken(c.env, deps, resolveIssuer(c.env, c.req.url), c.req.header("authorization"));

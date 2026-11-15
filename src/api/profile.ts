@@ -252,7 +252,8 @@ export function registerProfileRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
   const auth = bearerAuth(deps);
   app.use("/v1/me/*", auth);
   app.use("/v1/profile/*", auth);
-  app.use("/v1/vocab/*", auth);
+  // GET suggestions is for members; POST /v1/vocab/suggestions is a service call (service token, see api/platform.ts) with its own check.
+  app.use("/v1/vocab/*", (c, next) => (c.req.method === "POST" ? next() : auth(c, next)));
 
   app.openapi(definitionsRoute, async (c) => {
     const denied = missingScope(c, ["profile.read"]);

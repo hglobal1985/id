@@ -8,6 +8,10 @@ export interface TermRow {
   term: string;
   uses: number;
   hglobal: boolean;
+  /** Suggested by a service and not yet approved: not offered to anyone until the super admin approves it. */
+  pending: boolean;
+  /** The App that suggested a pending term. */
+  suggested_by: string | null;
 }
 
 interface Row {
@@ -16,14 +20,19 @@ interface Row {
   uses: number;
   hglobal: number;
   sort_order?: number;
+  pending?: number;
+  suggested_by?: string | null;
 }
 
-const toRow = (r: Row): TermRow => ({ term: r.term, uses: r.uses, hglobal: r.hglobal === 1 });
+const toRow = (r: Row): TermRow => ({ term: r.term, uses: r.uses, hglobal: r.hglobal === 1, pending: r.pending === 1, suggested_by: r.suggested_by ?? null });
 
-export async function listTerms(db: D1Database, pool: PoolKey): Promise<TermRow[]> {
+/** The terms of a pool, best first. Terms still waiting for approval are left out unless `includePending` (the back office). */
+export async function listTerms(db: D1Database, pool: PoolKey, includePending = false): Promise<TermRow[]> {
   const ordered = ORDERED_POOLS.includes(pool);
   const r = await db
-    .prepare(`SELECT term, norm, uses, hglobal, sort_order FROM vocab_terms WHERE pool = ? ORDER BY ${ordered ? "CASE WHEN sort_order > 0 THEN sort_order ELSE 1000000 END, uses DESC, term" : "uses DESC, term"} LIMIT 2000`)
+    .prepare(
+      `SELECT term, norm, uses, hglobal, sort_order, pending, suggested_by FROM vocab_terms WHERE pool = ?${includePending ? "" : " AND pending = 0"} ORDER BY ${includePending ? "pending DESC, " : ""}${ordered ? "CASE WHEN sort_order > 0 THEN sort_order ELSE 1000000 END, uses DESC, term" : "uses DESC, term"}`,
+    )
     .bind(pool)
     .all<Row>();
   return (r.results ?? []).map(toRow);
@@ -31,7 +40,7 @@ export async function listTerms(db: D1Database, pool: PoolKey): Promise<TermRow[
 
 /** Terms matching what was typed (any typed character, any order), best first. */
 export async function suggestTerms(db: D1Database, pool: PoolKey, query: string, limit = 8): Promise<string[]> {
-  const r = await db.prepare("SELECT term, norm, uses, hglobal, sort_order FROM vocab_terms WHERE pool = ? ORDER BY uses DESC LIMIT 1000").bind(pool).all<Row>();
+  const r = await db.prepare("SELECT term, norm, uses, hglobal, sort_order FROM vocab_terms WHERE pool = ? AND pending = 0 ORDER BY uses DESC LIMIT 1000").bind(pool).all<Row>();
   return rankTerms(r.results ?? [], query, limit, ORDERED_POOLS.includes(pool)).map((t) => t.term);
 }
 
@@ -163,7 +172,7 @@ export async function renameTerm(db: D1Database, pool: PoolKey, from: string, to
   const stmts: D1PreparedStatement[] = [];
   if (dest && dest.norm !== src.norm) {
     stmts.push(
-      db.prepare("UPDATE vocab_terms SET uses = uses + ?, hglobal = MAX(hglobal, ?), updated_at = ? WHERE pool = ? AND norm = ?").bind(src.uses, src.hglobal, ts, pool, dest.norm),
+      db.prepare("UPDATE vocab_terms SET uses = uses + ?, hglobal = MAX(hglobal, ?), pending = 0, updated_at = ? WHERE pool = ? AND norm = ?").bind(src.uses, src.hglobal, ts, pool, dest.norm),
       db.prepare("DELETE FROM vocab_terms WHERE pool = ? AND norm = ?").bind(pool, src.norm),
     );
   } else {
@@ -196,7 +205,7 @@ export async function mergeTerms(db: D1Database, pool: PoolKey, froms: string[],
     db
       .prepare(
         `INSERT INTO vocab_terms (pool, norm, term, uses, hglobal, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (pool, norm) DO UPDATE SET uses = uses + excluded.uses, hglobal = MAX(hglobal, excluded.hglobal), updated_at = excluded.updated_at`,
+         ON CONFLICT (pool, norm) DO UPDATE SET uses = uses + excluded.uses, hglobal = MAX(hglobal, excluded.hglobal), pending = 0, updated_at = excluded.updated_at`,
       )
       .bind(pool, normTerm(target), target, uses, hg, ts, ts),
     ...found.map((n) => db.prepare("DELETE FROM vocab_terms WHERE pool = ? AND norm = ?").bind(pool, n)),
@@ -257,5 +266,49 @@ export async function setHglobalTerm(db: D1Database, term: string, flag: boolean
   const r = await db.prepare("UPDATE vocab_terms SET hglobal = ?, updated_at = ? WHERE pool = 'education_system' AND norm = ?").bind(flag ? 1 : 0, taipeiIso(a.now), normTerm(term)).run();
   if (!r.meta.changes) return false;
   await audit(db, a, flag ? "vocab.hglobal.mark" : "vocab.hglobal.unmark", "education_system").run();
+  return true;
+}
+
+// ---------- terms suggested by a trusted service (ADR 0029) ----------
+
+/** The most terms that may wait for approval at once: a flood from a misbehaving service stops here. */
+export const PENDING_CAP = 200;
+/** Longest 職稱 a service may suggest (the same as a member's own 職稱 item). */
+export const SUGGEST_MAX_LENGTH = 50;
+
+export type SubmitResult = { ok: true; value: string; created: boolean } | { ok: false; reason: "invalid" | "full" };
+
+/**
+ * A service suggests a new term. A spelling already in the pool (ignoring case and full/half width) is not added again: the
+ * existing term comes back. A new one waits for approval (pending) and is audited with the App and the word.
+ */
+export async function submitTerm(db: D1Database, pool: PoolKey, raw: string, appId: string, requestId: string, now: Date): Promise<SubmitResult> {
+  const value = raw.normalize("NFKC").trim();
+  // eslint-disable-next-line no-control-regex
+  if (!value || [...value].length > SUGGEST_MAX_LENGTH || /[\u0000-\u001f\u007f-\u009f]/.test(value)) return { ok: false, reason: "invalid" };
+  const norm = normTerm(value);
+  const existing = await db.prepare("SELECT term FROM vocab_terms WHERE pool = ? AND norm = ?").bind(pool, norm).first<{ term: string }>();
+  if (existing) return { ok: true, value: existing.term, created: false };
+  const waiting = await db.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = ? AND pending = 1").bind(pool).first<{ n: number }>();
+  if ((waiting?.n ?? 0) >= PENDING_CAP) return { ok: false, reason: "full" };
+  const ts = taipeiIso(now);
+  const r = await db
+    .prepare("INSERT OR IGNORE INTO vocab_terms (pool, norm, term, uses, hglobal, pending, suggested_by, created_at, updated_at) VALUES (?, ?, ?, 0, 0, 1, ?, ?, ?)")
+    .bind(pool, norm, value, appId, ts, ts)
+    .run();
+  if (!r.meta.changes) {
+    // Another request added the same word a moment ago.
+    const again = await db.prepare("SELECT term FROM vocab_terms WHERE pool = ? AND norm = ?").bind(pool, norm).first<{ term: string }>();
+    return { ok: true, value: again?.term ?? value, created: false };
+  }
+  await auditStatement(db, { actorType: "app", actorId: appId, action: "vocab.suggest", targetType: "vocab", targetId: pool, result: "success", appId, requestId, detail: { pool, term: value } }, now).run();
+  return { ok: true, value, created: true };
+}
+
+/** The super admin approves a suggested term: from now on it is offered to everyone. */
+export async function approveTerm(db: D1Database, pool: PoolKey, term: string, a: Actor): Promise<boolean> {
+  const r = await db.prepare("UPDATE vocab_terms SET pending = 0, updated_at = ? WHERE pool = ? AND norm = ? AND pending = 1").bind(taipeiIso(a.now), pool, normTerm(term)).run();
+  if (!r.meta.changes) return false;
+  await audit(db, a, "vocab.approve", pool).run();
   return true;
 }
