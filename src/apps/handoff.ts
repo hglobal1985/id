@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-17.1";
-export const HANDOFF_UPDATED = "2026-11-17 19:30（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-20.1";
+export const HANDOFF_UPDATED = "2026-11-20 01:30（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -159,9 +159,12 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "16. 獎銜與中心的申請審核（平台功能，業主 2026-11-17；給需要讓審核人員在 App 內看到並處理中央「獎銜、教育中心」新申請的 App，例如在通知頁的「審核」分類顯示）：",
     `   - 列出：GET ${origin}/v1/eligibility/reviews；處理：POST ${origin}/v1/eligibility/reviews/{id}/decision，body {"decision":"approve"|"reject"}。都用呼叫者本人在這款 App 的會員 Access Token（需要 amway.read）；不可用服務 token。`,
     "   - 誰能看、誰能處理（與中央後台完全一致，由中央伺服器判斷，App 只負責顯示）：super_admin 與 secretary 看得到並可處理全部申請；reviewer（審核員）只看得到、只能處理自己「已審核教育中心」的申請；其他人（含沒有已審核中心的審核員的別中心申請）一律看不到，沒有審核職務回 403。申請不屬於自己中心時處理回 403，已被處理過回 404。",
-    "   - 回傳：{ scope:\"all\"|\"center\", reviews:[{id, display_name, field_key（rank 或 education_center 等）, field_label, center（申請所屬中心名稱或 null）, current_value, requested_value, created_at}] }（最舊的在前、最多 200 筆）；沒有信箱、電話、會員編號。處理後中央會自動通知申請人，並把審核員的「等待審核」通知標成已完成。",
+    "   - 回傳：{ scope:\"all\"|\"center\", reviews:[{id, member_id, display_name, field_key（rank 或 education_center 等）, field_label, center（申請所屬中心名稱或 null）, current_value, requested_value, created_at}] }（最舊的在前、最多 200 筆）；沒有信箱、電話、會員編號。處理後中央會自動通知申請人，並把審核員的「等待審核」通知標成已完成。",
     "   - 授權：業主要在後台「平台設定」替這款 App 勾選會員資料的 display_name，否則回 403 field_not_allowed。每次列出與處理都有稽核（App、人、結果）。",
-    "   - App 端規則：只在審核人員本人開啟時即時向中央讀取、不保存申請內容與名單、不寫進日誌；顯示前不要自行判斷權限，任何非 200 一律當作沒有權限；處理前要有確認步驟。",
+    "   - 列表每一筆另外有 member_id（申請人的中央會員識別碼，App 可用來通知申請人）；field_key 本來就有。處理的回應是 { id, member_id, field_key, decided, modified }。",
+    "   - 修改後通過（2026-11-20.1 新增）：POST .../decision 的 body 可以多帶選填的 value，例如 {\"decision\":\"approve\",\"value\":\"新竹 122\"}；格式與欄位定義相同（文字，或 {option, custom_text}），中央伺服器驗證。只有 approve 可以帶 value，reject 帶 value 回 422；value 不合規則（不在選項內、空白、過長）回 422；只能修改 education_system、education_center、rank 三個欄位。",
+    "   - 修改後的規則：帶了與申請不同的 value 就以 value 核准，回應 modified 為 true；申請人的通知會寫明「經審核者修改後通過」。中央把「原申請值」與「修改後的值」記在這筆申請上，稽核紀錄只記「有修改」與審核者、不記欄位的值。權限規則與一般處理相同；只有自己中心權限的審核員不能把中心改成別的中心（回 403）。",
+    "   - App 端規則：只在審核人員本人開啟時即時向中央讀取、不保存申請內容與名單、不寫進日誌；顯示前不要自行判斷權限，任何非 200 一律當作沒有權限；處理前要有確認步驟（修改後通過要讓審核者看到改了什麼）。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報業主（移除機密需要業主核准，不要自己刪）。",
@@ -207,6 +210,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "26. 同中心會員名單（三、14）：只在需要挑人的功能使用；用呼叫者本人的 Token；不自己手貼會員 ID 選人；不保存名單副本與搜尋字；403／404／422 照規則處理；業主已在平台設定勾選 display_name。（2026-11-15.4 新增，沒有這類功能的 App 可略過）",
     "27. 新增職稱詞條（三、15）：只在伺服器用服務 token 送、只送 job_title、400 不重送、404／405／501／401／429／5xx 暫存重送；不寫死詞條、不讀寫會員自己的職稱。（2026-11-15.5 新增，沒有這類功能的 App 可略過）",
     "28. 獎銜與中心的申請審核（三、16）：只在審核人員本人開啟時即時讀取、不保存申請與名單；權限完全由中央判斷、任何非 200 都當沒有權限；處理前有確認步驟。（2026-11-17.1 新增）",
+    "29. 審核時可修改後通過（三、16）：decision 的 value 只在 approve 時帶、用中央回傳的欄位格式；列表與處理回應的 member_id、field_key 只用來通知申請人，不保存；非 200（含 422、403）要把原因顯示給審核者並保留原本的畫面。（2026-11-20.1 新增）",
     "29. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");

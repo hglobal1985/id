@@ -115,13 +115,15 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **顯示標準**（完整內容在串接指令三、13，檢查清單 25）：會員抬頭裡緊貼獎銜標籤右邊；顯示高度 92、版面只佔頭像高度 48（上下各溢出約 22）；呼吸 1.1 倍／2.6 秒（只改大小）；4 顆星形閃光球（位置依圖案範圍比例，高度 72 為基準等比縮放）；「減少動態效果」時只顯示靜態徽章；無徽章或載入失敗整塊不顯示。
 - App 不自己存圖庫、不自己新增徽章；新增獎銜時由業主在中央後台「獎銜徽章」上傳。
 
-## 6.14 獎銜與中心的申請審核（2026-11-17.1，ADR 0030）
+## 6.14 獎銜與中心的申請審核（2026-11-17.1，ADR 0030；修改後通過 2026-11-20.1，ADR 0031）
 給需要讓審核人員在 App 內看到並處理中央「獎銜、教育中心」新申請的 App（例如行動大學通知頁的「審核」分類）。
 - `GET /v1/eligibility/reviews`、`POST /v1/eligibility/reviews/{id}/decision`（body `{"decision":"approve"|"reject"}`）：呼叫者本人的 App 會員 Token（`amway.read`）。
 - **規則與中央後台完全一致**（由中央判斷）：`super_admin`、`secretary` 看到並可處理全部；`reviewer`（審核員）只看得到、只能處理自己已審核教育中心的申請；沒有審核職務回 403；不屬於自己中心的處理回 403；已處理過回 404。
-- **回傳**：`{scope:"all"|"center", reviews:[{id, display_name, field_key, field_label, center, current_value, requested_value, created_at}]}`（最舊在前、最多 200 筆）；沒有信箱、電話、會員編號。處理後申請人收到通知、審核員的「等待審核」通知標成已完成。
+- **回傳**：`{scope:"all"|"center", reviews:[{id, member_id, display_name, field_key, field_label, center, current_value, requested_value, created_at}]}`（最舊在前、最多 200 筆）；沒有信箱、電話、會員編號。處理後申請人收到通知、審核員的「等待審核」通知標成已完成。
 - **授權**：業主在後台「平台設定」替 App 勾 `display_name`，否則 `403 field_not_allowed`。每次列出與處理都有稽核。
 - App 只在審核人員本人開啟時即時讀取，不保存申請與名單；任何非 200 當作沒有權限；處理前要確認。
+- **修改後通過（2026-11-20.1，ADR 0031）**：decision 的 body 可多帶選填 `value`（格式同欄位定義：文字，或 `{option, custom_text}`），例如 `{"decision":"approve","value":"新竹 122"}`。只有 `approve` 可帶（`reject` 帶 value `422`）；只能改 `education_system`、`education_center`、`rank`；不合規則（不在選項、空白、過長）`422`。與申請不同時以 `value` 核准，回應 `modified: true`，申請人的通知寫明經審核者修改。原申請值與修改後的值記在該筆申請上，稽核只記「有修改」、不記值。只有自己中心權限的審核員不能把中心改成別的中心（`403`）。
+- **回傳新增**：列表每筆多 `member_id`（申請人的中央會員識別碼）；處理回應為 `{id, member_id, field_key, decided, modified}`。這兩個識別只用來通知申請人，不保存。
 
 ## 6.13 同中心會員名單（2026-11-15.4，ADR 0028）
 給需要讓教育中心的音控或會長「從名單點選同中心會員」的 App（例如指派小編；不可用手動貼會員 ID）。

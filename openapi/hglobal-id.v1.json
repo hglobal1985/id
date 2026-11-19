@@ -3789,7 +3789,8 @@
         "tags": [
           "eligibility"
         ],
-        "summary": "Approve or reject one pending request (the member is notified). Same permission and center rule as the list.",
+        "summary": "Approve or reject one pending request (the member is notified). Same permission and center rule as the list. With decision=approve an optional `value` approves a corrected value instead of the requested one.",
+        "description": "`value` (optional, approve only) has the same format as the field definition (a string, or {option, custom_text}); it is validated on the server. Giving `value` with `reject` is 422. A corrected value is kept on the request next to the original request, the member is told it was approved after a change, and the audit entry records that it was modified (never the values). A reviewer limited to the own center cannot correct a center to a different center (403).",
         "security": [
           {
             "bearer": []
@@ -3818,6 +3819,34 @@
                     "enum": [
                       "approve",
                       "reject"
+                    ]
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "option": {
+                            "type": "string",
+                            "maxLength": 100
+                          },
+                          "custom_text": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "option",
+                          "custom_text"
+                        ]
+                      }
                     ]
                   }
                 },
@@ -3862,6 +3891,16 @@
           },
           "404": {
             "description": "not_found (not pending)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
             "content": {
               "application/json": {
                 "schema": {

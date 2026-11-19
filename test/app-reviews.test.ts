@@ -49,8 +49,8 @@ function request(id: string, memberId: string, fieldKey: string, requested: unkn
   db.raw.prepare("INSERT INTO amway_review_requests (id, member_id, field_key, requested_value, status, created_at, center_norm) VALUES (?,?,?,?, 'pending', ?, ?)").run(id, memberId, fieldKey, JSON.stringify(requested), now.toISOString(), centerNorm);
 }
 const get = (token: string) => app.request("/v1/eligibility/reviews", { headers: { authorization: `Bearer ${token}` } }, env);
-const decide = (token: string, id: string, decision: string) => app.request(`/v1/eligibility/reviews/${id}/decision`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ decision }) }, env);
-type Res = { scope: string; reviews: { id: string; display_name: string | null; field_key: string; center: string | null; requested_value: unknown }[] };
+const decide = (token: string, id: string, decision: string, value?: unknown) => app.request(`/v1/eligibility/reviews/${id}/decision`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(value === undefined ? { decision } : { decision, value }) }, env);
+type Res = { scope: string; reviews: { id: string; member_id: string; display_name: string | null; field_key: string; center: string | null; requested_value: unknown }[] };
 
 beforeEach(() => {
   db = createTestD1();
@@ -74,7 +74,8 @@ describe("review queue for an App", () => {
     const rv = (await (await get(await appToken(reviewer))).json()) as Res;
     expect(rv.scope).toBe("center");
     expect(rv.reviews.map((r) => r.id).sort()).toEqual(["r1", "r3"]);
-    expect(JSON.stringify(rv)).not.toMatch(/example\.com|member_id|phone/);
+    expect(JSON.stringify(rv)).not.toMatch(/example\.com|phone/);
+    expect(rv.reviews.find((r) => r.id === "r1")?.member_id).toBe(a);
     expect(rv.reviews.find((r) => r.id === "r1")).toMatchObject({ display_name: "阿甲", field_key: "rank", center: "新竹 122" });
     for (const who of [secretary, boss]) {
       const r = (await (await get(await appToken(who))).json()) as Res;
@@ -111,5 +112,53 @@ describe("review queue for an App", () => {
     expect((await decide(await appToken(boss), "r2", "reject")).status).toBe(200);
     expect((db.raw.prepare("SELECT status FROM amway_review_requests WHERE id = 'r1'").get() as { status: string }).status).toBe("approved");
     expect((db.raw.prepare("SELECT status FROM amway_review_requests WHERE id = 'r2'").get() as { status: string }).status).toBe("rejected");
+  });
+
+  it("approve with a corrected value: stored beside the request, member told, audit has no values", async () => {
+    const boss = await person("boss", "超管", { roles: ["super_admin"] });
+    const a = await person("a", "阿甲", { center: "新竹 122" });
+    request("r1", a, "education_center", "新竹 122", "新竹 122");
+    const t = await appToken(boss);
+    const res = await decide(t, "r1", "approve", "新竹 123");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: "r1", member_id: a, field_key: "education_center", decided: "approve", modified: true });
+    const row = db.raw.prepare("SELECT status, requested_value, approved_value FROM amway_review_requests WHERE id = 'r1'").get() as { status: string; requested_value: string; approved_value: string };
+    expect(row).toMatchObject({ status: "approved", requested_value: JSON.stringify("新竹 122"), approved_value: JSON.stringify("新竹 123") });
+    const v = db.raw.prepare("SELECT value, value_approved FROM amway_field_values WHERE member_id = ? AND field_key = 'education_center'").get(a) as { value: string; value_approved: number };
+    expect(v).toEqual({ value: JSON.stringify("新竹 123"), value_approved: 1 });
+    const note = db.raw.prepare("SELECT payload FROM notifications WHERE member_id = ? AND kind = 'amway.review.approved'").get(a) as { payload: string };
+    expect(JSON.parse(note.payload)).toMatchObject({ field_key: "education_center", modified: "1" });
+    const audit = JSON.stringify(db.raw.prepare("SELECT detail FROM audit_log WHERE action = 'amway.review.approve'").all());
+    expect(audit).toContain("modified");
+    expect(audit).not.toMatch(/新竹/);
+  });
+
+  it("a corrected value equal to the request is a plain approval; bad values and reject+value are 422", async () => {
+    const boss = await person("boss", "超管", { roles: ["super_admin"] });
+    const a = await person("a", "阿甲", { center: "新竹 122" });
+    request("r1", a, "education_center", "新竹 122", "新竹 122");
+    request("r2", a, "rank", "gold", "新竹 122");
+    const t = await appToken(boss);
+    expect((await decide(t, "r1", "reject", "新竹 123")).status).toBe(422);
+    expect((await decide(t, "r2", "approve", "not-a-rank")).status).toBe(422);
+    expect((await decide(t, "r1", "approve", "")).status).toBe(422);
+    expect((await decide(t, "r1", "approve", "x".repeat(300))).status).toBe(422);
+    const same = await decide(t, "r1", "approve", "新竹 122");
+    expect(same.status).toBe(200);
+    expect(await same.json()).toMatchObject({ modified: false });
+    expect((db.raw.prepare("SELECT approved_value FROM amway_review_requests WHERE id = 'r1'").get() as { approved_value: string | null }).approved_value).toBeNull();
+    expect((db.raw.prepare("SELECT status FROM amway_review_requests WHERE id = 'r2'").get() as { status: string }).status).toBe("pending");
+  });
+
+  it("a reviewer of one center cannot correct a center into another; a plain member and other centers stay 403", async () => {
+    const reviewer = await person("rv", "審核員", { roles: ["reviewer"], center: "新竹 122" });
+    const a = await person("a", "阿甲", { center: "新竹 122" });
+    const b = await person("b", "阿乙", { center: "南京" });
+    request("r1", a, "education_center", "新竹 122", "新竹 122");
+    request("r2", b, "education_center", "南京", "南京");
+    const t = await appToken(reviewer);
+    expect((await decide(t, "r1", "approve", "南京")).status).toBe(403);
+    expect((await decide(t, "r2", "approve", "新竹 122")).status).toBe(403);
+    expect((await decide(t, "r1", "approve", "新竹 122")).status).toBe(200);
   });
 });
