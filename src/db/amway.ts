@@ -262,27 +262,30 @@ export async function pendingReviews(db: D1Database): Promise<ReviewRequestRow[]
 }
 
 /** Approve or reject a pending request. Approve makes the value effective; reject keeps the old value. Notifies the member. */
-export async function decideReview(db: D1Database, requestId: string, decision: "approve" | "reject", staffId: string, ctx: Ctx): Promise<boolean> {
+export async function decideReview(db: D1Database, requestId: string, decision: "approve" | "reject", staffId: string, ctx: Ctx, corrected?: AmwayValue): Promise<{ modified: boolean } | null> {
   const req = await db.prepare("SELECT * FROM amway_review_requests WHERE id = ? AND status = 'pending'").bind(requestId).first<ReviewRequestRow>();
-  if (!req) return false;
+  if (!req) return null;
   const ts = taipeiIso(ctx.now);
   // The two reads do not depend on each other: ask together (one round trip, not two).
   const [rows, holders] = await Promise.all([readAmwayFields(db, req.member_id), req.field_key === "rank" ? rankHolders(db, req.member_id) : Promise.resolve([req.member_id])]);
   const current = rows.get(req.field_key);
   const requested = parse(req.requested_value);
+  // A corrected value (approve only; already validated by the caller) replaces what the member asked for. Same value = not a correction.
+  const modified = decision === "approve" && corrected !== undefined && corrected !== null && !sameValue(corrected, requested);
   const row: RowWrite =
     decision === "approve"
-      ? { value: requested, pending_value: null, status: "approved", value_approved: true }
+      ? { value: modified ? corrected : requested, pending_value: null, status: "approved", value_approved: true }
       : { value: current?.value ?? null, pending_value: null, status: "rejected", value_approved: "keep" };
   await db.batch([
-    db.prepare("UPDATE amway_review_requests SET status = ?, decided_at = ?, decided_by = ? WHERE id = ? AND status = 'pending'").bind(decision === "approve" ? "approved" : "rejected", ts, staffId, requestId),
+    // requested_value keeps the original request; approved_value holds the corrected one. The values are kept here, never in the audit log.
+    db.prepare("UPDATE amway_review_requests SET status = ?, decided_at = ?, decided_by = ?, approved_value = ? WHERE id = ? AND status = 'pending'").bind(decision === "approve" ? "approved" : "rejected", ts, staffId, modified ? JSON.stringify(corrected) : null, requestId),
     ...holders.map((h) => upsertRow(db, h, req.field_key, row, ts, staffId)),
     // The reviewers' "waiting for review" notices for this request are done.
     db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE kind = 'staff.review.requested' AND json_extract(payload, '$.request_id') = ?").bind(ts, requestId),
-    notificationStatement(db, req.member_id, decision === "approve" ? "amway.review.approved" : "amway.review.rejected", { field_key: req.field_key }, ctx.now),
-    auditStatement(db, { actorType: "staff", actorId: staffId, action: `amway.review.${decision}`, targetType: "member", targetId: req.member_id, result: "success", requestId: ctx.requestId, detail: { field_key: req.field_key, request_id: requestId } }, ctx.now),
+    notificationStatement(db, req.member_id, decision === "approve" ? "amway.review.approved" : "amway.review.rejected", modified ? { field_key: req.field_key, modified: "1" } : { field_key: req.field_key }, ctx.now),
+    auditStatement(db, { actorType: "staff", actorId: staffId, action: `amway.review.${decision}`, targetType: "member", targetId: req.member_id, result: "success", requestId: ctx.requestId, detail: { field_key: req.field_key, request_id: requestId, ...(modified ? { modified: true } : {}) } }, ctx.now),
   ]);
-  return true;
+  return { modified };
 }
 
 /** Reviewer adjusts one of the six fields directly: treated as approved, audited, member notified. */

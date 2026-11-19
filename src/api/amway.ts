@@ -270,7 +270,7 @@ async function renderNotification(
       break;
     case "amway.review.approved":
       title = "審核通過";
-      body = `您的「${label}」已審核通過。`;
+      body = payload.modified ? `您的「${label}」經審核者修改後已通過，請到個人資料確認內容。` : `您的「${label}」已審核通過。`;
       break;
     case "amway.review.rejected":
       title = "審核未通過";
