@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-20.1";
-export const HANDOFF_UPDATED = "2026-11-20 01:30（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-20.2";
+export const HANDOFF_UPDATED = "2026-11-20 15:30（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -87,7 +87,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 審核規則：選「直銷商培訓系統」＝寰宇不需審核，立刻生效。只有「寰宇＋同時填了地區教育中心」時，「中心」與「獎銜」才需審核：送出後欄位 status 為 pending（顯示「等待審核中」），原本的值維持有效，由相同中心的審核員核准後才換成新值；駁回則維持原值。App 只顯示 status，不要自己判斷。",
     "   - 本名（2026-11-14 起標籤由「本姓」改稱「本名」，舊稱「真實姓名」，欄位 legal_name，基本資料區塊，預設隱藏；欄位旁備註「（窗口對賬用途）」）：只用於付費課程報名與對帳，不要顯示在公開畫面。要辨識繳款人時，只在「報名付費課程」與「對帳」的當下，用會員本人的 Access Token 呼叫 GET /v1/me/profile 讀 fields.legal_name.value；沒有填就請會員到中央會員的編輯頁填寫，不要在 App 內另建一份姓名欄位，也不要把它存進 App 的資料庫、日誌或分析工具（對帳需要留存時只留訂單與 member_id 的對應，姓名每次現讀）。舊的 primary_name 已永久刪除，不會恢復。",
     "   - 獎銜「無」：獎銜選項（含「無」）一律來自 GET /v1/amway/field-definitions 的 rank.options，不要自己複製或寫死。會員的值在 GET /v1/me/amway 的 fields.rank.value：null（從未填寫）與 \"none\"（選了「無」）兩種都代表「無」，App 要一視同仁；各 App 對「無」要顯示什麼文字由該 App 自己決定，不要回寫中央會員。",
-    `   - 會員資料的使用範圍（業主 2026-11-13 決定）：會員的「公開／隱藏」開關只管對外的公開頁，**不限制寰宇生態系內的 App**。業主在後台「平台設定」替這款 App 勾選可使用的欄位（含會員設為隱藏的，所有基本資料與 Amway 欄位都可以勾），不必再問會員。App 用 POST ${origin}/v1/apps/<app_id>/members/lookup 讀取（服務 Token；{"member_ids":[最多 50 個],"fields":["欄位代碼"],"use":"process 或 display"}），只能讀在這款 App 登入過的會員、只能讀被勾選的欄位（沒勾回 403 field_not_allowed）；use=process 是只在你們伺服器內處理，use=display 是顯示給生態系內其他會員看。限制：只取功能需要的欄位；只放記憶體或必要的短暫快取，不長期保存、不寫日誌與分析工具；不可轉給寰宇生態系以外的任何人；需要審核的 Amway 欄位（獎銜、中心）只有已審核的才會回傳；對外公開頁（不屬於生態系的訪客）仍然只顯示會員設為公開的欄位。中央每次讀取都有稽核（App、筆數、欄位名稱、用途；不含內容）。會員本人在 App 內看自己的資料，仍用會員自己的 Token 讀 GET /v1/me/profile、GET /v1/me/amway。`,
+    `   - 會員資料的使用範圍（業主 2026-11-13 決定）：會員的「公開／隱藏」開關只管對外的公開頁，**不限制寰宇生態系內的 App**。業主在後台「平台設定」替這款 App 勾選可使用的欄位（含會員設為隱藏的，所有基本資料與 Amway 欄位都可以勾），不必再問會員。App 用 POST ${origin}/v1/apps/<app_id>/members/lookup 讀取（服務 Token；{"member_ids":[最多 100 個，超過回 422],"fields":["欄位代碼"],"use":"process 或 display"}），只能讀在這款 App 登入過的會員、只能讀被勾選的欄位（沒勾回 403 field_not_allowed）；use=process 是只在你們伺服器內處理，use=display 是顯示給生態系內其他會員看。限制：只取功能需要的欄位；只放記憶體或必要的短暫快取，不長期保存、不寫日誌與分析工具；不可轉給寰宇生態系以外的任何人；需要審核的 Amway 欄位（獎銜、中心）只有已審核的才會回傳；對外公開頁（不屬於生態系的訪客）仍然只顯示會員設為公開的欄位。中央每次讀取都有稽核（App、筆數、欄位名稱、用途；不含內容）。會員本人在 App 內看自己的資料，仍用會員自己的 Token 讀 GET /v1/me/profile、GET /v1/me/amway。`,
+    `   - 批次查詢與上手欄位（2026-11-20.2 新增，例如課程報名名單顯示學員的上手白金、上手鑽石）：欄位代碼 upline_platinum（上手白金）、upline_diamond（上手鑽石），型態是文字（會員自己填的名字，不是會員 ID，沒有「待審核」狀態），沒填或會員沒開 Amway 專區就是 null。與其他欄位一樣要業主在後台「平台設定」替這款 App 勾選，沒勾回 403 field_not_allowed。一次最多 100 個 member_id（超過回 422），回傳的 members 依請求順序排列、同一個 id 只出現一次；查不到的（沒在這款 App 登入過、已停用或已刪除）不會讓整批失敗，只列在 not_found。每個 App 每分鐘最多 120 次呼叫（429，retry-after 60），100 筆的呼叫中央只做固定幾次資料庫查詢（不隨人數增加）。名單頁請只讀「目前這一頁」、匯出時分批，結果只放記憶體或短暫快取，不寫資料庫與日誌。`,
     "   - 測試環境：正式前一律用 staging（https://hglobal-id-staging.hglobal1985-static.workers.dev，兩個環境的會員、簽章金鑰、App 登記各自獨立）。網頁版來源只能登記 https 網址、回傳網址只能是自訂 scheme，所以 http://localhost 不能登記；手機用 Expo dev build 搭配已登記的深層連結，網頁用 https 預覽網址（請業主通知中央會員在 staging 補登記）。測試版 App 的共用登入鍵名建議用 hglobal.sso.staging，避免與正式版互相覆蓋。",
     "   - 深色模式：跟隨系統設定自動切換。配色以視覺規範 1.5 的深色色表為準；經業主明確核准保留自己配色的 App（目前：行動大學）除外，仍須跟隨系統、對比至少 4.5:1。",
     "   - 一律公開的欄位（暱稱、居住國家／地區、生命靈數九宮格，以及會員編號、頭像）：沒有填寫就不顯示；欄位定義的 visibility.configurable 為 false，畫面上仍顯示和其他欄位一樣的圓角方框與眼睛圖案「公開」，但不能按（沒有切換）；PUT /v1/me/profile/visibility 對這些欄位回 422 always_public。所有 Amway 欄位（直銷商培訓系統、地區教育中心、獎銜、推薦人、上手、皇冠大使）都有公開／隱藏切換，預設值看欄位定義的 visibility.default（皇冠大使預設隱藏，其餘預設公開）。暱稱欄位已刪除。",
@@ -211,7 +212,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "27. 新增職稱詞條（三、15）：只在伺服器用服務 token 送、只送 job_title、400 不重送、404／405／501／401／429／5xx 暫存重送；不寫死詞條、不讀寫會員自己的職稱。（2026-11-15.5 新增，沒有這類功能的 App 可略過）",
     "28. 獎銜與中心的申請審核（三、16）：只在審核人員本人開啟時即時讀取、不保存申請與名單；權限完全由中央判斷、任何非 200 都當沒有權限；處理前有確認步驟。（2026-11-17.1 新增）",
     "29. 審核時可修改後通過（三、16）：decision 的 value 只在 approve 時帶、用中央回傳的欄位格式；列表與處理回應的 member_id、field_key 只用來通知申請人，不保存；非 200（含 422、403）要把原因顯示給審核者並保留原本的畫面。（2026-11-20.1 新增）",
-    "29. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "30. 批次查詢與上手欄位（三、11）：一次最多 100 個 member_id、不自己拆成一人一次；依 members 的順序與 not_found 對應畫面；403／422／429 與逾時時顯示「未提供」、不影響其他功能；只讀目前這一頁、不存資料庫與日誌。（2026-11-20.2 新增）",
+    "31. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

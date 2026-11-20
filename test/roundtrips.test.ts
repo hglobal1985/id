@@ -7,6 +7,7 @@ import { createSession, upsertMemberByGoogle } from "../src/db/identity";
 import type { Env } from "../src/env";
 import { memberBriefs } from "../src/db/member-bulk";
 import { staffContextByToken } from "../src/db/staff";
+import { lookupMemberData } from "../src/db/member-data";
 
 const ISSUER = "https://id.test.example";
 let db: TestD1;
@@ -105,5 +106,22 @@ describe("database round trips do not grow with the number of rows", () => {
     expect(out.get(a.id)?.display_name).toBe("甲");
     expect(out.get(b.id)?.display_name).toBe("暱稱乙");
     expect(out.get("nobody")?.member).toBeNull();
+  });
+
+  it("members/lookup of 100 members takes a fixed few round trips (ADR 0032)", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 100; i++) {
+      const m = await member("l" + i, "學員" + i);
+      db.raw.prepare("INSERT INTO member_apps (member_id, app_id, first_seen_at, last_seen_at) VALUES (?, 'learn', 'x', 'x')").run(m.id);
+      db.raw.prepare("UPDATE members SET amway_enabled = 1 WHERE id = ?").run(m.id);
+      db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'upline_platinum', ?, NULL, 'not_required', 0, 'x')").run(m.id, JSON.stringify("白金" + i));
+      ids.push(m.id);
+    }
+    calls = 0;
+    const r = await lookupMemberData(counting(db), "learn", "display", ids, ["display_name", "member_number", "upline_platinum", "upline_diamond"], "req", now);
+    expect(r.members).toHaveLength(100);
+    expect(r.members[7]?.fields.upline_platinum).toBe("白金7");
+    expect(r.members[7]?.fields.upline_diamond).toBeNull();
+    expect(calls).toBeLessThanOrEqual(4); // one batch per part of the ids (2 parts) + the audit entry, never one query per member
   });
 });
