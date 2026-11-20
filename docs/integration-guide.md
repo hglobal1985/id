@@ -87,9 +87,13 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **符合度回報**：`GET /v1/apps/{app_id}/handoff?integrated=<版本>&standards=webhook,delete_copy,no_email_copy,snapshot_reconcile,least_scope`（只列已做到的），後台 App 清單顯示結果。
 
 ## 6.9 會員資料查詢（2026-11-13.1，ADR 0022）
-- `POST /v1/apps/{app_id}/members/lookup`，服務 Token；`{"member_ids":[≤50],"fields":["legal_name","rank",…],"use":"process"|"display"}` → `{"members":[{"member_id","fields":{…}}],"not_found":[…]}`。
+- `POST /v1/apps/{app_id}/members/lookup`，服務 Token；`{"member_ids":[≤100],"fields":["legal_name","rank",…],"use":"process"|"display"}` → `{"members":[{"member_id","fields":{…}}],"not_found":[…]}`。
 - 只能讀在該 App 登入過的會員、只能讀業主在後台勾選的欄位（含會員設為隱藏的）；沒勾回 `403 field_not_allowed`。需要審核的 Amway 欄位只回已審核的；非 Amway 會員的 Amway 欄位為 `null`。
 - 只取需要的欄位；不長期保存、不寫日誌與分析工具、不轉給寰宇生態系以外；中央每次稽核（App、筆數、欄位名稱、用途，不含內容）。對外公開頁仍然只顯示會員設為公開的欄位。
+- **批次與上手欄位（2026-11-20.2，ADR 0032）**：一次最多 **100** 個 `member_id`（超過 `422`）。`members` **依請求順序**、同一個 id 只出現一次；查不到的（沒在該 App 登入過、已停用、已刪除）列在 `not_found`，不會讓整批失敗。回傳形狀與以前相同（不改版）。
+- **上手欄位**：`upline_platinum`（上手白金）、`upline_diamond`（上手鑽石）：文字（會員自己填的名字，不是會員 ID）；沒有待審核狀態；沒填或會員沒開 Amway 專區為 `null`。與其他欄位一樣要業主在「平台設定」勾選，沒勾 `403 field_not_allowed`。
+- **頻率與效能**：每個 App 每分鐘 120 次（`429`，`retry-after: 60`）。單次 100 筆只做固定幾次資料庫查詢（不隨人數增加；`test/roundtrips.test.ts` 防退步）。實際牆鐘時間取決於 Worker 與資料庫的距離（見 ADR 0025），請以 staging／正式實測為準。
+- **App 端**：列表頁只讀目前這一頁、匯出分批讀；結果只放記憶體或短暫快取，不寫資料庫與日誌；失敗（403／422／429／逾時／5xx）顯示「未提供」，不影響其他功能。
 
 ## 6.10 頭銜與行業類別欄位（2026-11-15.1）
 - **頭銜**（`job_title`，2026-11-15 起標籤由「職稱」改稱「頭銜」，代碼不變）：`tags`（多項，最多 10 項、每項 ≤ 50 字）、預設公開、`profile.basic.write`；順序在「行業類別」之後、「公司／單位」之前。定義的 `suggest` 為 `job_title`，輸入時呼叫 `GET /v1/vocab/suggestions?pool=job_title&q=…` 顯示關聯詞。值是文字陣列：`PUT /v1/me/profile/fields/job_title`（`{"value":["經理"]}`）。輸入過的頭銜自動進詞庫，業主在後台「關聯詞」編輯、合併、刪除。

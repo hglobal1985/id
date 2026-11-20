@@ -283,7 +283,7 @@ describe("member data for Apps (hidden fields included)", () => {
     expect(((await (await lookup([m.id], ["legal_name"])).json()) as { members: unknown[] }).members).toEqual([]);
   });
 
-  it("a reviewed Amway field counts only once approved; a non-Amway member gets null; more than 50 ids are refused", async () => {
+  it("a reviewed Amway field counts only once approved; a non-Amway member gets null; more than 100 ids are refused", async () => {
     const { m, lookup, allow } = await setup();
     await allow(["rank", "education_center"]);
     db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'rank', '\"r03\"', NULL, 'not_required', 0, 'x')").run(m.id);
@@ -295,7 +295,54 @@ describe("member data for Apps (hidden fields included)", () => {
     db.raw.prepare("UPDATE members SET amway_enabled = 0 WHERE id = ?").run(m.id);
     r = (await (await lookup([m.id], ["rank"])).json()) as typeof r;
     expect(r.members[0]!.fields.rank).toBeNull();
-    expect((await lookup(Array.from({ length: 51 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`), ["rank"])).status).toBe(422);
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    expect((await lookup(ids(101), ["rank"])).status).toBe(422);
+    expect((await lookup(ids(100), ["rank"])).status).toBe(200); // 100 ids is the limit (ADR 0032)
+  });
+
+  it("batch of the 上手 fields (ADR 0032): request order, not-found never fails the batch, disabled members and non-Amway members are null or not found", async () => {
+    const { sa, m, lookup, allow } = await setup();
+    await allow(["display_name", "upline_platinum", "upline_diamond"]);
+    const a = await person("a", "甲");
+    const b = await person("b", "乙");
+    const off = await person("off", "未開 Amway");
+    const gone = await person("gone", "停用");
+    for (const x of [a, b, off, gone]) use(x);
+    for (const [x, plat, dia] of [[m, "白金一", "鑽石一"], [a, "白金甲", null], [b, null, "鑽石乙"], [gone, "白金停", "鑽石停"]] as const) {
+      db.raw.prepare("UPDATE members SET amway_enabled = 1 WHERE id = ?").run(x.id);
+      const ins = db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, ?, ?, NULL, 'not_required', 0, 'x')");
+      if (plat) ins.run(x.id, "upline_platinum", JSON.stringify(plat));
+      if (dia) ins.run(x.id, "upline_diamond", JSON.stringify(dia));
+    }
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'upline_platinum', '\"不該看到\"', NULL, 'not_required', 0, 'x')").run(off.id); // Amway switched off
+    await req(sa, "POST", `/v1/admin/members/${gone.id}/status`, { status: "disabled" });
+    const stranger = "00000000-0000-4000-8000-000000000999";
+    const r = (await (await lookup([b.id, stranger, m.id, off.id, gone.id, a.id, b.id], ["upline_platinum", "upline_diamond"], "display")).json()) as { members: { member_id: string; fields: Record<string, unknown> }[]; not_found: string[] };
+    expect(r.members.map((x) => x.member_id)).toEqual([b.id, m.id, off.id, a.id]); // request order, duplicates once
+    expect(r.members.map((x) => x.fields)).toEqual([
+      { upline_platinum: null, upline_diamond: "鑽石乙" },
+      { upline_platinum: "白金一", upline_diamond: "鑽石一" },
+      { upline_platinum: null, upline_diamond: null },
+      { upline_platinum: "白金甲", upline_diamond: null },
+    ]);
+    expect(r.not_found).toEqual([stranger, gone.id]);
+    const audit = JSON.stringify(db.raw.prepare("SELECT detail FROM audit_log WHERE action = 'members.lookup'").all());
+    expect(audit).toContain("upline_platinum");
+    expect(audit).not.toMatch(/白金|鑽石/);
+  });
+
+  it("a field the owner did not tick for the App is 403 field_not_allowed; the call is rate limited per App", async () => {
+    const { m, lookup, allow } = await setup();
+    await allow(["upline_platinum"]);
+    const r = await lookup([m.id], ["upline_platinum", "upline_diamond"]);
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ error: { code: "field_not_allowed", details: { fields: ["upline_diamond"] } } });
+    let n = 0;
+    env.RL_READ = { limit: async () => ({ success: ++n <= 1 }) };
+    expect((await lookup([m.id], ["upline_platinum"])).status).toBe(200);
+    const limited = await lookup([m.id], ["upline_platinum"]);
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBe("60");
   });
 
   it("the platform page lists every field with its group, and only a super admin can allow fields", async () => {

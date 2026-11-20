@@ -81,9 +81,10 @@ const memberDataRoute = createRoute({
   method: "post",
   path: "/v1/apps/{app_id}/members/lookup",
   tags: ["platform"],
-  summary: "Member data for up to 50 members who signed in to this App, hidden fields included (service token; only fields the owner allowed for the App)",
+  summary: "Member data for up to 100 members who signed in to this App, hidden fields included (service token; only fields the owner allowed for the App)",
   description:
-    "The member's 公開／隱藏 switch decides what the public page shows; it does not limit the Apps of the Hglobal ecosystem. Ask only for the fields the feature needs. `use` is `process` (handled inside your server) or `display` (shown to other members in the App). Do not store the values beyond what the feature needs, do not pass them to anyone outside the ecosystem. Each call is audited (App, count, field names, use; never values). Amway fields that need review are returned only once approved; members who are not Amway members get null for Amway fields.",
+    "The member's 公開／隱藏 switch decides what the public page shows; it does not limit the Apps of the Hglobal ecosystem. Ask only for the fields the feature needs. `use` is `process` (handled inside your server) or `display` (shown to other members in the App). Do not store the values beyond what the feature needs, do not pass them to anyone outside the ecosystem. Each call is audited (App, count, field names, use; never values). Amway fields that need review are returned only once approved; members who are not Amway members get null for Amway fields. " +
+    "`members` follow the order of `member_ids`; ids that are not found (not signed in to the App, disabled or deleted) are listed in `not_found` and never fail the call. At most 100 ids (more is 422) and 120 calls a minute per App (429, `retry-after` 60).",
   security: [{ bearer: [] }],
   request: {
     params: AppIdParam,
@@ -94,6 +95,7 @@ const memberDataRoute = createRoute({
     401: err("unauthenticated"),
     403: err("forbidden or field_not_allowed"),
     422: err("invalid_field"),
+    429: err("rate_limited"),
   },
 });
 
@@ -175,6 +177,11 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     if (appId !== c.req.valid("param").app_id) return c.json(errorBody("forbidden", "This credential belongs to another App", c.get("requestId")), 403) as never;
     const a = await getApp(c.env.DB, appId, deps.now());
     const { member_ids, fields, use } = c.req.valid("json") as { member_ids: string[]; fields: string[]; use: string };
+    // 120 calls a minute per App (each call up to 100 members); the App paginates and may keep a short in-memory cache.
+    if (!(await allowed(c.env.RL_READ, `svc-members:${appId}`))) {
+      c.header("retry-after", "60");
+      return c.json(errorBody("rate_limited", "Too many requests", c.get("requestId"), { retry_after: 60 }), 429) as never;
+    }
     const unknown = fields.filter((f) => !MEMBER_DATA_FIELDS.some((o) => o.key === f));
     if (unknown.length) return c.json(errorBody("invalid_field", "不認得的欄位", c.get("requestId"), { fields: unknown }), 422) as never;
     const denied = fields.filter((f) => !a?.member_data_fields.includes(f));
