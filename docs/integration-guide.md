@@ -119,6 +119,14 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **顯示標準**（完整內容在串接指令三、13，檢查清單 25）：會員抬頭裡緊貼獎銜標籤右邊；顯示高度 92、版面只佔頭像高度 48（上下各溢出約 22）；呼吸 1.1 倍／2.6 秒（只改大小）；4 顆星形閃光球（位置依圖案範圍比例，高度 72 為基準等比縮放）；「減少動態效果」時只顯示靜態徽章；無徽章或載入失敗整塊不顯示。
 - App 不自己存圖庫、不自己新增徽章；新增獎銜時由業主在中央後台「獎銜徽章」上傳。
 
+## 6.16 在 App 內指派職務（2026-11-21.1，ADR 0033）
+給需要讓管理者直接在 App 內指定會員擔任審核員、會長、課務、音控、票務、活動的 App（例如行動大學）。
+- `GET /v1/eligibility/staff`：不帶 `q` ＝ 有職務的會員（最多 200）；帶 `q`（2–30 字）＝ 搜尋顯示名稱含關鍵字的啟用會員（最多 20），有沒有職務都找得到。回 `{assignable_roles:[{role,label}], members:[{member_id, display_name, roles:[{role,label,assignable}]}]}`。
+- `PUT /v1/eligibility/staff/{member_id}`，body `{"roles":["sound","course"]}`：`roles` 是事後應有的可指派職務完整清單（空陣列＝全部移除）。回 `{member_id, roles:[…事後全部職務], changed}`。
+- 呼叫者本人的 App 會員 Token（`amway.read`）。**誰可用由中央判斷**：與後台相同的 `staff.manage`（目前只有超級管理員），否則 `403`；業主要替 App 勾 `display_name`，否則 `403 field_not_allowed`。
+- **可指派**：`reviewer`、`president`、`course`、`sound`、`ticket`、`activity`。`super_admin`、`secretary` 只能在中央後台設定：帶了 `422`，對象原本的這兩種職務與額外權限不動。只能給出自己權限涵蓋的職務（`403`）；對象不存在或已停用 `404`。
+- 每次查詢與指派都稽核（呼叫者、App、對象、職務變化；不記搜尋字與姓名）。App 只在管理者本人開啟時即時讀取、不保存名單；非 200 當作沒有權限；指派前要確認。
+
 ## 6.14 獎銜與中心的申請審核（2026-11-17.1，ADR 0030；修改後通過 2026-11-20.1，ADR 0031）
 給需要讓審核人員在 App 內看到並處理中央「獎銜、教育中心」新申請的 App（例如行動大學通知頁的「審核」分類）。
 - `GET /v1/eligibility/reviews`、`POST /v1/eligibility/reviews/{id}/decision`（body `{"decision":"approve"|"reject"}`）：呼叫者本人的 App 會員 Token（`amway.read`）。

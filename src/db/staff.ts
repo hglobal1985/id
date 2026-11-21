@@ -34,7 +34,7 @@ export async function listStaff(db: D1Database): Promise<{ member_id: string; ro
 }
 
 /** Replaces a member's positions and extra permissions. Returns false if this would leave no super admin. */
-export async function setRoles(db: D1Database, memberId: string, roles: Role[], grants: Grant[], by: string, requestId: string, now: Date): Promise<boolean> {
+export async function setRoles(db: D1Database, memberId: string, roles: Role[], grants: Grant[], by: string, requestId: string, now: Date, appId: string | null = null): Promise<boolean> {
   const before = await rolesOf(db, memberId);
   const beforeGrants = await grantsOfMember(db, memberId);
   if (before.includes("super_admin") && !roles.includes("super_admin")) {
@@ -48,7 +48,7 @@ export async function setRoles(db: D1Database, memberId: string, roles: Role[], 
     db.prepare("DELETE FROM staff_grants WHERE member_id = ?").bind(memberId),
     ...roles.map((r) => db.prepare("INSERT INTO staff_roles (member_id, role, granted_at, granted_by) VALUES (?, ?, ?, ?)").bind(memberId, r, ts, by)),
     ...grants.map((x) => db.prepare("INSERT INTO staff_grants (member_id, permission, scope, granted_at, granted_by) VALUES (?, ?, ?, ?, ?)").bind(memberId, x.permission, x.scope, ts, by)),
-    auditStatement(db, { actorType: "staff", actorId: by, action: "staff.roles.set", targetType: "member", targetId: memberId, result: "success", requestId, detail: { before: before.join(","), after: roles.join(","), grants_before: key(beforeGrants), grants_after: key(grants) } }, now),
+    auditStatement(db, { actorType: "staff", actorId: by, action: "staff.roles.set", targetType: "member", targetId: memberId, result: "success", appId, requestId, detail: { before: before.join(","), after: roles.join(","), grants_before: key(beforeGrants), grants_after: key(grants) } }, now),
   ]);
   return true;
 }

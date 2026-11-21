@@ -3912,6 +3912,175 @@
         }
       }
     },
+    "/v1/eligibility/staff": {
+      "get": {
+        "tags": [
+          "eligibility"
+        ],
+        "summary": "Members with positions, or (with q) a name search among active members, for the person who may manage positions. The caller's own member token; never a service token.",
+        "description": "Who may call: a member signed in to an App who holds the permission `staff.manage` (today the 超級管理員; the same rule as the back office). Anyone else gets 403. Without `q`: every member who has a position (at most 200). With `q` (2–30 characters): active members whose display name contains it (at most 20), whether or not they have a position. Returns the member_id, the display name and the positions; no email, phone, member number or Amway field. The calling App must have `display_name` ticked for it in the back office (ADR 0022). Every call is audited (caller, App, count; never the search text or names).",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden / field_not_allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/eligibility/staff/{member_id}": {
+      "put": {
+        "tags": [
+          "eligibility"
+        ],
+        "summary": "Set which general positions a member has (審核員、會長、課務、音控、票務、活動). Same permission as the list.",
+        "description": "`roles` is the complete list of assignable positions the member should have afterwards (an empty list removes them all). Positions an App may not touch (超級管理員、總部秘書) and the member's extra permissions stay exactly as they are; a role outside the assignable list is 422. A caller can only hand out positions whose permissions the caller holds (403). Only active members can be changed (404 otherwise). Every change is audited with the App; the 200 shows the member's positions afterwards and `changed`.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "required": true,
+            "name": "member_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 20
+                    },
+                    "maxItems": 20
+                  }
+                },
+                "required": [
+                  "roles"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden / field_not_allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/eligibility/check": {
       "post": {
         "tags": [
