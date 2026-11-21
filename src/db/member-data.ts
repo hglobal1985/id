@@ -3,14 +3,17 @@
 // members who signed in to that App. Every call is audited (App, count, field NAMES, use; never values).
 import { getAmwayField } from "../amway/fields";
 import { getFieldDefinition } from "../profile/definitions";
-import { AMWAY_ROW_COLUMNS, toFieldRow, type FieldRow, type FieldRowRaw } from "./amway";
+import { AMWAY_ROW_COLUMNS, listOptions, toFieldRow, type FieldRow, type FieldRowRaw } from "./amway";
+import { badgeInfo, listBadges } from "./rank-badges";
 import { auditStatement } from "./audit";
 import { MEMBER_DATA_KEYS } from "../apps/data-fields";
 import { publicId } from "../profile/member-number";
 
 export const MEMBER_LOOKUP_MAX = 100;
 
-export type MemberData = { member_id: string; fields: Record<string, unknown> };
+export type RankBadge = { badge_url: string; badge: { width: number; height: number; art_top: number; art_bottom: number } };
+/** `rank_label` and `rank_badge` are present only when `rank` was asked for (ADR 0034): null when the member has no approved rank or the rank has no picture. */
+export type MemberData = { member_id: string; fields: Record<string, unknown>; rank_label?: string | null; rank_badge?: RankBadge | null };
 
 const parse = (s: string | null): unknown => {
   try {
@@ -25,12 +28,16 @@ const parse = (s: string | null): unknown => {
  * D1 allows 100 bound parameters per statement, so the members are taken in parts sized to leave room for the field keys.
  * `members` follow the order of the request; ids that are not found (not signed in to the App, disabled, deleted) are in `not_found`.
  */
-export async function lookupMemberData(db: D1Database, appId: string, use: string, ids: string[], fields: string[], requestId: string, now: Date): Promise<{ members: MemberData[]; not_found: string[] }> {
+export async function lookupMemberData(db: D1Database, appId: string, use: string, ids: string[], fields: string[], requestId: string, now: Date, issuer = ""): Promise<{ members: MemberData[]; not_found: string[] }> {
   const unique = [...new Set(ids)];
   const profileKeys = fields.filter((k) => k !== "avatar" && k !== "member_number" && !getAmwayField(k));
   const amwayKeys = fields.filter((k) => getAmwayField(k));
   const part = Math.max(1, 95 - profileKeys.length);
   const byId = new Map<string, MemberData>();
+  // Rank wording and badge picture come along (service tokens cannot read /v1/amway/field-definitions): two small queries per call, not per member.
+  const wantRank = fields.includes("rank");
+  const [rankLabels, rankBadges] = wantRank ? await Promise.all([listOptions(db), listBadges(db)]) : [null, null];
+  const rankOf = (v: unknown): string | null => (typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : null);
   for (let i = 0; i < unique.length; i += part) {
     const chunk = unique.slice(i, i + part);
     const q = chunk.map(() => "?").join(",");
@@ -88,7 +95,14 @@ export async function lookupMemberData(db: D1Database, appId: string, use: strin
         // A field that needs review counts only once approved (fail closed); the others are returned as they are.
         out[k] = row && (getAmwayField(k)?.review === "never" || row.value_approved) ? row.value : null;
       }
-      byId.set(m.id, { member_id: m.id, fields: out });
+      const entry: MemberData = { member_id: m.id, fields: out };
+      if (wantRank) {
+        const code = rankOf(out.rank);
+        const b = code ? rankBadges?.get(code) : undefined;
+        entry.rank_label = code ? ((rankLabels?.get("rank") ?? []).find((o) => o.value === code)?.label ?? null) : null;
+        entry.rank_badge = b ? (badgeInfo(issuer, b) as RankBadge) : null;
+      }
+      byId.set(m.id, entry);
     }
   }
   const members = unique.flatMap((id) => byId.get(id) ?? []);

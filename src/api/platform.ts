@@ -91,7 +91,7 @@ const memberDataRoute = createRoute({
     body: { required: true, content: json(z.object({ member_ids: z.array(z.string().uuid()).min(1).max(MEMBER_LOOKUP_MAX), fields: z.array(z.string().max(40)).min(1).max(60), use: z.enum(DATA_USES) })) },
   },
   responses: {
-    200: { description: "Members", content: json(z.object({ members: z.array(z.object({ member_id: z.string(), fields: z.record(z.unknown()) })), not_found: z.array(z.string()) }).openapi("MemberDataLookup")) },
+    200: { description: "Members", content: json(z.object({ members: z.array(z.object({ member_id: z.string(), fields: z.record(z.unknown()), rank_label: z.string().nullable().optional().openapi({ description: "Only when `rank` is in `fields`: the Chinese wording of the member's approved rank (same text as GET /v1/amway/field-definitions rank.options), or null." }), rank_badge: z.object({ badge_url: z.string(), badge: z.object({ width: z.number(), height: z.number(), art_top: z.number(), art_bottom: z.number() }) }).nullable().optional().openapi({ description: "Only when `rank` is in `fields`: the badge picture (public absolute address and canvas geometry), or null when the rank has none." }) })), not_found: z.array(z.string()) }).openapi("MemberDataLookup")) },
     401: err("unauthenticated"),
     403: err("forbidden or field_not_allowed"),
     422: err("invalid_field"),
@@ -187,7 +187,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     const denied = fields.filter((f) => !a?.member_data_fields.includes(f));
     if (!a || denied.length) return c.json(errorBody("field_not_allowed", "這些欄位沒有獲得業主授權", c.get("requestId"), { fields: denied }), 403) as never;
     c.header("cache-control", "no-store");
-    return c.json(await lookupMemberData(c.env.DB, appId, use, member_ids, [...new Set(fields)], c.get("requestId"), deps.now()), 200);
+    return c.json(await lookupMemberData(c.env.DB, appId, use, member_ids, [...new Set(fields)], c.get("requestId"), deps.now(), resolveIssuer(c.env, c.req.url)), 200);
   });
 
   app.openapi(platformRoute, async (c) => {
