@@ -263,7 +263,7 @@ describe("member data for Apps (hidden fields included)", () => {
     expect((await allow(["legal_name", "phone", "education_system", "rank"])).status).toBe(200);
     r = await lookup([m.id], ["legal_name", "phone", "education_system", "rank"], "display");
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ members: [{ member_id: m.id, fields: { legal_name: "王小明", phone: "+886912345678", education_system: "其他體系", rank: null } }], not_found: [] });
+    expect(await r.json()).toEqual({ members: [{ member_id: m.id, fields: { legal_name: "王小明", phone: "+886912345678", education_system: "其他體系", rank: null }, rank_label: null, rank_badge: null }], not_found: [] });
     // a field the owner did not allow is still refused, and unknown fields are invalid
     expect((await lookup([m.id], ["birthday"])).status).toBe(403);
     expect((await lookup([m.id], ["nope"])).status).toBe(422);
@@ -295,6 +295,12 @@ describe("member data for Apps (hidden fields included)", () => {
     db.raw.prepare("UPDATE members SET amway_enabled = 0 WHERE id = ?").run(m.id);
     r = (await (await lookup([m.id], ["rank"])).json()) as typeof r;
     expect(r.members[0]!.fields.rank).toBeNull();
+    // rank_label / rank_badge come with rank (ADR 0034)
+    db.raw.prepare("UPDATE members SET amway_enabled = 1 WHERE id = ?").run(m.id);
+    const withRank = (await (await lookup([m.id], ["rank"], "display")).json()) as { members: { rank_label: string | null; rank_badge: unknown }[] };
+    expect(withRank.members[0]!.rank_label).toEqual(expect.any(String));
+    expect(withRank.members[0]!).toHaveProperty("rank_badge");
+    db.raw.prepare("UPDATE members SET amway_enabled = 0 WHERE id = ?").run(m.id);
     const ids = (n: number) => Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
     expect((await lookup(ids(101), ["rank"])).status).toBe(422);
     expect((await lookup(ids(100), ["rank"])).status).toBe(200); // 100 ids is the limit (ADR 0032)

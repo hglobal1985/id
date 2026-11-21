@@ -1,0 +1,15 @@
+# ADR 0034：members/lookup 帶回獎銜名稱與獎章圖
+
+日期：2026-11-21　狀態：採用（行動大學公開清單分享者名片需求）
+
+## 背景
+行動大學的公開清單要在「分享者名片」顯示清單主人的獎銜與獎章圖。後端只有服務 Token；`GET /v1/amway/field-definitions` 需要會員 token 的 `amway.read`，服務 Token 讀不了。
+
+## 決定
+- `rank` 本來就是可勾選的會員資料欄位（ADR 0022）：業主在後台「平台設定」替 App 勾選才可讀，沒勾回 403 `field_not_allowed`；`use` 用 `display`（顯示給其他人看）是正確的。
+- `fields.rank` 值格式不變：選項代碼字串（例如 `r03`、`none`）；獎銜須已審核通過，會員沒開 Amway 專區則為 null。
+- **新增**：`fields` 含 `rank` 時，每位會員多兩個欄位 `rank_label`（中文名稱）與 `rank_badge`（`badge_url`＋`badge{width,height,art_top,art_bottom}`），沒有則 null。只加欄位、不改既有形狀，仍是 `/v1`。成本是每次呼叫多 2 個小查詢（不隨人數增加）。
+- 不需要額外 scope；同意方式維持 ADR 0022（公開／隱藏只管公開頁）。建議 App 自己在分享前讓會員勾選同意。
+
+## 後果
+串接指令 `2026-11-21.2`、`docs/integration-guide.md` 6.7、OpenAPI 更新；不新增資料表。

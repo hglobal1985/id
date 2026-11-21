@@ -1475,6 +1475,52 @@
                 "fields": {
                   "type": "object",
                   "additionalProperties": {}
+                },
+                "rank_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Only when `rank` is in `fields`: the Chinese wording of the member's approved rank (same text as GET /v1/amway/field-definitions rank.options), or null."
+                },
+                "rank_badge": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "badge_url": {
+                      "type": "string"
+                    },
+                    "badge": {
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "type": "number"
+                        },
+                        "art_top": {
+                          "type": "number"
+                        },
+                        "art_bottom": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "width",
+                        "height",
+                        "art_top",
+                        "art_bottom"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "badge_url",
+                    "badge"
+                  ],
+                  "description": "Only when `rank` is in `fields`: the badge picture (public absolute address and canvas geometry), or null when the rank has none."
                 }
               },
               "required": [
