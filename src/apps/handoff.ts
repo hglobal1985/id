@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-20.2";
-export const HANDOFF_UPDATED = "2026-11-20 15:30（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-21.1";
+export const HANDOFF_UPDATED = "2026-11-21 22:50（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -166,6 +166,12 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 修改後通過（2026-11-20.1 新增）：POST .../decision 的 body 可以多帶選填的 value，例如 {\"decision\":\"approve\",\"value\":\"新竹 122\"}；格式與欄位定義相同（文字，或 {option, custom_text}），中央伺服器驗證。只有 approve 可以帶 value，reject 帶 value 回 422；value 不合規則（不在選項內、空白、過長）回 422；只能修改 education_system、education_center、rank 三個欄位。",
     "   - 修改後的規則：帶了與申請不同的 value 就以 value 核准，回應 modified 為 true；申請人的通知會寫明「經審核者修改後通過」。中央把「原申請值」與「修改後的值」記在這筆申請上，稽核紀錄只記「有修改」與審核者、不記欄位的值。權限規則與一般處理相同；只有自己中心權限的審核員不能把中心改成別的中心（回 403）。",
     "   - App 端規則：只在審核人員本人開啟時即時向中央讀取、不保存申請內容與名單、不寫進日誌；顯示前不要自行判斷權限，任何非 200 一律當作沒有權限；處理前要有確認步驟（修改後通過要讓審核者看到改了什麼）。",
+    "17. 在 App 內指派職務（平台功能，業主 2026-11-21；給需要讓管理者直接在 App 內指定會員擔任審核員、會長、課務、音控、票務、活動的 App，例如行動大學）：",
+    `   - 查人：GET ${origin}/v1/eligibility/staff（不帶 q ＝ 目前有職務的會員，最多 200 筆；帶 q=姓名關鍵字，2 到 30 字 ＝ 搜尋顯示名稱含關鍵字的啟用會員，最多 20 筆，有沒有職務都找得到）。回傳 {assignable_roles:[{role,label}], members:[{member_id, display_name, roles:[{role,label,assignable}]}]}。q 太短或太長回 422。`,
+    `   - 指派：PUT ${origin}/v1/eligibility/staff/{member_id}，body {"roles":["sound","course"]}。roles 是這位會員「事後應有的可指派職務」完整清單，空陣列＝全部移除。回應 {member_id, roles:[{role,label,assignable}], changed}（roles 是事後全部職務）。`,
+    "   - 都用呼叫者本人在這款 App 的會員 Access Token（需要 amway.read）；不可用服務 token。誰可以用由中央判斷（與中央後台「指派職務與權限」相同的權限 staff.manage，目前只有超級管理員），沒有權限回 403；業主要在後台「平台設定」替這款 App 勾選 display_name，否則回 403 field_not_allowed。",
+    "   - 可指派的職務只有：reviewer（審核員）、president（會長）、course（課務）、sound（音控）、ticket（票務）、activity（活動）。super_admin（超級管理員）與 secretary（總部秘書）只能在中央後台設定：帶了回 422，被指派者原本的這兩種職務不會被動到；額外權限也不會被動到。呼叫者只能給出自己權限涵蓋的職務（否則 403）；對象不存在或已停用回 404。",
+    "   - 每次查詢與指派中央都有稽核（呼叫者、App、對象、職務變化；不記搜尋字與姓名）。App 端規則：只在管理者本人開啟時即時讀取、不保存名單與搜尋字、不寫日誌；顯示前不要自行判斷權限，任何非 200 一律當作沒有權限；指派與移除前要有確認步驟；成功後以回應的 roles 更新畫面。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報業主（移除機密需要業主核准，不要自己刪）。",
@@ -213,7 +219,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "28. 獎銜與中心的申請審核（三、16）：只在審核人員本人開啟時即時讀取、不保存申請與名單；權限完全由中央判斷、任何非 200 都當沒有權限；處理前有確認步驟。（2026-11-17.1 新增）",
     "29. 審核時可修改後通過（三、16）：decision 的 value 只在 approve 時帶、用中央回傳的欄位格式；列表與處理回應的 member_id、field_key 只用來通知申請人，不保存；非 200（含 422、403）要把原因顯示給審核者並保留原本的畫面。（2026-11-20.1 新增）",
     "30. 批次查詢與上手欄位（三、11）：一次最多 100 個 member_id、不自己拆成一人一次；依 members 的順序與 not_found 對應畫面；403／422／429 與逾時時顯示「未提供」、不影響其他功能；只讀目前這一頁、不存資料庫與日誌。（2026-11-20.2 新增）",
-    "31. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "31. 在 App 內指派職務（三、17）：只有中央判斷有權限的人才顯示入口、任何非 200 都當沒有權限；只提供六種一般職務的選項（用 assignable_roles，不寫死）；指派／移除前有確認；不保存名單與搜尋字；403／404／422 把原因顯示給管理者。（2026-11-21.1 新增）",
+    "32. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

@@ -15,6 +15,7 @@ import { getApp } from "../db/apps";
 import { listTerms } from "../db/vocab";
 import { auditStatement } from "../db/audit";
 import { registerAppReviewRoutes } from "./app-reviews";
+import { registerAppStaffRoutes } from "./app-staff";
 import { approvedCenterOf, decodeCursor, encodeCursor, listCenterMembers } from "../db/center-members";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
@@ -130,6 +131,7 @@ const centerMembersRoute = createRoute({
 export function registerEligibilityRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   app.use("/v1/eligibility/*", bearerAuth(deps));
   registerAppReviewRoutes(app, deps);
+  registerAppStaffRoutes(app, deps);
 
   app.openapi(checkRoute, async (c) => {
     const denied = missingScope(c, ["amway.read"]);
