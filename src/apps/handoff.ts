@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-22.2";
-export const HANDOFF_UPDATED = "2026-11-22 08:10（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-22.3";
+export const HANDOFF_UPDATED = "2026-11-22 08:40（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -22,6 +22,17 @@ export function isUpToDate(reported: string | null | undefined): boolean {
   return reported === HANDOFF_VERSION;
 }
 
+/** Public address of this App's full instruction text (plain text, always the latest version). */
+export const handoffUrl = (app: AppEntry, origin: string): string => `${origin}/handoff/${app.app_id}`;
+
+/** The few lines the owner pastes to the App's AI instead of the whole text: it reads the address itself. */
+export function buildHandoffPointer(app: AppEntry, origin: string): string {
+  return [
+    `請讀取這份串接指令並完全照做（永遠是最新版）：${handoffUrl(app, origin)}`,
+    "讀不到網址時請告訴我，不要憑記憶做。若這款 App 已經串接過，只補差異，不要整份重做。",
+  ].join("\n");
+}
+
 /**
  * The instruction the owner pastes to the AI that builds an App. `origin` is this central member system's
  * address (https://id.hglobal1985.com in production).
@@ -32,6 +43,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
   const deep = app.return_urls[0] ?? `${id.replace(/-/g, "")}://auth/google`;
   const lines = [
     `【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`,
+    `這份指令的最新版永遠在 ${handoffUrl(app, origin)}（純文字、公開、沒有金鑰）；更新時請重新讀取這個網址，不要依賴舊的貼上內容。`,
     `你是 H-Global1985 App「${app.name}」的開發者 AI。H-Global1985 中央會員系統（以下稱「中央會員」）已經替這款 App 登記完成，請照下面的資料串接。不需要、也不可以修改中央會員的程式碼、資料庫或設定。`,
     "如果這款 App 已經串接過：不要重做。請直接跳到「六、已串接 App 的更新檢查清單」，逐項檢查現有程式，只補上缺少或過時的部分，開 PR 後回報差異。",
     "",

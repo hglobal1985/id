@@ -75,7 +75,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **獎銜「無」**：選項（含「無」）來自 `GET /v1/amway/field-definitions` 的 `rank.options`；會員值 `fields.rank.value` 為 `null` 或 `"none"` 都代表「無」。對「無」顯示什麼文字由各 App 決定。
 - **會員資料的使用範圍**：會員的「公開／隱藏」只管對外公開頁，不限制寰宇生態系內的 App；業主在後台替每款 App 勾選可用欄位（含隱藏的），App 用 `POST /v1/apps/{app_id}/members/lookup` 讀取（見 6.8、ADR 0022）。
 - **獎銜與獎章圖（2026-11-22.2）**：`members/lookup` 的 `fields` 含 `rank` 時，每位會員多回 `rank_label`（中文名稱）與 `rank_badge`（`badge_url` 與 `badge` 幾何），服務 Token 不必再讀 `field-definitions`；業主在後台勾選 `rank` 才可用（見 ADR 0034）。
-- **深色模式**：跟隨系統，配色依視覺規範 1.5；業主核准的例外才可保留自己的配色。
+- **串接指令放在雲端（2026-11-22.3）**：完整指令固定公開在 `https://id.hglobal1985.com/handoff/<app_id>`（純文字、永遠最新、沒有金鑰）。交接時只要貼「請讀這個網址並照做」那幾行（後台「給開發 AI 的串接指令」頁最上面有複製鈕），不必貼整份；AI 更新時重新讀取網址、只補差異（ADR 0035）。\n- **深色模式**：跟隨系統，配色依視覺規範 1.5；業主核准的例外才可保留自己的配色。
 - **測試環境**：正式前用 staging（`https://hglobal-id-staging.hglobal1985-static.workers.dev`，會員、金鑰、App 登記獨立）。`http://localhost` 不能登記；手機用已登記的深層連結，網頁用 https 預覽網址。測試版共用登入鍵名建議 `hglobal.sso.staging`。
 - **新規範流程**：任何新規範先寫進串接指令與更新檢查清單並升版，各 App 只補差異（見 `AGENTS.md`「平台規範」）。
 

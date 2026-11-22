@@ -6,7 +6,7 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definitionFromForm, type AppEntry } from "../apps/registry";
-import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, isUpToDate } from "../apps/handoff";
+import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, buildHandoffPointer, handoffUrl, isUpToDate } from "../apps/handoff";
 import { APP_STANDARDS, appChecks, appStats, getApp, isAppWebOrigin, listApps, readStoredApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
 import { rolesOf } from "../db/staff";
 import { can, type Permission } from "../admin/roles";
@@ -268,6 +268,14 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (d) return d as never;
     const a = await getApp(c.env.DB, c.req.valid("param").app_id, deps.now());
     if (!a) return notFound(c);
-    return c.json({ app_id: a.app_id, version: HANDOFF_VERSION, updated: HANDOFF_UPDATED, text: buildHandoff(a, resolveIssuer(c.env, c.req.url)) }, 200);
+    const origin = resolveIssuer(c.env, c.req.url);
+    return c.json({ app_id: a.app_id, version: HANDOFF_VERSION, updated: HANDOFF_UPDATED, url: handoffUrl(a, origin), pointer_text: buildHandoffPointer(a, origin), text: buildHandoff(a, origin) }, 200);
+  });
+
+  // Public, plain text, no key in it (ADR 0035): the App's AI reads it by address, so the owner pastes only a few lines.
+  app.get("/handoff/:app_id{[a-z0-9-]{1,32}}", async (c) => {
+    const a = await getApp(c.env.DB, c.req.param("app_id"), deps.now());
+    if (!a) return c.text("Unknown app", 404, { "cache-control": "no-store" });
+    return c.text(buildHandoff(a, resolveIssuer(c.env, c.req.url)), 200, { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60" });
   });
 }
