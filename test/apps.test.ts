@@ -167,7 +167,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-22.2", digest: "cd58df6a008745ed" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-22.3", digest: "f3c64b23afdf75d8" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -418,6 +418,24 @@ describe("back office", () => {
     expect(t2.scope).toBe(APP_SCOPES.join(" "));
     expect((await post("/v1/eligibility/check", { rule: { audience: "everyone" } }, bearer(t2.access_token))).status).toBe(200);
     expect((await admin(sa, "PUT", "/v1/admin/apps/nope", { name: "x" })).status).toBe(404);
+  });
+
+  it("the full instructions are public plain text at /handoff/<app_id> (no sign-in, no key); admin gets the short pointer (ADR 0035)", async () => {
+    const r = await get("/handoff/learn");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/plain");
+    const text = await r.text();
+    expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
+    expect(text).toContain(`${ISSUER}/handoff/learn`);
+    expect(text).not.toMatch(/client_secret\s*[:=]\s*\S{20,}/);
+    expect((await get("/handoff/nope")).status).toBe(404);
+    expect((await get("/handoff/Bad_Id")).status).toBe(404);
+    const sa = await staff("sa-ptr", ["super_admin"]);
+    const a = (await (await admin(sa, "GET", "/v1/admin/apps/learn/handoff")).json()) as { url: string; pointer_text: string; text: string };
+    expect(a.url).toBe(`${ISSUER}/handoff/learn`);
+    expect(a.pointer_text).toContain(a.url);
+    expect(a.pointer_text.length).toBeLessThan(300);
+    expect(a.text).toBe(text);
   });
 
   it("the App's own admin page reads the newest instructions and reports its version (super admin, own App only)", async () => {
