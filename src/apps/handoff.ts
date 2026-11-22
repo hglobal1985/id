@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-22.1";
-export const HANDOFF_UPDATED = "2026-11-22 07:55（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-22.2";
+export const HANDOFF_UPDATED = "2026-11-22 08:10（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -89,7 +89,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 獎銜「無」：獎銜選項（含「無」）一律來自 GET /v1/amway/field-definitions 的 rank.options，不要自己複製或寫死。會員的值在 GET /v1/me/amway 的 fields.rank.value：null（從未填寫）與 \"none\"（選了「無」）兩種都代表「無」，App 要一視同仁；各 App 對「無」要顯示什麼文字由該 App 自己決定，不要回寫中央會員。",
     `   - 會員資料的使用範圍（業主 2026-11-13 決定）：會員的「公開／隱藏」開關只管對外的公開頁，**不限制寰宇生態系內的 App**。業主在後台「平台設定」替這款 App 勾選可使用的欄位（含會員設為隱藏的，所有基本資料與 Amway 欄位都可以勾），不必再問會員。App 用 POST ${origin}/v1/apps/<app_id>/members/lookup 讀取（服務 Token；{"member_ids":[最多 100 個，超過回 422],"fields":["欄位代碼"],"use":"process 或 display"}），只能讀在這款 App 登入過的會員、只能讀被勾選的欄位（沒勾回 403 field_not_allowed）；use=process 是只在你們伺服器內處理，use=display 是顯示給生態系內其他會員看。限制：只取功能需要的欄位；只放記憶體或必要的短暫快取，不長期保存、不寫日誌與分析工具；不可轉給寰宇生態系以外的任何人；需要審核的 Amway 欄位（獎銜、中心）只有已審核的才會回傳；對外公開頁（不屬於生態系的訪客）仍然只顯示會員設為公開的欄位。中央每次讀取都有稽核（App、筆數、欄位名稱、用途；不含內容）。會員本人在 App 內看自己的資料，仍用會員自己的 Token 讀 GET /v1/me/profile、GET /v1/me/amway。`,
     `   - 批次查詢與上手欄位（2026-11-20.2 新增，例如課程報名名單顯示學員的上手白金、上手鑽石）：欄位代碼 upline_platinum（上手白金）、upline_diamond（上手鑽石），型態是文字（會員自己填的名字，不是會員 ID，沒有「待審核」狀態），沒填或會員沒開 Amway 專區就是 null。與其他欄位一樣要業主在後台「平台設定」替這款 App 勾選，沒勾回 403 field_not_allowed。一次最多 100 個 member_id（超過回 422），回傳的 members 依請求順序排列、同一個 id 只出現一次；查不到的（沒在這款 App 登入過、已停用或已刪除）不會讓整批失敗，只列在 not_found。每個 App 每分鐘最多 120 次呼叫（429，retry-after 60），100 筆的呼叫中央只做固定幾次資料庫查詢（不隨人數增加）。名單頁請只讀「目前這一頁」、匯出時分批，結果只放記憶體或短暫快取，不寫資料庫與日誌。`,
-    `   - 獎銜與獎章圖（2026-11-22.1 新增，例如公開清單上的分享者名片）：服務 Token 讀不了 GET /v1/amway/field-definitions（那支要會員的 amway.read），所以 members/lookup 的 fields 含 "rank" 時，每位會員會多回 rank_label（獎銜中文名稱，沒有已審核的獎銜為 null）與 rank_badge（{badge_url, badge:{width,height,art_top,art_bottom}}，該獎銜沒有圖為 null）；fields.rank 仍是選項代碼字串（例如 "r03"、"none"）。要業主在後台「平台設定」替這款 App 勾選 rank；沒勾回 403 field_not_allowed。獎章圖直接用 badge_url 顯示，不要自己存圖。會員沒開 Amway 專區或獎銜尚未審核通過時 fields.rank、rank_label、rank_badge 都是 null。是否顯示由 App 自己的畫面決定（建議讓會員在分享前勾選同意顯示）。`,
+    `   - 獎銜與獎章圖（2026-11-22.1 新增，例如公開清單上的分享者名片）：服務 Token 讀不了 GET /v1/amway/field-definitions（那支要會員的 amway.read），所以 members/lookup 的 fields 含 "rank" 時，每位會員會多回 rank_label（獎銜中文名稱，沒有已審核的獎銜為 null）與 rank_badge（{badge_url, badge:{width,height,art_top,art_bottom}}，該獎銜沒有圖為 null）；fields.rank 仍是選項代碼字串（例如 "r03"、"none"）。要業主在後台「平台設定」替這款 App 勾選 rank；沒勾回 403 field_not_allowed。獎章圖直接用 badge_url 顯示，不要自己存圖。會員沒開 Amway 專區或獎銜尚未審核通過時 fields.rank、rank_label、rank_badge 都是 null。業主 2026-11-22 決定：顯示他人名片的獎銜與獎章圖，不需要會員在分享前另外勾選同意，App 不要加這種勾選；是否顯示由 App 自己的畫面決定。`,
     "   - 測試環境：正式前一律用 staging（https://hglobal-id-staging.hglobal1985-static.workers.dev，兩個環境的會員、簽章金鑰、App 登記各自獨立）。網頁版來源只能登記 https 網址、回傳網址只能是自訂 scheme，所以 http://localhost 不能登記；手機用 Expo dev build 搭配已登記的深層連結，網頁用 https 預覽網址（請業主通知中央會員在 staging 補登記）。測試版 App 的共用登入鍵名建議用 hglobal.sso.staging，避免與正式版互相覆蓋。",
     "   - 深色模式：跟隨系統設定自動切換。配色以視覺規範 1.5 的深色色表為準；經業主明確核准保留自己配色的 App（目前：行動大學）除外，仍須跟隨系統、對比至少 4.5:1。",
     "   - 一律公開的欄位（暱稱、居住國家／地區、生命靈數九宮格，以及會員編號、頭像）：沒有填寫就不顯示；欄位定義的 visibility.configurable 為 false，畫面上仍顯示和其他欄位一樣的圓角方框與眼睛圖案「公開」，但不能按（沒有切換）；PUT /v1/me/profile/visibility 對這些欄位回 422 always_public。所有 Amway 欄位（直銷商培訓系統、地區教育中心、獎銜、推薦人、上手、皇冠大使）都有公開／隱藏切換，預設值看欄位定義的 visibility.default（皇冠大使預設隱藏，其餘預設公開）。暱稱欄位已刪除。",
