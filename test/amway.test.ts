@@ -75,6 +75,7 @@ describe("definitions", () => {
     expect(f.upline_crown_ambassador?.label).toBe("皇冠大使");
     expect(f.education_center).toMatchObject({ type: "text", label: "地區教育中心", suggest: "education_center", suggest_when_hglobal: true, visible_when: null });
     expect(Object.keys(f)).not.toContain("amway_id");
+    expect(d.fields.map((x) => x.key).slice(0, 3)).toEqual(["rank", "education_system", "education_center"]); // 獎銜 > 系統 > 中心
   });
 
   it("there is no consent step any more", async () => {
@@ -205,8 +206,8 @@ describe("fields and review", () => {
     await enable(m);
     let res = await put(m, "education_system", "寰宇");
     expect(await res.json()).toMatchObject({ value: "寰宇", pending_value: null, status: "not_required" });
-    res = await put(m, "rank", "12"); // the center must be filled in (or 無) before the rank
-    expect(res.status).toBe(422);
+    res = await put(m, "rank", "12"); // the rank never waits for the system or the center
+    expect(res.status).toBe(200);
     res = await put(m, "education_center", "無"); // 無 counts as filled in but is not a center: nothing to review
     expect(await res.json()).toMatchObject({ value: "無", status: "not_required" });
     res = await put(m, "rank", "12");
@@ -252,20 +253,23 @@ describe("fields and review", () => {
     const m = await member("g-a", "甲");
     await enable(m);
     expect(await (await put(m, "education_system", "其他體系B")).json()).toMatchObject({ status: "not_required", value: "其他體系B" });
-    expect(await (await put(m, "rank", "15")).json()).toMatchObject({ error: { code: "invalid_field" } }); // the center first
-    expect(await (await put(m, "education_center", "台北中心")).json()).toMatchObject({ status: "not_required", value: "台北中心" });
-    expect(await (await put(m, "rank", "15")).json()).toMatchObject({ status: "not_required", value: "15" });
+    expect(await (await put(m, "rank", "15")).json()).toMatchObject({ status: "not_required", value: "15" }); // the rank needs nothing first
+    expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ status: "not_required", value: "無" });
     expect(await pendingReviews(db)).toEqual([]);
   });
 
-  it("the rank needs the system and the center first (無 counts); 無 is never a center to review, and the 無 center does not block eligibility", async () => {
+  it("the rank is free (any order); the center can only be chosen while the system is 寰宇 (else 無, 422 center_requires_hglobal); 無 is never reviewed", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
-    expect((await put(m, "rank", "12")).status).toBe(422);
-    await put(m, "education_system", "寰宇");
-    expect((await put(m, "rank", "12")).status).toBe(422); // still no center
+    expect((await put(m, "rank", "12")).status).toBe(200); // no system, no center
+    const res = await put(m, "education_center", "台北中心"); // no system yet
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("center_requires_hglobal");
+    await put(m, "education_system", "其他體系B");
+    expect((await put(m, "education_center", "台北中心")).status).toBe(422); // another system
     expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ value: "無", status: "not_required" });
-    expect(await (await put(m, "rank", "12")).json()).toMatchObject({ value: "12", status: "not_required" });
+    await put(m, "education_system", "寰宇");
+    expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ value: "無", status: "not_required" });
     expect(await pendingReviews(db)).toEqual([]);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE norm = '無'").get()?.n).toBe(0);
     // a real center later: the rank joins the review of that center

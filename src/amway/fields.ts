@@ -32,17 +32,17 @@ export interface AmwayFieldDef {
 }
 
 export const AMWAY_FIELDS: AmwayFieldDef[] = [
-  { key: "education_system", order: 10, label: "直銷商培訓系統", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "education_system" },
-  { key: "education_center", order: 20, label: "地區教育中心", type: "text", max_length: 50, visible_when: null, review: "when_hglobal_center", suggest: "education_center", suggest_when_hglobal: true },
-  { key: "rank", order: 30, label: "獎銜", type: "select", visible_when: null, review: "when_hglobal_center" },
+  { key: "rank", order: 10, label: "獎銜", type: "select", visible_when: null, review: "when_hglobal_center" },
+  { key: "education_system", order: 20, label: "直銷商培訓系統", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "education_system" },
+  { key: "education_center", order: 30, label: "地區教育中心", type: "text", max_length: 50, visible_when: null, review: "when_hglobal_center", suggest: "education_center", suggest_when_hglobal: true },
   { key: "referrer", order: 40, label: "推薦人", type: "text", max_length: 50, visible_when: null, review: "never" },
   { key: "upline_crown_ambassador", order: 50, label: "皇冠大使", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_crown_ambassador" },
   { key: "upline_diamond", order: 60, label: "上手鑽石", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_diamond" },
   { key: "upline_platinum", order: 70, label: "上手白金", type: "text", max_length: 50, visible_when: null, review: "never", suggest: "upline_platinum" },
 ];
 
-/** The fields the head office may change for a member directly (treated as approved): 系統, 中心, 獎銜. */
-export const REVIEWER_ADJUSTABLE = ["education_system", "education_center", "rank"];
+/** The fields the head office may change for a member directly (treated as approved): 獎銜, 系統, 中心. */
+export const REVIEWER_ADJUSTABLE = ["rank", "education_system", "education_center"];
 
 export const AMWAY_KEYS = AMWAY_FIELDS.map((f) => f.key);
 const BY_KEY = new Map(AMWAY_FIELDS.map((f) => [f.key, f]));
