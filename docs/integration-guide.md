@@ -61,7 +61,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - Amway 相關資料（會員編號、獎銜、上手、資格結果）不得被 App 或 App 後端保存，也不得寫入日誌或分析工具。
 - 日誌不得有 Token、信箱、姓名。
 - 對會員顯示的品牌只用 starry.phd、Amway；畫面上不要出現「寰宇」「H-Global1985」「hglobal」字樣（App 選單裡的選項與隱私權文件除外），網頁標題統一「會員中心」。畫面上不提其他系統名稱，一律用「合作營運單位」。
-- 隱私權政策（含完整隱私說明，同一份文件）`/privacy`；修改基本資料與刪除帳號在 `/my/edit`。
+- 隱私權政策（含完整隱私說明，同一份文件）`/privacy`；修改基本資料在 `/my/edit`；網頁版會員也可在那裡刪除帳號。App 內直接刪除帳號見 §6.15。
 
 ## 6.5 視覺規範
 顏色、字體、圓角、方框、按鈕、名字旁的系統／中心／獎銜方框、生命靈數九宮格的標準見 [`docs/design-standard.md`](design-standard.md)（含 React Native 的 theme 範本）。畫面一律照它做，不要自己加顏色。
@@ -162,3 +162,11 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 
 ## 8. 新 App 登記（業主）
 後台 → App → 新增 App：填 `app_id` 與名稱即可，其餘欄位留空會自動產生。30 秒內生效，可用 `GET /v1/apps/<app_id>/config` 確認。App 不能刪除，不再使用時按「停用」。
+
+## 6.15 App 內直接刪除帳號（2026-11-23.3，ADR 0037，所有 App 一體適用）
+會員在任何串接的 App 內按「刪除帳號」就直接刪除並清空所有資料，不用再被帶去 `/my/edit`。
+1. **二次確認**：寫明「會刪除你在所有寰宇 App 的帳號與資料，無法復原」。
+2. **重新驗證**（10 分鐘內的 Google 登入）：`POST /v1/auth/nonce` → 瀏覽器開 `GET /auth/google/start?app_id=…&nonce=<sha256 hex>&return=…&state=…&purpose=delete_account`（會員再按一次 Google 登入）→ 把回傳的 `id_token` 與原始 `nonce` 送 `POST /v1/auth/reauth`（帶會員自己的 Access Token；必須是登入時同一個 Google 帳號，否則 `403`）→ 得到 `reauth_token`（10 分鐘，只綁這個會員、這個 App 的這次登入，只能用來刪帳號，不能當 Access Token）。
+3. **刪除**：`POST /v1/me/delete-account`，Bearer Access Token，body `{"reauth_token":"…"}`；只能刪 token 本人。成功 `{"deleted":true}`，效果與網站按鈕完全一致（匿名化並關閉、所有裝置登出、Google 帳號釋放、會員資料與 Amway 資料清除）。App 成功後立刻清本機資料與 Token、回登入畫面；其他已串接 App 收到 `member.deleted`。
+4. **錯誤**：`401 reauth_required`（沒帶或過 10 分鐘，重走第 2 步）、`403 forbidden`、`409 last_super_admin`（message 直接顯示給會員）。被暫停（paused／killed）的 App 不能呼叫。每次刪除寫稽核紀錄（不記信箱，記是哪個 App）。
+5. 標準代碼 `in_app_delete`：做到後在 `GET /v1/apps/{app_id}/handoff?...&standards=` 回報，後台 App 清單會顯示。

@@ -26,6 +26,7 @@ import { epochSeconds } from "../lib/time";
 import { allowed } from "../lib/ratelimit";
 import { getSigningKeys, requireGoogleConfig, resolveIssuer } from "../oidc/config";
 import { bearerAuth } from "./auth";
+import { REAUTH_PURPOSE, REAUTH_TTL, signReauthToken } from "../auth/reauth";
 import { escapeHtml } from "../web/pages";
 import { SITE_CSP, sitePage } from "../web/layout";
 
@@ -148,6 +149,23 @@ const refreshRoute = createRoute({
 });
 
 const security = [{ bearer: [] }];
+const reauthRoute = createRoute({
+  method: "post",
+  path: "/v1/auth/reauth",
+  tags: ["app sign-in"],
+  summary: "Prove a fresh Google sign-in before deleting the account from inside an App (ADR 0037)",
+  description: "Get a nonce (POST /v1/auth/nonce), send the member through the sign-in relay again (GET /auth/google/start with purpose=delete_account), then send the ID token here with the member's own access token. The Google account must be the one the member signed in with. The `reauth_token` is valid 10 minutes and works only for POST /v1/me/delete-account, for this member, App and App session.",
+  security,
+  request: { body: { required: true, content: json(z.object({ id_token: z.string().min(1).max(8192), nonce: z.string().min(16).max(128).openapi({ description: "The raw nonce from POST /v1/auth/nonce" }) })) } },
+  responses: {
+    200: { description: "Fresh sign-in confirmed", content: json(z.object({ reauth_token: z.string(), expires_in: z.number().int().openapi({ example: 600 }), purpose: z.literal("delete_account") })) },
+    401: err("unauthenticated, invalid_token or invalid_nonce"),
+    403: err("forbidden (not an App token, or a different Google account) or app_unavailable"),
+    429: err("rate_limited"),
+    503: err("server_error (sign-in is not configured)"),
+  },
+});
+
 const logoutRoute = createRoute({
   method: "post",
   path: "/v1/auth/logout",
@@ -185,6 +203,7 @@ const problem = (c: C, text: string, status: 400 | 403 | 503 = 400) =>
 export const RELAY_JS = 'location.replace(document.getElementById("back").href);\n';
 
 export function registerAppAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
+  app.use("/v1/auth/reauth", bearerAuth(deps));
   app.use("/v1/auth/logout", bearerAuth(deps));
   app.use("/v1/auth/logout-all", bearerAuth(deps));
 
@@ -240,6 +259,41 @@ export function registerAppAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     return c.json({ ...tokens, user: { member_id: member.id, status: member.status, is_new: created } }, 200);
   });
 
+  app.openapi(reauthRoute, async (c) => {
+    const busy = await limited(c);
+    if (busy) return busy as never;
+    c.header("cache-control", "no-store");
+    const auth = c.get("auth");
+    const body = c.req.valid("json");
+    const now = deps.now();
+    const requestId = c.get("requestId");
+    if (!auth.appId) return fail(c, 403, "forbidden", "Only for App sign-in tokens");
+    const a = await resolveApp(c, deps, auth.appId);
+    if (a === "unknown" || a === "unavailable") return fail(c, 403, "app_unavailable", "This app is not available");
+    const relayClient = c.env.GOOGLE_CLIENT_ID?.trim();
+    if (!relayClient || !c.env.OIDC_SIGNING_JWK) return fail(c, 503, "server_error", "Sign-in is not configured");
+    let identity;
+    try {
+      identity = await verifyGoogleIdToken({ ...deps, now: () => now }, body.id_token, [relayClient, ...a.auth.google_audiences]);
+    } catch (e) {
+      if (!(e instanceof GoogleSignInError)) throw e;
+      await writeAudit(c.env.DB, { actorType: "member", actorId: auth.memberId, action: "app.reauth", appId: a.app_id, result: "denied", requestId, detail: { reason: "id_token" } }, now);
+      return fail(c, 401, "invalid_token", "Sign-in could not be verified");
+    }
+    const tokenNonce = identity.nonce ?? "";
+    if (!timingSafeEqual(tokenNonce, body.nonce) && !timingSafeEqual(tokenNonce, await sha256Hex(body.nonce))) return fail(c, 401, "invalid_token", "Sign-in could not be verified");
+    if (!(await consumeNonce(c.env.DB, body.nonce, a.app_id, now))) return fail(c, 401, "invalid_nonce", "Sign-in expired, please try again");
+    // Members are known only by the Google `sub`: it must be the account this member signed in with, never someone else's.
+    const m = await c.env.DB.prepare("SELECT google_sub FROM members WHERE id = ? AND status = 'active'").bind(auth.memberId).first<{ google_sub: string }>();
+    if (!m || !timingSafeEqual(m.google_sub, identity.sub)) {
+      await writeAudit(c.env.DB, { actorType: "member", actorId: auth.memberId, action: "app.reauth", appId: a.app_id, result: "denied", requestId, detail: { reason: "different_account" } }, now);
+      return fail(c, 403, "forbidden", "請用您登入時的同一個 Google 帳號確認");
+    }
+    await writeAudit(c.env.DB, { actorType: "member", actorId: auth.memberId, action: "app.reauth", appId: a.app_id, result: "success", requestId, detail: { purpose: REAUTH_PURPOSE } }, now);
+    const reauth_token = await signReauthToken(c.env, resolveIssuer(c.env, c.req.url), { memberId: auth.memberId, appId: a.app_id, sessionId: auth.sessionId }, now);
+    return c.json({ reauth_token, expires_in: REAUTH_TTL, purpose: REAUTH_PURPOSE }, 200);
+  });
+
   app.openapi(refreshRoute, async (c) => {
     const busy = await limited(c);
     if (busy) return busy as never;
@@ -276,7 +330,7 @@ export function registerAppAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     return c.body(RELAY_JS, 200);
   });
 
-  // GET /auth/google/start?app_id&nonce=<sha256 hex>&return=<URL>&state=<optional>
+  // GET /auth/google/start?app_id&nonce=<sha256 hex>&return=<URL>&state=<optional>&purpose=<optional: delete_account>
   app.get("/auth/google/start", async (c) => {
     const now = deps.now();
     const returnUrl = c.req.query("return") ?? "";
@@ -284,14 +338,15 @@ export function registerAppAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     const appState = c.req.query("state") ?? "";
     const a = await getApp(c.env.DB, c.req.query("app_id"), now);
     if (!a || !allowedReturn(a, returnUrl)) return problem(c, "這個 App 沒有登記這個登入回傳網址。");
-    if (!NONCE_HASH.test(nonceHash) || !APP_STATE.test(appState)) return problem(c, "登入參數不正確。");
+    const purpose = c.req.query("purpose") ?? "";
+    if (!NONCE_HASH.test(nonceHash) || !APP_STATE.test(appState) || (purpose !== "" && purpose !== REAUTH_PURPOSE)) return problem(c, "登入參數不正確。");
     if (a.status !== "active") return problem(c, "這個 App 目前無法使用。", 403);
     const client = c.env.GOOGLE_CLIENT_ID?.trim();
     if (!client || !c.env.GOOGLE_CLIENT_SECRET?.trim() || !c.env.OIDC_SIGNING_JWK) return problem(c, "Google 登入尚未設定。", 503);
     const issuer = resolveIssuer(c.env, c.req.url);
     const iat = epochSeconds(now);
     // The state is signed (not secret): it only has to come back unchanged.
-    const state = await signJwt({ iss: issuer, aud: issuer, app: a.app_id, ret: returnUrl, st: appState, iat, exp: iat + RELAY_TTL }, (await getSigningKeys(c.env)).current, RELAY_TYP);
+    const state = await signJwt({ iss: issuer, aud: issuer, app: a.app_id, ret: returnUrl, st: appState, ...(purpose ? { pur: purpose } : {}), iat, exp: iat + RELAY_TTL }, (await getSigningKeys(c.env)).current, RELAY_TYP);
     const u = new URL(GOOGLE_AUTH_URL);
     // Same redirect URI as the member site's own sign-in, so Google needs no extra setup: not for the relay and
     // not for any App registered later.
@@ -351,12 +406,13 @@ export async function relayCallback(c: C, deps: Deps, q: { state: string; code?:
     }
   }
   const appState = typeof state.st === "string" ? state.st : "";
+  const confirming = state.pur === REAUTH_PURPOSE;
   const result = new URLSearchParams(idToken ? { id_token: idToken, state: appState } : { error: error.replace(/[^A-Za-z0-9_.-]/g, "_"), state: appState });
   const target = `${ret}${kind === "web" ? "#" : "?"}${result.toString()}`;
   return relayPage(
     c,
     "Google 登入",
-    `<section class="card"><h2>${idToken ? "登入完成" : "登入未完成"}</h2><p>正在回到 App…</p><p><a id="back" href="${escapeHtml(target)}">回到 App</a></p></section>`,
+    `<section class="card"><h2>${idToken ? (confirming ? "確認完成" : "登入完成") : (confirming ? "確認未完成" : "登入未完成")}</h2><p>正在回到 App…</p><p><a id="back" href="${escapeHtml(target)}">回到 App</a></p></section>`,
     200,
     true,
   );
