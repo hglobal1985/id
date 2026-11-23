@@ -73,6 +73,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 ## 6.7 平台規範補充（2026-11-12.9）
 - **本名**：欄位 `legal_name`（畫面標籤 2026-11-14 起為「本名」，原稱「本姓」「真實姓名」；預設不公開）。只在報名付費課程與對帳當下用會員本人的 token 讀 `GET /v1/me/profile` 的 `fields.legal_name`；不保存、不寫日誌、不另建欄位。
 - **Amway 三欄順序與中心規則（2026-11-23.1，業主 2026-11-23）**：資料頁與 `GET /v1/amway/field-definitions` 的欄位順序是獎銜 → 直銷商培訓系統 → 地區教育中心（名字旁方框順序不變：系統、中心、獎銜）。獎銜永遠可選、可送出，與系統、中心無關（`system_center_required` 已取消）。地區教育中心只有在系統屬於 `hglobal_systems`（寰宇）時才能選；系統不是寰宇（其他、「無」、沒填）時 App 自動送 `"無"` 並停用該欄（視為已填、不審核），後端對非寰宇卻送非「無」的中心回 `422 invalid_field`（`details.reason = center_requires_hglobal`）。必填與審核規則不變。
+- **自訂系統、勾選列與必填標籤（2026-11-23.2，業主 2026-11-23）**：系統選「其他」時隱藏「地區教育中心」欄，同一位置顯示「自訂系統」輸入框，文字直接存進 `education_system`，中心視為 `"無"`（仍送出）；改選別的系統時輸入框消失。勾選「我是 Amway 會員」後該勾選列隱藏（取消入口各 App 自行安排）；勾「無」時下拉欄位寬度維持勾選前的寬度。「必填」標籤動態顯示：獎銜、系統（含自訂系統）未填才顯示；中心只在系統是寰宇且未選時顯示；`GET /v1/me/amway` 的 `missing` 是同一套判斷（已儲存的值）。
 - **獎銜「無」**：選項（含「無」）來自 `GET /v1/amway/field-definitions` 的 `rank.options`；會員值 `fields.rank.value` 為 `null` 或 `"none"` 都代表「無」。對「無」顯示什麼文字由各 App 決定。
 - **會員資料的使用範圍**：會員的「公開／隱藏」只管對外公開頁，不限制寰宇生態系內的 App；業主在後台替每款 App 勾選可用欄位（含隱藏的），App 用 `POST /v1/apps/{app_id}/members/lookup` 讀取（見 6.8、ADR 0022）。
 - **獎銜與獎章圖（2026-11-22.2）**：`members/lookup` 的 `fields` 含 `rank` 時，每位會員多回 `rank_label`（中文名稱）與 `rank_badge`（`badge_url` 與 `badge` 幾何），服務 Token 不必再讀 `field-definitions`；業主在後台勾選 `rank` 才可用（見 ADR 0034）。

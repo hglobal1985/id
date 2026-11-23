@@ -14,7 +14,7 @@ import { isPool } from "../vocab/terms";
 import { loadLayout } from "../db/layout";
 import { badgeInfo, listBadges } from "../db/rank-badges";
 import { resolveIssuer } from "../oidc/config";
-import { AMWAY_FIELDS, getAmwayField, isNone, validateAmwayValue, type AmwayValue } from "../amway/fields";
+import { AMWAY_FIELDS, amwayMissing, getAmwayField, isNone, validateAmwayValue, type AmwayValue } from "../amway/fields";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
 
@@ -52,6 +52,7 @@ const meRoute = createRoute({
             enabled: z.boolean(),
             hglobal_systems: z.array(z.string()).openapi({ description: "Training-system words marked as H-Global1985 (the edit page switches the regional center to its list while one of them is chosen)" }),
             hglobal: z.boolean().openapi({ description: "The training system (effective or pending) is a term marked as H-Global1985: the regional education center offers its own related words (field definition suggest_when_hglobal)." }),
+            missing: z.array(z.string()).openapi({ description: "Required Amway fields still empty (saved values), in screen order: rank, education_system, and education_center only while the system is 寰宇 (with any other system the center is 無 automatically). Empty while 我是Amway會員 is off. 無 counts as filled in." }),
             fields: z.record(FieldStateSchema.extend({ visibility: z.enum(["public", "private"]) })),
           })
           .openapi("MyAmway"),
@@ -165,7 +166,10 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     }
     const hglobal = await isHglobalMember(c.env.DB, memberId);
     const hg = await c.env.DB.prepare("SELECT term FROM vocab_terms WHERE pool = 'education_system' AND hglobal = 1 ORDER BY term").all<{ term: string }>();
-    return c.json({ enabled: member?.amway_enabled === 1, hglobal, hglobal_systems: (hg.results ?? []).map((x) => x.term), fields }, 200);
+    const filled = (k: string) => fields[k]?.value != null || fields[k]?.pending_value != null;
+    const enabled = member?.amway_enabled === 1;
+    const missing = amwayMissing({ enabled, rank: filled("rank"), system: filled("education_system"), hglobal, center: filled("education_center") });
+    return c.json({ enabled, hglobal, hglobal_systems: (hg.results ?? []).map((x) => x.term), missing, fields }, 200);
   });
 
   app.openapi(enabledRoute, async (c) => {

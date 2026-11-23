@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-23.1";
-export const HANDOFF_UPDATED = "2026-11-23 10:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-23.2";
+export const HANDOFF_UPDATED = "2026-11-23 13:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -105,7 +105,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 測試環境：正式前一律用 staging（https://hglobal-id-staging.hglobal1985-static.workers.dev，兩個環境的會員、簽章金鑰、App 登記各自獨立）。網頁版來源只能登記 https 網址、回傳網址只能是自訂 scheme，所以 http://localhost 不能登記；手機用 Expo dev build 搭配已登記的深層連結，網頁用 https 預覽網址（請業主通知中央會員在 staging 補登記）。測試版 App 的共用登入鍵名建議用 hglobal.sso.staging，避免與正式版互相覆蓋。",
     "   - 深色模式：跟隨系統設定自動切換。配色以視覺規範 1.5 的深色色表為準；經業主明確核准保留自己配色的 App（目前：行動大學）除外，仍須跟隨系統、對比至少 4.5:1。",
     "   - 一律公開的欄位（暱稱、居住國家／地區、生命靈數九宮格，以及會員編號、頭像）：沒有填寫就不顯示；欄位定義的 visibility.configurable 為 false，畫面上仍顯示和其他欄位一樣的圓角方框與眼睛圖案「公開」，但不能按（沒有切換）；PUT /v1/me/profile/visibility 對這些欄位回 422 always_public。所有 Amway 欄位（直銷商培訓系統、地區教育中心、獎銜、推薦人、上手、皇冠大使）都有公開／隱藏切換，預設值看欄位定義的 visibility.default（皇冠大使預設隱藏，其餘預設公開）。暱稱欄位已刪除。",
-    "   - 勾選「我是Amway會員」後，直銷商培訓系統、地區教育中心、獎銜三欄都是必填，順序是獎銜、直銷商培訓系統、地區教育中心（GET /v1/amway/field-definitions 的欄位順序、中央會員自己的編輯頁都同此）：系統旁有一個「無」勾選框，勾了就送出值 \"無\"（算已填，不審核、不顯示方框、不影響資格）；獎銜永遠可選、可送出，與系統、中心無關（舊規則的 422 system_center_required 已取消）；地區教育中心只有在系統是寰宇（education_system 屬於 GET /v1/me/amway 的 hglobal_systems）時才能選，可從清單選擇或勾「無」；系統不是寰宇（其他系統、「無」、沒填）時中心不可選，App 要自動送 \"無\" 並停用該欄（不顯示方框、不審核、視為已填），換回寰宇時再清空讓會員選；後端也會驗證：系統不是寰宇卻送了非「無」的中心，PUT /v1/me/amway/fields/education_center 回 422 invalid_field（reason center_requires_hglobal）。審核規則不變：寰宇且同時填了地區教育中心時，中心與獎銜才需審核（獎銜不再被系統、中心的填寫順序卡住，審核仍看目前系統與中心的值）。畫面上三欄標示「（必填）」，缺的時候提示請填寫。",
+    "   - 勾選「我是Amway會員」那一列（2026-11-23.2）：會員勾選之後這一列自動隱藏，資料頁只剩三個欄位（沒勾選時才顯示這一列；取消 Amway 的入口各 App 自行安排，例如放在設定頁，資料頁不再放這一列）；三個下拉欄位寬度剛好符合文字，但勾選旁邊的「無」時欄位寬度要維持勾選前的寬度（不可縮成一個字的寬度），取消勾選也不再變動。勾選「我是Amway會員」後，直銷商培訓系統、地區教育中心、獎銜三欄都是必填，順序是獎銜、直銷商培訓系統、地區教育中心（GET /v1/amway/field-definitions 的欄位順序、中央會員自己的編輯頁都同此）：系統、中心旁各有一個「無」勾選框，勾了就送出值 \"無\"（算已填，不審核、不顯示方框、不影響資格；獎銜的「無」是旁邊的勾選框、送選項代碼 none）；獎銜永遠可選、可送出，與系統、中心無關（舊規則的 422 system_center_required 已取消）；地區教育中心只有在系統是寰宇（education_system 屬於 GET /v1/me/amway 的 hglobal_systems）時才能選，可從清單選擇或勾「無」；系統不是寰宇（其他系統、「無」、沒填）時中心不可選，App 要自動送 \"無\" 並停用該欄（不顯示方框、不審核、視為已填），換回寰宇時再清空讓會員選；系統選下拉清單裡的「其他」時（2026-11-23.2）：「地區教育中心」欄整個隱藏，在同一個位置顯示標籤「自訂系統」的輸入框，自訂文字直接存進 education_system 欄位的值（不是另一個欄位），中心依上述視為 \"無\"（會員看不到也不能改，儲存時照樣送 \"無\"）；改選回寰宇或清單中的其他系統時，自訂輸入框消失（文字清空）、中心欄恢復；後端也會驗證：系統不是寰宇卻送了非「無」的中心，PUT /v1/me/amway/fields/education_center 回 422 invalid_field（reason center_requires_hglobal）。「必填」標籤依當下選擇動態顯示（2026-11-23.2；含「請填寫」提示與儲存時的必填橘框，不可固定顯示）：勾了「我是Amway會員」後，獎銜、系統（含「自訂系統」輸入框）還沒填（也沒勾「無」）才顯示「必填」；中心只有系統是寰宇、且中心還沒選（也沒勾「無」）才顯示；系統不是寰宇時中心自動為「無」、不顯示；系統還沒選時中心還不能選（欄位顯示請先選系統）、也不顯示；沒勾「我是Amway會員」時三欄都不顯示。GET /v1/me/amway 的 missing 陣列是同一套判斷用已儲存的值算出來的（依序 rank、education_system、education_center，沒勾 Amway 會員時為空），可直接拿來提示；審核通過／審核中等狀態標籤不受影響。審核規則不變：寰宇且同時填了地區教育中心時，中心與獎銜才需審核（獎銜不再被系統、中心的填寫順序卡住，審核仍看目前系統與中心的值）。畫面上三欄標示「（必填）」，缺的時候提示請填寫。",
     "   - 名字旁的方框：名字右邊依序顯示「系統」（直銷商培訓系統）、「中心」（地區教育中心）、「獎銜」（只顯示已審核的，「創辦人」三個字改寫成 F）三個小方框（這三個方框的順序不變，仍是系統、中心、獎銜；與資料頁欄位順序無關），只在勾選「我是Amway會員」且有填寫時出現；排版（2026-11-15.3 起）：頭像右邊三個方框盡量排在同一列，字級固定不縮小，方框左右內距 8、方框之間 3、頭像與文字之間 8；一列放不下時，只把「獎銜」整個移到第二行（系統與中心仍在第一行）；GET /v1/me/profile 的 badges 已算好文字與字級（size 0–3，字多自動縮小到固定五個中文字寬）；訪客看到的公開頁，被隱藏的欄位就沒有對應方框。系統方框直接顯示會員填的詞（例如「寰宇」）。頁首名字固定一行顯示，字多時自動縮小字級；「會員編號」文字加國碼的完整編號（例如 TW9475831）也固定在同一行。",
     "   - 學歷：大學、碩士、博士各一列，每列「校名＋系名」放在同一行，只顯示「大學」「碩士」「博士」三個名稱（不要顯示欄位全名）。碩士、博士預設整列隱藏：大學列下方放「新增碩士學歷」按鈕，按了才顯示碩士列；有碩士列才出現「新增博士學歷」。已經有資料的列一律顯示。欄位定義的 row 資訊（key、label、optional_after）就是用來分列的。",
     "   - 會員編號（member_number）與公開網址：公開網址是 ${origin}/<國碼二碼緊接編號>，例如 TW9475831（二碼國碼＋編號，中間沒有空格）；欄位值的 country、number 組成這個代碼（編號本身已含國碼的不重複加）。國家選單照欄位定義 options 的順序（台灣、鄰近國家，其餘依國際電話區碼）。尚未勾選「我是Amway會員」時，欄位旁顯示「隨機產生，不可修改」且不提供編輯；勾選後改顯示「建議修改會員編號」並可編輯（文字取自 GET /v1/me/profile 的 member_number.note；會員自己改過一次編號後，note 就永久消失，不再提醒）。每次取消勾選「我是Amway會員」，系統會重新隨機產生一組編號（國碼＋0 開頭的 7 位亂數，不夠用時自動加位數），PUT /v1/me/amway/enabled 的回應帶 member_number；取消勾選時若已綁定夫妻會先解除綁定。",
@@ -238,7 +238,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "32. 獎銜與獎章圖（三、11）：要顯示其他會員的獎銜時，members/lookup 的 fields 含 rank，直接用回傳的 rank_label 與 rank_badge.badge_url，不自己存圖、不用服務 Token 讀 field-definitions；沒勾 rank 回 403 field_not_allowed。",
     "33. 規則放寬（2026-11-22.4，沒有新的程式要做）：三、16 已處理紀錄可保存姓名與申請內容快照，三、7 加註這個唯一例外；已串接且不需要這份紀錄的 App 不必改；要做的 App 照三、16 的限制（含 member.deleted 時清除快照）。",
     "34. 欄位順序與中心規則（2026-11-23.1，三、5）：資料頁欄位順序改為獎銜、系統、中心；獎銜不再等系統與中心（不再有 system_center_required）；中心只在系統是寰宇時可選，系統非寰宇時自動送 \"無\" 並停用該欄，後端對非寰宇卻送非「無」中心回 422（reason center_requires_hglobal）；名字旁方框順序不變。",
-    "35. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "35. 2026-11-23.2 補充（三、5）：系統選「其他」時隱藏中心欄、改顯示「自訂系統」輸入框（文字存進 education_system，中心送 \"無\"）；勾選 Amway 會員後隱藏該勾選列（取消入口自行安排）；勾「無」時下拉欄位寬度維持不變；「必填」標籤改為動態顯示（可用 GET /v1/me/amway 的 missing）。",
+    "36. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

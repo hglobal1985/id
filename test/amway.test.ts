@@ -78,6 +78,25 @@ describe("definitions", () => {
     expect(d.fields.map((x) => x.key).slice(0, 3)).toEqual(["rank", "education_system", "education_center"]); // 獎銜 > 系統 > 中心
   });
 
+  it("the required rule: rank and system always, the center only while the system is 寰宇 (GET /v1/me/amway missing, same rule as the screen)", async () => {
+    const { amwayMissing } = await import("../src/amway/fields");
+    const base = { enabled: true, rank: false, system: false, hglobal: false, center: false };
+    expect(amwayMissing({ ...base, enabled: false })).toEqual([]);
+    expect(amwayMissing(base)).toEqual(["rank", "education_system"]);
+    expect(amwayMissing({ ...base, rank: true, system: true })).toEqual([]); // another system: the center is 無 on its own
+    expect(amwayMissing({ ...base, rank: true, system: true, hglobal: true })).toEqual(["education_center"]);
+    expect(amwayMissing({ ...base, rank: true, system: true, hglobal: true, center: true })).toEqual([]);
+    const m = await member("g-miss", "甲");
+    expect(((await me(m)) as unknown as { missing: string[] }).missing).toEqual([]); // switch off
+    await enable(m);
+    expect(((await me(m)) as unknown as { missing: string[] }).missing).toEqual(["rank", "education_system"]);
+    await put(m, "rank", "12");
+    await put(m, "education_system", "寰宇");
+    expect(((await me(m)) as unknown as { missing: string[] }).missing).toEqual(["education_center"]);
+    await put(m, "education_center", "無");
+    expect(((await me(m)) as unknown as { missing: string[] }).missing).toEqual([]);
+  });
+
   it("there is no consent step any more", async () => {
     const m = await member("g-a", "甲");
     expect((await call(m, "GET", "/v1/amway/consent")).status).toBe(404);

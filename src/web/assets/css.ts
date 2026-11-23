@@ -141,6 +141,7 @@ button.btn-save,.button.btn-save{background:var(--yellow);border:2px solid var(-
 button.btn-edit,.button.btn-edit{background:var(--orange-soft);border:2px solid var(--yellow);color:var(--fg);font-weight:600}
 button.btn-save:hover,.button.btn-save:hover{filter:brightness(.95)}
 button.btn-edit:hover,.button.btn-edit:hover{filter:brightness(.97)}
+.btn-link{background:none;border:0;padding:8px 0;min-height:44px;color:var(--muted);text-decoration:underline;font:inherit;font-size:.9rem;cursor:pointer}
 .with-none{display:flex;align-items:center;gap:10px}.with-none>:first-child{flex:1 1 auto;min-width:0}.with-none>.chk{flex:none;min-height:44px}
 .motto-box{min-height:4.2em}
 .row-head .saved.warn{color:var(--warn)}
