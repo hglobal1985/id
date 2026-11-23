@@ -359,8 +359,8 @@ describe("options and vocabularies", () => {
     expect((await sug(a, "")).length).toBe(16); // opening the field shows the whole list
     // The "whole list on open" rule is only for the regional center: other vocabularies need a typed character.
     expect(((await (await member(a, "GET", "/v1/vocab/suggestions?pool=job_title&q=")).json()) as { suggestions: string[] }).suggestions).toEqual([]);
-    // Anyone may type any text; only H-Global1985 members add to the vocabulary.
-    expect((await member(a, "PUT", "/v1/me/amway/fields/education_center", { value: "我的自訂中心" })).status).toBe(200);
+    // A member whose system is not 寰宇 cannot name a center (422); nothing reaches the vocabulary.
+    expect((await member(a, "PUT", "/v1/me/amway/fields/education_center", { value: "我的自訂中心" })).status).toBe(422);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE pool = 'education_center' AND term = '我的自訂中心'").get()?.n).toBe(0);
     expect(((await (await member(a, "GET", "/v1/me/amway")).json()) as { hglobal: boolean }).hglobal).toBe(false);
     // 寰宇 means H-Global1985: choosing it alone needs no review, and it unlocks the vocabulary.

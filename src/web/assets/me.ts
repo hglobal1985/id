@@ -561,10 +561,12 @@ export const ME_JS = String.raw`
   function amwayMissing() {
     return S.adefs.fields.filter(function (d) {
       if (REQUIRED.indexOf(d.key) < 0) return false;
+      if (d.key === "education_center" && !systemSavedHglobal()) return false;   // not 寰宇: the center is 無, counts as filled in
       var st = S.amway.fields[d.key];
       return !st || ((st.value === null || st.value === undefined) && (st.pending_value === null || st.pending_value === undefined));
     }).map(function (d) { return d.label; });
   }
+  function systemSavedHglobal() { return !!S.amway.hglobal; }
   // Is the training system chosen in the box (not yet saved) one of the words marked H-Global1985?
   function systemIsHglobal() {
     var r = AROWS.education_system, v = r ? r.value() : null, list = S.amway.hglobal_systems || [];
@@ -591,10 +593,12 @@ export const ME_JS = String.raw`
         if (!hasNone) return { node: dd.el, get: function () { return dd.get() || null; } };
         var ddBtn = dd.el.querySelector(".dd-btn"); if (noneOn) ddBtn.disabled = true;
         var noneTick = HG.checkbox("無", noneOn, function (on) { noneOn = on; ddBtn.disabled = on; if (on) dd.set(""); });
-        // Until the training system and the regional center are filled in (or ticked 無), the rank cannot be chosen.
-        var lockHint = el("p", { class: "help warn-note", text: "請先填寫直銷商培訓系統與地區教育中心（沒有的話請勾選「無」），才能選獎銜。", hidden: true });
-        function setLocked(locked) { ddBtn.disabled = locked || noneOn; noneTick.disabled = locked; lockHint.hidden = !locked; }
-        return { node: el("div", {}, [el("div", { class: "with-none" }, [dd.el, noneTick]), lockHint]), setLocked: setLocked, get: function () { return noneOn ? "none" : (dd.get() || null); } };
+        // The rank is always free to choose (it does not depend on the training system or the regional center).
+        return { node: el("div", {}, [el("div", { class: "with-none" }, [dd.el, noneTick])]), get: function () { return noneOn ? "none" : (dd.get() || null); } };
+      }
+      // The regional center can only be chosen while the training system is 寰宇; otherwise it is saved as 無 and cannot be edited.
+      if (d.key === "education_center" && !systemIsHglobal()) {
+        return { node: el("p", { class: "help" }, [document.createTextNode("無（只有直銷商培訓系統選寰宇時才能選地區教育中心）")]), get: function () { return "無"; } };
       }
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
       var typingSaves = !d.suggest;
@@ -661,7 +665,6 @@ export const ME_JS = String.raw`
       if (r[0].status === 200 && r[1].status === 200) { S.amway = r[0].body; S.profile = r[1].body; swap("avatar"); swap("amway"); }
     });
   }
-  // The rank can only be chosen once the training system and the regional center have a value (what is in the boxes counts).
   // The regional center is a drop-down of its list while the chosen system is H-Global1985, a plain box otherwise.
   var centerListed = null;
   function syncCenterMode() {
@@ -673,12 +676,7 @@ export const ME_JS = String.raw`
     var cd = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0];
     if (cd) { var neu = amwayFieldRow(cd, c.value()); c.replaceWith(neu); }
   }
-  function updateRankLock() {
-    syncCenterMode();
-    var r = AROWS.rank, a = AROWS.education_system, b = AROWS.education_center;
-    if (!r || !r.ed || !r.ed.setLocked) return;
-    r.ed.setLocked(!(a && b && a.value() && b.value()));
-  }
+  function updateRankLock() { syncCenterMode(); }
   // After one Amway field was saved: refresh the data and only the bits that depend on it (the editors stay as they are).
   var AROWS = {};
   function refreshAmwayData(savedKey) {

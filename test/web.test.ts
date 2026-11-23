@@ -342,7 +342,7 @@ describe("member center template (same layout as starry.phd)", () => {
     expect(await (await req(null, "GET", `/${n.number}`)).text()).not.toContain('class="badges"');
     await req(a, "PUT", "/v1/me/amway/enabled", { enabled: true });
     await req(a, "PUT", "/v1/me/amway/fields/education_system", { value: "某系統" });
-    await req(a, "PUT", "/v1/me/amway/fields/education_center", { value: "南京 062" });
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_center', '\"南京 062\"', NULL, 'not_required', 0, 'x')").run(a.id); // a center for a non-寰宇 system can no longer be saved through the API
     let html = await (await req(null, "GET", `/${n.number}`)).text();
     expect(html).toContain("會員編號");
     expect(html).toMatch(/<span class="rank k-system rk0" title="系統：某系統">某系統<\/span>/);
@@ -367,7 +367,7 @@ describe("member center template (same layout as starry.phd)", () => {
     // The Amway boxes beside the name follow the switches: hide the center and its box is gone for visitors.
     await req(short, "PUT", "/v1/me/amway/enabled", { enabled: true });
     await req(short, "PUT", "/v1/me/amway/fields/education_system", { value: "某系統" });
-    await req(short, "PUT", "/v1/me/amway/fields/education_center", { value: "南京 062" });
+    db.raw.prepare("INSERT OR REPLACE INTO amway_field_values (member_id, field_key, value, pending_value, status, value_approved, updated_at) VALUES (?, 'education_center', '\"南京 062\"', NULL, 'not_required', 0, 'x')").run(short.id); // a center for a non-寰宇 system can no longer be saved through the API
     let html = await (await req(null, "GET", `/${num(short)}`)).text();
     expect(html).toContain("某系統");
     expect(html).toContain("南京 062");
