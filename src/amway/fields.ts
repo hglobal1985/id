@@ -145,3 +145,18 @@ export function needsReview(def: AmwayFieldDef, value: AmwayValue, ctx: ReviewCo
 export function sameValue(a: AmwayValue, b: AmwayValue): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
+
+/**
+ * Which of the three Amway fields still have to be filled in (業主 2026-11-23). One rule for the server (`missing` in GET /v1/me/amway)
+ * and the member center's screen (which mirrors it live): nothing is required while 我是Amway會員 is off; the rank and the training
+ * system are required once it is on (無 counts as filled in); the regional center is required only while the system is 寰宇 and no
+ * center (or 無) is chosen yet. With any other system, or none yet, the center is 無 automatically and is never asked for.
+ */
+export function amwayMissing(s: { enabled: boolean; rank: boolean; system: boolean; hglobal: boolean; center: boolean }): string[] {
+  if (!s.enabled) return [];
+  const out: string[] = [];
+  if (!s.rank) out.push("rank");
+  if (!s.system) out.push("education_system");
+  if (s.system && s.hglobal && !s.center) out.push("education_center");
+  return out;
+}

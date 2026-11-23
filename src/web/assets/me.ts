@@ -73,9 +73,11 @@ export const ME_JS = String.raw`
     // The tag beside the title: 「必填」 while a required field is empty; 「審核通過」 while the value is the one a reviewer approved
     // (same look); nothing otherwise.
     var tag = el("span", { class: "req", hidden: true });
+    // cfg.required is true/false or a function (evaluated now: the 「必填」 tag follows what is chosen on the page).
+    function reqNow() { return typeof cfg.required === "function" ? !!cfg.required() : !!cfg.required; }
     function paintTag() {
       var v = ed ? ed.get() : null, empty = v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length), text = "";
-      if (cfg.required && empty) text = "必填";
+      if (reqNow() && empty) text = "必填";
       else if (!empty && cfg.approvedFn && cfg.approvedFn(v)) text = "審核通過";
       tag.textContent = text; tag.hidden = !text;
     }
@@ -130,13 +132,13 @@ export const ME_JS = String.raw`
     if (cfg.below) row.appendChild(cfg.below());
     paintStatus();
     row.commit = commit; row.isDirty = dirty; row.refreshStatus = paintStatus; row.touched = false; row.ed = ed; row.value = function () { return ed ? ed.get() : null; };
-    row.required = !!cfg.required && !!ed; row.isEmpty = function () { return !!ed && isEmpty(ed.get()); };
+    row.isRequired = function () { return !!ed && reqNow(); }; row.touch = touch; row.isEmpty = function () { return !!ed && isEmpty(ed.get()); };
     return row;
   }
   // The floating 儲存 button: saves every changed row, one after another, then returns to the member's own page.
   function saveAll(btn) {
     // Required fields first: if one is empty nothing is saved; the page jumps to the first empty one and marks every empty one.
-    var missing = liveRows().filter(function (r) { return r.required && r.isEmpty(); });
+    var missing = liveRows().filter(function (r) { return r.isRequired() && r.isEmpty(); });
     liveRows().forEach(function (r) { r.classList.remove("row-missing"); });
     if (missing.length) {
       missing.forEach(function (r) { r.classList.add("row-missing"); });
@@ -556,22 +558,51 @@ export const ME_JS = String.raw`
     return row;
   }
 
-  // ---- Amway block: the switch takes effect at once (no confirmation, no consent step) ----
-  var REQUIRED = ["education_system", "education_center", "rank"];
-  function amwayMissing() {
-    return S.adefs.fields.filter(function (d) {
-      if (REQUIRED.indexOf(d.key) < 0) return false;
-      if (d.key === "education_center" && !systemSavedHglobal()) return false;   // not 寰宇: the center is 無, counts as filled in
-      var st = S.amway.fields[d.key];
-      return !st || ((st.value === null || st.value === undefined) && (st.pending_value === null || st.pending_value === undefined));
-    }).map(function (d) { return d.label; });
+  // ---- Amway block ----
+  // What the training-system box holds right now (also before it is saved): "empty" | "other" (自訂系統) | "hglobal" | "plain".
+  function sysKind() {
+    var r = AROWS.education_system;
+    if (r && r.ed) {
+      if (r.ed.isOther && r.ed.isOther()) return "other";
+      var v = r.value();
+      if (v === null || v === undefined) return "empty";
+      return (S.amway.hglobal_systems || []).some(function (t) { return t.trim().toLowerCase() === String(v).trim().toLowerCase(); }) ? "hglobal" : "plain";
+    }
+    var st = S.amway.fields.education_system || {}, sv = st.pending_value != null ? st.pending_value : st.value;
+    return sv == null ? "empty" : (S.amway.hglobal ? "hglobal" : "plain");
   }
-  function systemSavedHglobal() { return !!S.amway.hglobal; }
-  // Is the training system chosen in the box (not yet saved) one of the words marked H-Global1985?
-  function systemIsHglobal() {
-    var r = AROWS.education_system, v = r ? r.value() : null, list = S.amway.hglobal_systems || [];
-    if (v === null || v === undefined) return !!S.amway.hglobal;
-    return list.some(function (t) { return t.trim().toLowerCase() === String(v).trim().toLowerCase(); });
+  function systemIsHglobal() { return sysKind() === "hglobal"; }
+  // Required tags (same rule as amwayMissing in src/amway/fields.ts, which the server returns as "missing"): the rank and the system
+  // are required while the Amway switch is on and still empty (無 counts as filled); the 自訂系統 box when 其他 is chosen; the center
+  // only while the system is 寰宇. Any other system makes the center 無 automatically; no system yet: the center is not asked for.
+  var REQ = {
+    rank: function () { return true; },
+    education_system: function () { return sysKind() !== "other"; },
+    education_center: function () { return sysKind() === "hglobal"; },
+    education_custom: function () { return sysKind() === "other"; }
+  };
+  var noteEl = null, customInit = "";
+  function liveMissing() {
+    return Object.keys(AROWS).map(function (k) { return AROWS[k]; }).filter(function (r) { return r.inAmway && r.isRequired() && r.isEmpty(); })
+      .sort(function (x, y) { return x.compareDocumentPosition(y) & 4 ? -1 : 1; })
+      .map(function (r) { return r.querySelector("label").textContent; });
+  }
+  // After any change: the 必填 tags and the 「請填寫」 note follow what is on the screen.
+  function paintAmwayState() {
+    Object.keys(AROWS).forEach(function (k) { AROWS[k].refreshStatus(); });
+    if (noteEl) { var miss = liveMissing(); noteEl.textContent = miss.length ? "請填寫：" + miss.join("、") + "（必填；沒有的話請勾選「無」）。" : ""; noteEl.hidden = !miss.length; }
+  }
+  // A drop-down keeps the width it had before 無 was ticked (it must not shrink to the one word 無, nor change on untick).
+  function lockWidth(ddEl) {
+    if (ddEl.dataset.locked) return;
+    var w = ddEl.getBoundingClientRect().width;
+    if (w > 0) { ddEl.style.width = Math.ceil(w) + "px"; ddEl.dataset.locked = "1"; }
+  }
+  function fitDropdown(dd) { dd.el.style.flex = "0 0 auto"; dd.el.style.maxWidth = "calc(100% - 70px)"; return dd; }
+  // The saved training system is not one of the listed words: it is a 自訂系統 (the 其他 choice).
+  function customInitFor() {
+    var st = S.amway.fields.education_system || {}, v = st.pending_value != null ? st.pending_value : st.value;
+    return typeof v === "string" && v && v !== "無" && (S.terms.education_system || []).indexOf(v) < 0 ? v : "";
   }
   function amwayFieldRow(d, override) {
     var st = S.amway.fields[d.key] || { value: null, pending_value: null, status: "not_required", visibility: "private" };
@@ -589,16 +620,18 @@ export const ME_JS = String.raw`
       if (d.type === "select") {
         // 「無」 is a tick beside the drop-down (not an entry inside it): ticked = the value "none", the list is switched off.
         var hasNone = opts.some(function (o) { return o.value === "none"; }), noneOn = hasNone && cur === "none";
-        var dd = HG.dropdown({ options: [{ value: "", label: "（未選擇）" }].concat(opts.filter(function (o) { return o.value !== "none"; })), value: noneOn ? "" : (cur || ""), block: true });
+        var dd = fitDropdown(HG.dropdown({ options: [{ value: "", label: "（未選擇）" }].concat(opts.filter(function (o) { return o.value !== "none"; })), value: noneOn ? "" : (cur || "") }));
         if (!hasNone) return { node: dd.el, get: function () { return dd.get() || null; } };
         var ddBtn = dd.el.querySelector(".dd-btn"); if (noneOn) ddBtn.disabled = true;
-        var noneTick = HG.checkbox("無", noneOn, function (on) { noneOn = on; ddBtn.disabled = on; if (on) dd.set(""); });
+        var noneTick = HG.checkbox("無", noneOn, function (on) { if (on) lockWidth(dd.el); noneOn = on; ddBtn.disabled = on; if (on) dd.set(""); });
         // The rank is always free to choose (it does not depend on the training system or the regional center).
-        return { node: el("div", {}, [el("div", { class: "with-none" }, [dd.el, noneTick])]), get: function () { return noneOn ? "none" : (dd.get() || null); } };
+        return { node: el("div", { class: "with-none" }, [dd.el, noneTick]), get: function () { return noneOn ? "none" : (dd.get() || null); } };
       }
       // The regional center can only be chosen while the training system is 寰宇; otherwise it is saved as 無 and cannot be edited.
       if (d.key === "education_center" && !systemIsHglobal()) {
-        return { node: el("p", { class: "help" }, [document.createTextNode("無（只有直銷商培訓系統選寰宇時才能選地區教育中心）")]), get: function () { return "無"; } };
+        // Not 寰宇: nothing to choose. No system yet: asked to choose one first (the saved value stays); any other system: saved as 無.
+        if (sysKind() === "empty") { var sv0 = st.pending_value != null ? st.pending_value : st.value; return { node: el("p", { class: "help", text: "請先選擇直銷商培訓系統" }), get: function () { return sv0 === undefined ? null : sv0; } }; }
+        return { node: el("p", { class: "help", text: "無（只有直銷商培訓系統選寰宇時才能選地區教育中心）" }), get: function () { return "無"; } };
       }
       var input = el("input", { type: "text", maxlength: d.max_length, "aria-label": d.label }); input.value = cur || "";
       var typingSaves = !d.suggest;
@@ -607,15 +640,29 @@ export const ME_JS = String.raw`
       if (none) { input.value = ""; input.disabled = true; }
       // Training system and regional center: a drop-down of the listed words with 「其他」; choosing 其他 opens a free text box.
       var terms = (S.terms && S.terms[d.key]) || [], listed = canNone && terms.length > 0 && (d.key === "education_system" || systemIsHglobal());
+      if (listed && d.key === "education_system") {
+        // 其他 hides the regional center and opens the 自訂系統 box in its place (a row of its own); its text is this field's value.
+        var OTHER_S = "__other", curS = none ? "" : (cur || ""), selS = !curS ? "" : (terms.indexOf(curS) >= 0 ? curS : OTHER_S);
+        var optsS = [{ value: "", label: "（未選擇）" }].concat(terms.map(function (t) { return { value: t, label: t }; }), [{ value: OTHER_S, label: "其他" }]);
+        var ddS = fitDropdown(HG.dropdown({ options: optsS, value: selS, searchable: terms.length > 12 }));
+        var btnS = ddS.el.querySelector(".dd-btn"); if (none) btnS.disabled = true;
+        var tickS = HG.checkbox("無", none, function (on) { if (on) lockWidth(ddS.el); none = on; btnS.disabled = on; if (on) ddS.set(""); });
+        return { node: el("div", { class: "with-none" }, [ddS.el, tickS]), isOther: function () { return !none && ddS.get() === OTHER_S; }, get: function () {
+          if (none) return "無";
+          var v = ddS.get();
+          if (v === OTHER_S) { var u = AROWS.education_custom; return u ? u.value() : (customInit || null); }
+          return v || null;
+        } };
+      }
       if (listed) {
         var OTHER = "__other", curText = none ? "" : (cur || ""), inList = curText && terms.indexOf(curText) >= 0;
         var selStart = !curText ? "" : (inList ? curText : OTHER);
         var topts = [{ value: "", label: "（未選擇）" }].concat(terms.map(function (t) { return { value: t, label: t }; }), [{ value: OTHER, label: "其他" }]);
         var other = el("input", { type: "text", maxlength: d.max_length, placeholder: "請輸入自訂內容", "aria-label": d.label + "（其他）" });
         other.value = selStart === OTHER ? curText : ""; other.hidden = selStart !== OTHER;
-        var dd2 = HG.dropdown({ options: topts, value: selStart, block: true, searchable: terms.length > 12, onchange: function (v) { other.hidden = v !== OTHER; if (v === OTHER) other.focus(); } });
+        var dd2 = fitDropdown(HG.dropdown({ options: topts, value: selStart, searchable: terms.length > 12, onchange: function (v) { other.hidden = v !== OTHER; if (v === OTHER) other.focus(); } }));
         var dbtn = dd2.el.querySelector(".dd-btn"); if (none) { dbtn.disabled = true; other.disabled = true; }
-        var noneTick2 = HG.checkbox("無", none, function (on) { none = on; dbtn.disabled = on; other.disabled = on; if (on) { dd2.set(""); other.hidden = true; other.value = ""; } });
+        var noneTick2 = HG.checkbox("無", none, function (on) { if (on) lockWidth(dd2.el); none = on; dbtn.disabled = on; other.disabled = on; if (on) { dd2.set(""); other.hidden = true; other.value = ""; } });
         return { node: el("div", {}, [el("div", { class: "with-none" }, [dd2.el, noneTick2]), other]), get: function () {
           if (none) return "無";
           var v = dd2.get();
@@ -643,14 +690,14 @@ export const ME_JS = String.raw`
       if (d.key === "education_center") return v !== "無";
       return !!centerNow && centerNow !== "無";                                // the rank is reviewed together with a real center
     }
-    function onChange(v) { updateRankLock(); warn.hidden = !reviewAgain(v); }
+    function onChange(v) { updateDeps(); warn.hidden = !reviewAgain(v); }
     // 審核通過 tag: the reviewer approved exactly this value (the center and the rank).
     function approvedFn(v) {
       var cur = S.amway.fields[d.key];
       return (d.key === "education_center" || d.key === "rank") && !!cur && cur.status === "approved" && cur.value !== null && JSON.stringify(v) === JSON.stringify(cur.value);
     }
-    var r = makeRow({ label: d.label, required: REQUIRED.indexOf(d.key) >= 0, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: onChange, approvedFn: approvedFn, below: function () { return warn; } });
-    AROWS[d.key] = r;
+    var r = makeRow({ label: d.label, required: REQ[d.key] || false, stored: d.key === "education_center" ? (st.pending_value != null ? st.pending_value : (st.value != null ? st.value : null)) : undefined, keys: [d.key], vis: st.visibility, forced: !!(d.visibility && d.visibility.configurable === false), editor: editor, status: status, save: save, after: after, onChange: onChange, approvedFn: approvedFn, below: function () { return warn; } });
+    r.inAmway = true; AROWS[d.key] = r;
     return r;
   }
   // Replace one block in place (no page reload): used after the Amway switch and Amway field saves.
@@ -665,47 +712,76 @@ export const ME_JS = String.raw`
       if (r[0].status === 200 && r[1].status === 200) { S.amway = r[0].body; S.profile = r[1].body; swap("avatar"); swap("amway"); }
     });
   }
-  // The regional center is a drop-down of its list while the chosen system is H-Global1985, a plain box otherwise.
-  var centerListed = null;
+  // The regional center row has three looks: a drop-down of its list (system 寰宇), a note that it is 無 (any other system), and a note
+  // asking for the system first. The 自訂系統 row (system 其他) takes the center's place; the center row stays, hidden, and still saves 無.
+  var centerMode = null;
+  function modeOfCenter() { var k = sysKind(); return k === "hglobal" ? "list" : k === "empty" ? "empty" : "locked"; }
   function syncCenterMode() {
     var c = AROWS.education_center; if (!c || !c.ed) return;
-    var want = systemIsHglobal();
-    if (centerListed === null) { centerListed = want; return; }
-    if (want === centerListed) return;
-    centerListed = want;
+    var want = modeOfCenter();
+    if (centerMode === null) { centerMode = want; return; }
+    if (want === centerMode) return;
     var cd = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0];
-    if (cd) { var neu = amwayFieldRow(cd, c.value()); c.replaceWith(neu); }
+    if (!cd) return;
+    var hid = c.hidden;
+    // Back to 寰宇: the center starts empty so the member chooses it; the other looks keep what they show.
+    var neu = amwayFieldRow(cd, want === "list" ? null : undefined);
+    neu.hidden = hid; c.replaceWith(neu); centerMode = want;
   }
-  function updateRankLock() { syncCenterMode(); }
+  function syncSlot() {
+    var custom = sysKind() === "other", c = AROWS.education_center, u = AROWS.education_custom;
+    if (c) c.hidden = custom;
+    if (!u) return;
+    var was = u.hidden; u.hidden = !custom;
+    if (custom && was) { var i = u.querySelector("input"); if (i) i.focus(); }
+    if (!custom && !was) u.ed.clear();
+  }
+  function updateDeps() { syncCenterMode(); syncSlot(); paintAmwayState(); }
+  // The 自訂系統 row: its text is saved as the training system's value (the system row reads it and saves it), so it saves nothing itself.
+  function customRow() {
+    var input = el("input", { type: "text", maxlength: 50, "aria-label": "自訂系統", placeholder: "請輸入自訂內容" });
+    input.value = customInit || "";
+    var r = makeRow({ label: "自訂系統", required: REQ.education_custom, editor: function () { return { node: input, get: function () { return input.value.trim() || null; }, clear: function () { input.value = ""; } }; },
+      save: function () { return Promise.resolve({ status: 200 }); },
+      onChange: function () { var sr = AROWS.education_system; if (sr) sr.touch(); updateDeps(); } });
+    r.inAmway = true; AROWS.education_custom = r;
+    return r;
+  }
   // After one Amway field was saved: refresh the data and only the bits that depend on it (the editors stay as they are).
   var AROWS = {};
   function refreshAmwayData(savedKey) {
     return Promise.all([api("GET", "/v1/me/amway"), api("GET", "/v1/me/profile")]).then(function (r) {
       if (r[0].status !== 200 || r[1].status !== 200) return;
       S.amway = r[0].body; S.profile = r[1].body; swap("avatar");
-      Object.keys(AROWS).forEach(function (k) { AROWS[k].refreshStatus(); });
-      var note = document.getElementById("amway-missing"); if (note) { var miss = amwayMissing(); note.textContent = miss.length ? "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" : ""; note.hidden = !miss.length; }
+      paintAmwayState();
     });
   }
 
+  function setAmway(on) {
+    S.amway.enabled = on; swap("amway");
+    api("PUT", "/v1/me/amway/enabled", { enabled: on }).then(function (r) {
+      if (r.status === 200) { if (r.body.member_number) S.profile.fields.member_number.value = r.body.member_number; refreshAmway(); }
+      else { S.amway.enabled = !on; swap("amway"); HG.toast(errText(r)); }
+    });
+  }
   function amwayCard() {
     var m = msg();
-    // The switch takes effect on screen at once; the server call runs in the background and the page is corrected if it fails.
-    var box = HG.checkbox("我是Amway會員", isAmway(), function (on) {
-      S.amway.enabled = on; swap("amway");
-      api("PUT", "/v1/me/amway/enabled", { enabled: on }).then(function (r) {
-        if (r.status === 200) { if (r.body.member_number) S.profile.fields.member_number.value = r.body.member_number; refreshAmway(); }
-        else { S.amway.enabled = !on; swap("amway"); HG.toast(errText(r)); }
-      });
-    });
-    var kids = [box, m];
-    AROWS = {}; centerListed = null;
-    if (isAmway()) { var miss = amwayMissing(); kids.push(el("p", { id: "amway-missing", class: "help warn-note", hidden: !miss.length, text: miss.length ? "請填寫：" + miss.join("、") + "（必填；系統、中心沒有的話請勾選「無」）。" : "" })); }
+    AROWS = {}; centerMode = null; customInit = customInitFor(); noteEl = null;
+    // While 我是Amway會員 is on, its tick row is gone and only the fields show; the way back is the small button at the bottom.
+    var kids = isAmway() ? [m] : [HG.checkbox("我是Amway會員", false, setAmway), m];
+    if (isAmway()) { noteEl = el("p", { id: "amway-missing", class: "help warn-note", hidden: true }); kids.push(noteEl); }
     // The member number and the Amway fields in the order the administrator set; the number is always there.
     var items = [{ order: S.def.member_number.order, make: numberRow }];
-    if (isAmway()) S.adefs.fields.forEach(function (d) { items.push({ order: d.order, make: function () { return amwayFieldRow(d); } }); });
+    if (isAmway()) {
+      S.adefs.fields.forEach(function (d) { items.push({ order: d.order, make: function () { return amwayFieldRow(d); } }); });
+      var cdef = S.adefs.fields.filter(function (x) { return x.key === "education_center"; })[0];
+      if ((S.terms.education_system || []).length) items.push({ order: (cdef ? cdef.order : 30) + 0.5, make: customRow });
+    }
     items.sort(function (a, b) { return a.order - b.order; }).forEach(function (it) { kids.push(it.make()); });
-    syncCenterMode(); updateRankLock();
+    if (isAmway()) {
+      syncCenterMode(); syncSlot(); paintAmwayState();
+      kids.push(el("p", { class: "help" }, [el("button", { type: "button", class: "btn-link", text: "取消 Amway 會員身分", onclick: function () { setAmway(false); } })]));
+    }
     return el("section", { class: "card" }, kids);
   }
 

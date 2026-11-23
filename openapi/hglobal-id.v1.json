@@ -847,6 +847,13 @@
             "type": "boolean",
             "description": "The training system (effective or pending) is a term marked as H-Global1985: the regional education center offers its own related words (field definition suggest_when_hglobal)."
           },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required Amway fields still empty (saved values), in screen order: rank, education_system, and education_center only while the system is 寰宇 (with any other system the center is 無 automatically). Empty while 我是Amway會員 is off. 無 counts as filled in."
+          },
           "fields": {
             "type": "object",
             "additionalProperties": {
@@ -895,6 +902,7 @@
           "enabled",
           "hglobal_systems",
           "hglobal",
+          "missing",
           "fields"
         ]
       },
