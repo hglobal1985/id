@@ -167,7 +167,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-23.2", digest: "792cd2185c9b661e" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-23.3", digest: "ab567022ab68406e" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -196,7 +196,7 @@ describe("app sign-in", () => {
     const w = await app.request("/v1/me/profile/fields/display_name", { method: "PUT", headers: { ...bearer(t.access_token), "content-type": "application/json" }, body: JSON.stringify({ value: "x" }) }, env);
     expect(w.status).toBe(200);
     // Account-level pages stay on the member site, and back-office APIs never accept App tokens.
-    expect((await post("/v1/me/delete-account", {}, bearer(t.access_token))).status).toBe(403);
+    expect((await post("/v1/me/delete-account", {}, bearer(t.access_token))).status).toBe(401); // an App needs the reauth proof (ADR 0037)
     expect((await get("/v1/admin/apps", bearer(t.access_token))).status).toBe(401);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM member_apps WHERE app_id = 'learn'").get()).toEqual({ n: 1 });
     expect((await signIn()).user).toEqual({ member_id: t.user.member_id, status: "active", is_new: false });
@@ -282,6 +282,81 @@ describe("app sign-in", () => {
     expect((await get("/v1/me/profile", bearer(b.access_token))).status).toBe(401);
     expect((await get("/v1/me/profile", { cookie: `__Host-hgid_session=${cookie}` })).status).toBe(401);
     expect((await post("/v1/auth/logout", {})).status).toBe(401);
+  });
+});
+
+describe("delete the account from inside an App (ADR 0037)", () => {
+  async function reauth(t: Tokens, over: Record<string, unknown> = {}, appId = "learn") {
+    const { nonce } = (await (await post("/v1/auth/nonce", { app_id: appId })).json()) as { nonce: string };
+    return post("/v1/auth/reauth", { id_token: await googleIdToken(sha256Hex(nonce), over), nonce }, bearer(t.access_token));
+  }
+  const del = (t: Tokens, reauth_token?: string) => post("/v1/me/delete-account", reauth_token === undefined ? {} : { reauth_token }, bearer(t.access_token));
+
+  it("confirm → fresh Google sign-in → delete: the account is gone at once and every session of the member ends", async () => {
+    const t = await signIn();
+    expect(await errorCode(await del(t))).toBe("reauth_required");
+    const r = await reauth(t);
+    expect(r.status).toBe(200);
+    const { reauth_token, expires_in } = (await r.json()) as { reauth_token: string; expires_in: number };
+    expect(expires_in).toBe(600);
+    const res = await del(t, reauth_token);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(db.raw.prepare("SELECT status, google_email FROM members WHERE id = ?").get(t.user.member_id)).toEqual({ status: "deleted", google_email: null });
+    expect((await get("/v1/me/profile", bearer(t.access_token))).status).toBe(401);
+    const audit = db.raw.prepare("SELECT app_id, detail FROM audit_log WHERE action = 'account.delete'").get() as { app_id: string; detail: string };
+    expect(audit.app_id).toBe("learn");
+    expect(audit.detail).not.toContain("@");
+  });
+
+  it("the proof expires after 10 minutes, belongs to one member, one App session and one purpose", async () => {
+    const t = await signIn();
+    const { reauth_token } = (await (await reauth(t)).json()) as { reauth_token: string };
+    // someone else's access token cannot use it
+    const other = await signIn("learn", { sub: "g-2", email: "o@example.com" });
+    expect(await errorCode(await del(other, reauth_token))).toBe("reauth_required");
+    // it is not an access token
+    expect((await get("/v1/me/profile", bearer(reauth_token))).status).toBe(401);
+    // a garbage or access token in its place
+    expect(await errorCode(await del(t, "x.y.z"))).toBe("reauth_required");
+    expect(await errorCode(await del(t, t.access_token))).toBe("reauth_required");
+    later(601);
+    const t2 = await signIn(); // a fresh access token (the old one expired too)
+    expect(await errorCode(await del(t2, reauth_token))).toBe("reauth_required");
+    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(t.user.member_id)?.status).toBe("active");
+  });
+
+  it("only the same Google account confirms; a wrong or reused nonce is refused", async () => {
+    const t = await signIn();
+    const diff = await reauth(t, { sub: "g-other", email: "x@example.com" });
+    expect(diff.status).toBe(403);
+    const { nonce } = (await (await post("/v1/auth/nonce", { app_id: "learn" })).json()) as { nonce: string };
+    const idt = await googleIdToken(sha256Hex(nonce));
+    expect((await post("/v1/auth/reauth", { id_token: idt, nonce }, bearer(t.access_token))).status).toBe(200);
+    expect((await post("/v1/auth/reauth", { id_token: idt, nonce }, bearer(t.access_token))).status).toBe(401); // single use
+    expect((await post("/v1/auth/reauth", { id_token: idt, nonce })).status).toBe(401); // needs the access token
+    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(t.user.member_id)?.status).toBe("active");
+  });
+
+  it("the last super administrator must hand the role over first (409); a paused App cannot delete", async () => {
+    const t = await signIn();
+    db.raw.prepare("INSERT INTO staff_roles (member_id, role, granted_at) VALUES (?, 'super_admin', 'x')").run(t.user.member_id);
+    const { reauth_token } = (await (await reauth(t)).json()) as { reauth_token: string };
+    const res = await del(t, reauth_token);
+    expect(res.status).toBe(409);
+    expect(await errorCode(res)).toBe("last_super_admin");
+    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(t.user.member_id)?.status).toBe("active");
+    db.raw.prepare("DELETE FROM staff_roles WHERE member_id = ?").run(t.user.member_id);
+    const sa = await staff("sa-pause", ["super_admin"]);
+    expect((await admin(sa, "PUT", "/v1/admin/apps/learn/status", { status: "paused" })).status).toBe(200);
+    clearAppCache();
+    expect((await del(t, reauth_token)).status).toBe(401); // the App is paused: its tokens stop working
+  });
+
+  it("the sign-in relay takes purpose=delete_account (a confirmation page), nothing else", async () => {
+    const q = { app_id: "learn", nonce: "a".repeat(64), return: "learn://auth/google" };
+    expect((await get("/auth/google/start?" + new URLSearchParams({ ...q, purpose: "delete_account" }))).status).toBe(302);
+    expect((await get("/auth/google/start?" + new URLSearchParams({ ...q, purpose: "other" }))).status).toBe(400);
   });
 });
 

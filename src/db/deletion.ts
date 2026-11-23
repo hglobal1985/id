@@ -8,7 +8,8 @@ import { getActiveBinding, unbindSpouse } from "./spouse";
 
 export type DeleteResult = "deleted" | "not_found" | "last_super_admin";
 
-export async function deleteAccount(db: D1Database, memberId: string, now: Date, requestId: string): Promise<DeleteResult> {
+/** `appId`: the App the member deleted the account from (null: the member site). Same effect either way. */
+export async function deleteAccount(db: D1Database, memberId: string, now: Date, requestId: string, appId: string | null = null): Promise<DeleteResult> {
   const member = await db.prepare("SELECT status FROM members WHERE id = ?").bind(memberId).first<{ status: string }>();
   if (!member || member.status === "deleted") return "not_found";
   // The system must keep one super administrator.
@@ -18,7 +19,7 @@ export async function deleteAccount(db: D1Database, memberId: string, now: Date,
     if (!others?.n) return "last_super_admin";
   }
   const binding = await getActiveBinding(db, memberId);
-  if (binding) await unbindSpouse(db, { memberId, binding, fallbackCountry: "TW", appId: null, requestId, now });
+  if (binding) await unbindSpouse(db, { memberId, binding, fallbackCountry: "TW", appId, requestId, now });
   const m = memberId;
   const t = epochSeconds(now);
   const ts = taipeiIso(now);
@@ -55,7 +56,7 @@ export async function deleteAccount(db: D1Database, memberId: string, now: Date,
            google_picture_url = NULL, display_name = NULL, avatar_url = NULL, avatar_source = 'none', updated_at = ? WHERE id = ?`,
       )
       .bind(ts, m),
-    auditStatement(db, { actorType: "member", actorId: m, action: "account.delete", targetType: "member", targetId: m, result: "success", requestId }, now),
+    auditStatement(db, { actorType: "member", actorId: m, action: "account.delete", targetType: "member", targetId: m, result: "success", appId, requestId, detail: { via: appId ? "app" : "member_site" } }, now),
   ]);
   return "deleted";
 }

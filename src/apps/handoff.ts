@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-23.2";
-export const HANDOFF_UPDATED = "2026-11-23 13:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-23.3";
+export const HANDOFF_UPDATED = "2026-11-23 16:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -125,7 +125,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - reason 只給 App 內部記錄用，絕對不要顯示給會員。不符合資格時只顯示一般的說明（例如「此內容需要符合資格才能觀看」）。",
     "7. Amway 資料不得被 App 保存：會員編號、獎銜、上手、資格查詢結果等 Amway 相關資料，App 與 App 後端都不可以寫入資料庫、檔案、日誌、分析工具或錯誤回報；需要時即時向中央會員查詢。日誌也不可以記錄 Token、信箱、姓名。唯一的例外（業主 2026-11-22）：三、16 獎銜與中心申請審核的「已處理紀錄」，只可保存申請當下的快照（姓名、申請欄位、原本的值、申請的值、修改後通過的值，獎銜存代碼或中文名稱皆可），僅供日後查詢，不得再用它判斷資格或權限（資格一律即時向中央查詢）；細節與限制見三、16。",
     "8. 對會員顯示的文字：品牌只用 starry.phd、Amway 這兩個寫法，不要使用它們的中文名稱；畫面上不要出現「寰宇」「H-Global1985」「hglobal」字樣（App 選單裡的選項與隱私權文件除外），網頁標題統一寫「會員中心」。不要提到其他系統的名稱，需要時一律寫「合作營運單位」。",
-    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy（完整隱私說明已合併在同一份文件，只有這一個網址）。App Store 與 Google Play 要求 App 內有刪除帳號入口：放一個按鈕用瀏覽器開啟 ${origin}/my/edit，會員在那裡按「刪除帳號」（重新登入確認後立即生效，沒有申請流程，也沒有「刪除 Amway 資料」）。`,
+    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy（完整隱私說明已合併在同一份文件，只有這一個網址）。App Store 與 Google Play 要求 App 內有刪除帳號入口。刪除帳號改為在 App 內直接完成（2026-11-23.3，全生態系統標準，不再帶會員去中央網站、不要再開啟 ${origin}/my/edit）：設定頁放「刪除帳號」按鈕 → 二次確認（寫明「會刪除你在所有寰宇 App 的帳號與資料，無法復原」）→ 重新驗證：先 POST ${origin}/v1/auth/nonce 取 nonce，用瀏覽器開 GET ${origin}/auth/google/start?app_id=<app_id>&nonce=<nonce 的 SHA-256 hex>&return=<登記的回傳網址>&state=<自訂>&purpose=delete_account，會員再按一次 Google 登入，回傳的 id_token 連同原始 nonce 送 POST ${origin}/v1/auth/reauth（帶會員自己的 Access Token，body {"id_token":…,"nonce":…}；必須是登入時的同一個 Google 帳號，否則 403），拿到 reauth_token（10 分鐘有效，只能用在這個會員、這個 App 的這次登入、只能刪帳號）→ POST ${origin}/v1/me/delete-account（Bearer Access Token，body {"reauth_token":…}，只能刪 token 本人）→ 成功回 {"deleted":true}：帳號匿名化並關閉、所有裝置與 App 登出、Google 帳號釋放、會員資料與 Amway 資料全部清除（沒有申請流程，也沒有「刪除 Amway 資料」）；App 收到成功後立刻自己清掉本機資料與 Token、回到登入畫面（不用等 webhook；其他已串接 App 會收到 member.deleted，照 delete_copy 清掉自己的副本）。錯誤：401 reauth_required（沒帶或超過 10 分鐘，請再走一次重新驗證）、403 forbidden、409 last_super_admin（最後一位超級管理員要先移交職務），message 都是白話文，直接顯示給會員。被暫停（paused／killed）的 App 不能刪。網頁版會員仍可在 ${origin}/my/edit 刪除。`,
     "10. 網頁版網址：每一頁都要有自己的網址路徑，用 History API 切換；重新整理、上一頁、分享網址都停留在同一頁。需要登入的頁面，未登入時先記下目前路徑，登入完成後導回原本那一頁（回傳網址必須在已登記的網頁版來源底下）。",
     "11. 平台資料標準（所有 App 一體適用，先從寰宇行動大學驗收）：",
     "   - 原則 1：個人資料的正本只在中央；App 只存 member_id。複製資料只限必要，並且要有同步（收事件重讀）與刪除（收刪除事件就刪）的機制。",
@@ -135,7 +135,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `   - 事件通知（webhook）：業主在後台「平台設定」替這款 App 設定 webhook 網址（https）與簽章金鑰（金鑰只存在中央與 App 的伺服器環境變數，不要貼到對話、Issue、PR）。事件：member.profile_changed（fields＝變動的欄位名稱陣列，例如 display_name、contact_email、legal_name，不含值）、member.deleted（會員已刪除帳號）、webhook.test（後台測試）。每則事件是 POST 的 JSON：{"id","type","created_at","app_id","member_id","fields"?}，標頭有 X-HG-Event-Id、X-HG-Timestamp（秒）、X-HG-Attempt、X-HG-Signature：v1=<十六進位>，值是 HMAC-SHA256(金鑰, 時間戳 + "." + 原始請求內容)。App 必須：用原始內容（不要重新序列化）驗簽並用常數時間比較、時間戳與現在相差超過 5 分鐘就拒絕、用事件 id 去重（至少送達一次，可能重複、不保證順序）、在 5 秒內回 2xx；失敗中央會在 1 分鐘、5 分鐘、30 分鐘、2 小時、6 小時、24 小時後重試，共 7 次，之後標為失敗（紀錄保存 30 天，業主在後台看得到）。收到 member.deleted：刪除這位會員在 App 內的所有副本（個人資料、聯絡方式、登入與快取）；交易與付款紀錄依法定保存義務保留快照、不再更新、不用於其他用途。收到 member.profile_changed：只在需要時，用會員本人的 Token 或下方查詢重新讀取，不要自己猜新值。`,
     `   - 聯絡查詢（取代 App 長期保存會員信箱）：業主在後台建立這款 App 的服務金鑰（只顯示一次，只放在 App 的伺服器環境變數，絕不放在手機或網頁用戶端）並核准「用途」（payment_notice、course_notice、account_security）。App 伺服器先 POST ${origin}/v1/service/token {"app_id","client_secret"} 取得 10 分鐘的服務 Token，再 POST ${origin}/v1/apps/<app_id>/contacts/lookup {"member_ids":[最多 50 個],"purpose":"<用途>"}（Authorization: Bearer <服務 Token>）→ {"contacts":[{"member_id","email","email_verified"}],"not_found":[…]}。email 是會員自己填的聯絡信箱（email_verified 為 false），沒有就是已驗證的 Google 信箱。只能查在這款 App 登入過的會員、只能用核准的用途；信箱只用來寄當次通知，不寫進資料庫、日誌或分析工具；每次查詢中央都有稽核（App、筆數、用途，不記信箱）。`,
     "   - 最小權限：新登記的 App 預設只有登入與資格查詢（amway.read）；要更多權限，由業主在後台「平台設定」勾選並留下紀錄。App 只使用被授權的功能，收到 403 forbidden（缺 scope）不要自己想辦法繞過，回報業主。（既有 App 目前仍是舊制的全部權限，業主確認後才收緊。）",
-    `   - 標準符合度回報：App 的管理頁呼叫 GET ${origin}/v1/apps/<app_id>/handoff?integrated=<版本>&standards=<逗號分隔，只列已做到的>，標準代碼：webhook（收通知並驗簽）、delete_copy（收到刪除就刪副本）、no_email_copy（不長期存聯絡信箱）、snapshot_reconcile（交易存快照、靠付款代碼對帳）、least_scope（只用被授權的權限）。業主在後台 App 清單一眼看得出哪款 App 還沒符合；沒做到的就不要列。`,
+    `   - 標準符合度回報：App 的管理頁呼叫 GET ${origin}/v1/apps/<app_id>/handoff?integrated=<版本>&standards=<逗號分隔，只列已做到的>，標準代碼：webhook（收通知並驗簽）、delete_copy（收到刪除就刪副本）、no_email_copy（不長期存聯絡信箱）、snapshot_reconcile（交易存快照、靠付款代碼對帳）、least_scope（只用被授權的權限）、in_app_delete（App 內可直接刪除帳號，三、9）。業主在後台 App 清單一眼看得出哪款 App 還沒符合；沒做到的就不要列。`,
     "12. 下拉重新整理（平台標準，業主 2026-11-14；所有 App、所有頁面一體適用）：每一個畫面都要支援「在頁面最上方往下拉 = 重新整理」，用來取代網頁版沒有重新整理按鈕的缺陷（手機瀏覽器、加到主畫面的網頁、App 內嵌網頁都一樣）。",
     "   - 範圍：App 的每一個畫面都要有（列表、詳情、會員資料頁、通知頁、設定頁…），不可只做首頁。",
     "   - 手勢：頁面捲到最頂端時，手指往下拖超過約 70 px 再放開才觸發。拖動時要有跟手的指示：未過門檻顯示「下拉重新整理」，過了門檻變「放開重新整理」，載入中轉圈；顏色用視覺規範的主色，不新增顏色。沒過門檻就放開，彈回原位、什麼都不做。",
@@ -239,7 +239,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "33. 規則放寬（2026-11-22.4，沒有新的程式要做）：三、16 已處理紀錄可保存姓名與申請內容快照，三、7 加註這個唯一例外；已串接且不需要這份紀錄的 App 不必改；要做的 App 照三、16 的限制（含 member.deleted 時清除快照）。",
     "34. 欄位順序與中心規則（2026-11-23.1，三、5）：資料頁欄位順序改為獎銜、系統、中心；獎銜不再等系統與中心（不再有 system_center_required）；中心只在系統是寰宇時可選，系統非寰宇時自動送 \"無\" 並停用該欄，後端對非寰宇卻送非「無」中心回 422（reason center_requires_hglobal）；名字旁方框順序不變。",
     "35. 2026-11-23.2 補充（三、5）：系統選「其他」時隱藏中心欄、改顯示「自訂系統」輸入框（文字存進 education_system，中心送 \"無\"）；勾選 Amway 會員後隱藏該勾選列（取消入口自行安排）；勾「無」時下拉欄位寬度維持不變；「必填」標籤改為動態顯示（可用 GET /v1/me/amway 的 missing）。",
-    "36. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "36. App 內直接刪除帳號（2026-11-23.3，三、9）：設定頁的「刪除帳號」＝二次確認（所有寰宇 App 的帳號與資料、無法復原）→ nonce → /auth/google/start（purpose=delete_account）→ POST /v1/auth/reauth → POST /v1/me/delete-account（帶 reauth_token）→ 成功後清本機資料與 Token、回登入畫面；不再開啟 /my/edit；401 reauth_required 就重新驗證；錯誤訊息直接顯示；做到後在標準符合度回報 in_app_delete。",
+    "37. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

@@ -179,7 +179,7 @@ export async function appStats(db: D1Database, now: Date): Promise<Map<string, A
  * The platform standards an App reports meeting (ADR 0021). `webhook`, `scope` and `contact_lookup` are also checked by
  * the central system itself (see appChecks); the others only the App can know.
  */
-export const APP_STANDARDS = ["webhook", "delete_copy", "no_email_copy", "snapshot_reconcile", "least_scope"] as const;
+export const APP_STANDARDS = ["webhook", "delete_copy", "no_email_copy", "snapshot_reconcile", "least_scope", "in_app_delete"] as const;
 export type AppStandard = (typeof APP_STANDARDS)[number];
 
 export function parseStandards(raw: string | null): string[] {

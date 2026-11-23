@@ -476,7 +476,7 @@ export const ADMIN_JS = String.raw`
         ]));
       });
     }
-    var STD = { webhook: "收到變動與刪除通知（webhook）並驗證簽章", delete_copy: "收到刪除通知就刪除自己這邊的副本", no_email_copy: "不長期保存聯絡信箱，改用中央查詢", snapshot_reconcile: "交易存當時快照，對帳靠付款代碼不靠姓名", least_scope: "只使用被授權的最小權限" };
+    var STD = { webhook: "收到變動與刪除通知（webhook）並驗證簽章", delete_copy: "收到刪除通知就刪除自己這邊的副本", no_email_copy: "不長期保存聯絡信箱，改用中央查詢", snapshot_reconcile: "交易存當時快照，對帳靠付款代碼不靠姓名", least_scope: "只使用被授權的最小權限", in_app_delete: "App 內可直接刪除帳號（不用跳到中央網站）" };
     function cbox(label, checked, onchange) {
       var b = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": checked ? "true" : "false" }, [el("span", { class: "box" }), el("span", { text: label })]);
       b.addEventListener("click", function () { var next = b.getAttribute("aria-checked") !== "true"; b.setAttribute("aria-checked", next ? "true" : "false"); onchange(next); });
