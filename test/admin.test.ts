@@ -171,6 +171,23 @@ describe("reviews", () => {
     expect(told(rv.id)).toEqual([]);
   });
 
+  it("a rank under another training system, or with center 無, is told only to head office (業主 2026-11-24)", async () => {
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const rv = await person("rv", "審核員", ["reviewer"]);
+    setCenter(rv.id, "高雄 195");
+    const told = (id: string) => db.raw.prepare("SELECT kind FROM notifications WHERE member_id = ?").all(id).map((r) => r.kind);
+    const m = await amwayMember("m", "小美");
+    await member(m, "PUT", "/v1/me/amway/fields/education_system", { value: "其他體系B" });
+    await member(m, "PUT", "/v1/me/amway/fields/rank", { value: "12" });
+    const n = await amwayMember("n", "小華");
+    await member(n, "PUT", "/v1/me/amway/fields/education_system", { value: "寰宇" });
+    await member(n, "PUT", "/v1/me/amway/fields/education_center", { value: "無" });
+    expect(told(hq.id)).toEqual(["staff.review.requested", "staff.review.requested"]);
+    expect(told(sa.id)).toEqual(["staff.review.requested", "staff.review.requested"]);
+    expect(told(rv.id)).toEqual([]);
+  });
+
   it("a request with no real center (center 無 or another training system) never reaches a center reviewer", async () => {
     const hq = await person("hq", "總部秘書", ["secretary"]);
     const sa = await person("sa", "超管", ["super_admin"]);

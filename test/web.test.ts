@@ -321,9 +321,9 @@ describe("member center template (same layout as starry.phd)", () => {
     await req(a, "PUT", "/v1/me/amway/fields/education_system", { value: "無" });
     await req(a, "PUT", "/v1/me/amway/fields/education_center", { value: "無" });
     await req(a, "PUT", "/v1/me/amway/fields/rank", { value: code });
-    // No review is needed unless the training system is H-Global1985, and an unreviewed rank is not shown.
+    // The rank is always reviewed (head office for other systems), and an unreviewed rank is not shown.
     expect(await (await req(a, "GET", "/privacy")).text()).not.toContain('class="rank');
-    db.raw.prepare("UPDATE amway_field_values SET value_approved = 1 WHERE member_id = ? AND field_key = 'rank'").run(a.id);
+    db.raw.prepare("UPDATE amway_field_values SET value = pending_value, pending_value = NULL, status = 'approved', value_approved = 1 WHERE member_id = ? AND field_key = 'rank'").run(a.id);
     const html = await (await req(a, "GET", "/privacy")).text();
     expect(html).toContain('<span class="nm">王大明明…</span>');
     expect(html).toMatch(/<span class="rank rk2" title="F執行專才鑽石">F執行專才鑽石<\/span>/);
