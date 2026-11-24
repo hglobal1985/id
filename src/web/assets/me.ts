@@ -741,7 +741,16 @@ export const ME_JS = String.raw`
   function customRow() {
     var input = el("input", { type: "text", maxlength: 50, "aria-label": "自訂系統", placeholder: "請輸入自訂內容" });
     input.value = customInit || "";
-    var r = makeRow({ label: "自訂系統", required: REQ.education_custom, editor: function () { return { node: input, get: function () { return input.value.trim() || null; }, clear: function () { input.value = ""; } }; },
+    // 寰宇 center words typed as a custom system: a live reminder (never blocks typing; the server refuses the save). The words come from the field definition.
+    var sd = S.adefs.fields.filter(function (x) { return x.key === "education_system"; })[0] || {};
+    var cwords = sd.hglobal_center_words || [], ctpl = sd.hglobal_center_message || "";
+    var warn = el("p", { class: "help", role: "alert", style: "color:#c2410c", hidden: true });
+    function paintWarn() {
+      var t = input.value.toLowerCase(), w = cwords.filter(function (x) { return t.indexOf(x.toLowerCase()) >= 0; })[0];
+      warn.textContent = w ? ctpl.replace("{word}", w) : ""; warn.hidden = !w;
+    }
+    input.addEventListener("input", paintWarn); paintWarn();
+    var r = makeRow({ label: "自訂系統", required: REQ.education_custom, editor: function () { return { node: el("div", {}, [input, warn]), get: function () { return input.value.trim() || null; }, clear: function () { input.value = ""; paintWarn(); } }; },
       save: function () { return Promise.resolve({ status: 200 }); },
       onChange: function () { var sr = AROWS.education_system; if (sr) sr.touch(); updateDeps(); } });
     r.inAmway = true; AROWS.education_custom = r;

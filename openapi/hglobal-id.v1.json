@@ -3586,7 +3586,7 @@
             }
           },
           "422": {
-            "description": "invalid_field",
+            "description": "invalid_field (details.reason; education_system text containing a 寰宇 center word: use_hglobal_center)",
             "content": {
               "application/json": {
                 "schema": {

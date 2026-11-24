@@ -278,6 +278,20 @@ describe("fields and review", () => {
     expect(db.raw.prepare("SELECT field_key, center_norm FROM amway_review_requests WHERE status = 'pending'").all()).toEqual([{ field_key: "rank", center_norm: null }]);
   });
 
+  it("a custom system containing a 寰宇 center word is refused (422 use_hglobal_center); the word list is in the definitions", async () => {
+    const m = await member("g-w", "丙");
+    await enable(m);
+    for (const word of ["飛登", "蓁分享", "有賢社", "聚冠"]) {
+      const res = await put(m, "education_system", `我的${word}團隊`);
+      expect(res.status).toBe(422);
+      const e = ((await res.json()) as { error: { message: string; details: { reason: string } } }).error;
+      expect(e.details.reason).toBe("use_hglobal_center");
+      expect(e.message).toBe(`「${word}」屬於寰宇系統：請把「系統」改選「寰宇」，再從「中心」切換選擇。`);
+    }
+    expect((await put(m, "education_system", "其他體系B")).status).toBe(200);
+    expect((await put(m, "education_center", "蓁分享")).status).not.toBe(500); // only the system field is checked
+  });
+
   it("the rank is free (any order); the center can only be chosen while the system is 寰宇 (else 無, 422 center_requires_hglobal)", async () => {
     const m = await member("g-a", "甲");
     await enable(m);

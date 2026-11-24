@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-24.2";
-export const HANDOFF_UPDATED = "2026-11-24 15:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-24.3";
+export const HANDOFF_UPDATED = "2026-11-24 18:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -242,7 +242,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "36. App 內直接刪除帳號（2026-11-23.3，三、9）：設定頁的「刪除帳號」＝二次確認（所有寰宇 App 的帳號與資料、無法復原）→ nonce → /auth/google/start（purpose=delete_account）→ POST /v1/auth/reauth → POST /v1/me/delete-account（帶 reauth_token）→ 成功後清本機資料與 Token、回登入畫面；不再開啟 /my/edit；401 reauth_required 就重新驗證；錯誤訊息直接顯示；做到後在標準符合度回報 in_app_delete。",
     "37. 開啟完整版會員中心不再選 Google 帳號（2026-11-24.1，三、2（4））：已有 sso_token 時，每次開啟都先 POST /v1/auth/sso/web-code 取新 code，再用系統瀏覽器／整頁導向開 /auth/sso/adopt?c=<code>&app_id=&return=<中央>/my/edit；沒有 sso_token 才直接開 /my/edit；不快取 code；不自己處理中央的 Cookie。審核通知的派送改版由中央處理，App 不用改（三、5 審核規則已補充）。",
     "38. 審核規則改版（2026-11-24.2，三、5）：獎銜只要不是「無」一律進審核（status pending、顯示「等待審核中」，未核准前別人看不到獎銜），寰宇時的中心也審核（含明確勾「無」）；不要寫死「寰宇＋中心才審核」或預期獎銜立刻生效；沒有舊值時畫面顯示空白加「等待審核中」。",
-    "39. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "39. 寰宇中心名稱提醒（2026-11-24.3，三、5）：自訂系統（系統選「其他」）的文字只要包含 field-definitions 中 education_system 的 hglobal_center_words（目前：飛登、蓁分享、有賢社、聚冠），畫面在輸入框下方即時顯示紅／橘色提醒（用 hglobal_center_message，{word} 換成命中的詞；不阻擋輸入；詞清單一律讀中央，不寫死）；中央也會擋：PUT /v1/me/amway/fields/education_system 回 422、details.reason 為 use_hglobal_center，message 就是提醒文字，直接顯示。這些詞其實是寰宇旗下的中心，會員應改選系統「寰宇」再選中心。App 不自行修改既有會員資料。",
+    "40. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

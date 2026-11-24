@@ -14,7 +14,7 @@ import { isPool } from "../vocab/terms";
 import { loadLayout } from "../db/layout";
 import { badgeInfo, listBadges } from "../db/rank-badges";
 import { resolveIssuer } from "../oidc/config";
-import { AMWAY_FIELDS, amwayMissing, getAmwayField, isNone, validateAmwayValue, type AmwayValue } from "../amway/fields";
+import { AMWAY_FIELDS, HGLOBAL_CENTER_MESSAGE, HGLOBAL_CENTER_WORDS, amwayMissing, getAmwayField, isNone, validateAmwayValue, type AmwayValue } from "../amway/fields";
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
 
@@ -77,7 +77,7 @@ const fieldRoute = createRoute({
   summary: "Write one Amway field. Reviewed fields stay pending (old value effective) until approved.",
   security,
   request: { params: z.object({ field_key: z.string().max(64) }), body: { required: true, content: json(z.object({ value: AmwayValueSchema })) } },
-  responses: { 200: { description: "Saved", content: json(FieldStateSchema.extend({ field_key: z.string() })) }, ...common, 404: err("not_found"), 422: err("invalid_field") },
+  responses: { 200: { description: "Saved", content: json(FieldStateSchema.extend({ field_key: z.string() })) }, ...common, 404: err("not_found"), 422: err("invalid_field (details.reason; education_system text containing a 寰宇 center word: use_hglobal_center)") },
 });
 
 const NotificationSchema = z
@@ -140,6 +140,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
           ...(f.type !== "text" ? { options: optionsOf(f.key) } : {}),
           ...(f.suggest ? { suggest: f.suggest } : {}),
           ...(f.suggest_when_hglobal ? { suggest_when_hglobal: true } : {}),
+          ...(f.key === "education_system" ? { hglobal_center_words: HGLOBAL_CENTER_WORDS, hglobal_center_message: HGLOBAL_CENTER_MESSAGE } : {}),
           visible_when: f.visible_when,
           read_only: false,
           scope: "amway.write",

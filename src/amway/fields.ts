@@ -9,6 +9,21 @@
 import { normTerm } from "../vocab/terms";
 
 export const HGLOBAL = "hglobal";
+
+/**
+ * Words that mean a 寰宇 center, not a training system of its own (業主 2026-11-24). A custom training system whose text contains one
+ * of them is refused (422 use_hglobal_center): the member should choose 寰宇 as the system and the center from the list.
+ * Kept here once; apps read it from the field definition (education_system.hglobal_center_words) and never hard-code it.
+ */
+export const HGLOBAL_CENTER_WORDS: readonly string[] = ["飛登", "蓁分享", "有賢社", "聚冠"];
+/** The first center word contained in `text` (case does not matter), or null. */
+export function hglobalCenterWordIn(text: string): string | null {
+  const t = text.normalize("NFC").toLowerCase();
+  return HGLOBAL_CENTER_WORDS.find((w) => t.includes(w.toLowerCase())) ?? null;
+}
+/** The reminder shown to the member; `{word}` is replaced by the word that matched. */
+export const HGLOBAL_CENTER_MESSAGE = "「{word}」屬於寰宇系統：請把「系統」改選「寰宇」，再從「中心」切換選擇。";
+export const hglobalCenterMessage = (word: string) => HGLOBAL_CENTER_MESSAGE.replace("{word}", word);
 export const OTHER = "other";
 
 export type AmwayFieldType = "select" | "select_or_custom" | "text";
@@ -77,6 +92,10 @@ export function validateAmwayValue(def: AmwayFieldDef, raw: unknown, options: Op
       if (typeof raw !== "string") return { ok: false, reason: "type", message: "格式不正確" };
       const t = cleanText(raw, def.max_length ?? 50);
       if (!t.ok) return t;
+      if (def.key === "education_system") {
+        const w = hglobalCenterWordIn(t.text);
+        if (w) return { ok: false, reason: "use_hglobal_center", message: hglobalCenterMessage(w) };
+      }
       return { ok: true, value: t.text || null };
     }
     case "select": {
