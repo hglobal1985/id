@@ -130,15 +130,18 @@ export interface ReviewContext {
 }
 
 /**
- * Whether a new value needs review. The training system itself never does: choosing 寰宇 alone passes at once. Only a member
- * who is 寰宇 AND names a regional center is reviewed: the center (by a reviewer of that same center) and the rank.
- * Everything else applies at once.
+ * Whether a new value needs review. The training system itself never does: choosing 寰宇 alone passes at once. The rank is
+ * reviewed in every case; the center is reviewed while the member is 寰宇. Who reviews is decided by the request's center
+ * (see reviewRecipients): a real center of a 寰宇 member → that center's reviewers, otherwise head office only.
  */
 export function needsReview(def: AmwayFieldDef, value: AmwayValue, ctx: ReviewContext): boolean {
   if (def.review === "never" || value === null) return false;
   const isHglobal = ctx.system.effective === HGLOBAL || ctx.system.pending === HGLOBAL;
-  if (def.key === "education_center") return isHglobal && !isNone(value);
-  if (def.key === "rank") return isHglobal && ctx.hasCenter;
+  // 業主 2026-11-24: a new rank is always reviewed (except 無). With 寰宇 and a real center the reviewers of that center decide;
+  // with no real center, or any other training system (incl. none/其他), only the head-office secretaries and super admins do.
+  // A center is reviewed only while the member is 寰宇: a real center by that center's reviewers, an explicit 無 by head office.
+  if (def.key === "education_center") return isHglobal;
+  if (def.key === "rank") return !isNone(value) && value !== "none";
   return false;
 }
 

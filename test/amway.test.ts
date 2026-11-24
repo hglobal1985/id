@@ -220,24 +220,23 @@ describe("fields and review", () => {
     expect((await put(m, "amway_id", "1")).status).toBe(404);
   });
 
-  it("choosing 寰宇 alone passes at once; naming a center sends the center (and the rank) to review, the rank keeps its old value while pending", async () => {
+  it("choosing 寰宇 alone passes at once; the rank and an explicit center 無 go to head office, a real center sends both to that center's reviewers", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
     let res = await put(m, "education_system", "寰宇");
     expect(await res.json()).toMatchObject({ value: "寰宇", pending_value: null, status: "not_required" });
-    res = await put(m, "rank", "12"); // the rank never waits for the system or the center
-    expect(res.status).toBe(200);
-    res = await put(m, "education_center", "無"); // 無 counts as filled in but is not a center: nothing to review
-    expect(await res.json()).toMatchObject({ value: "無", status: "not_required" });
-    res = await put(m, "rank", "12");
-    expect(await res.json()).toMatchObject({ value: "12", status: "not_required" });
-    expect(await pendingReviews(db)).toEqual([]);
+    res = await put(m, "rank", "12"); // reviewed in every case (業主 2026-11-24); no real center: head office only
+    expect(await res.json()).toMatchObject({ value: null, pending_value: "12", status: "pending" });
+    res = await put(m, "education_center", "無"); // an explicit 無 under 寰宇 is reviewed by head office too
+    expect(await res.json()).toMatchObject({ value: null, pending_value: "無", status: "pending" });
+    expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
+    expect(db.raw.prepare("SELECT DISTINCT center_norm FROM amway_review_requests WHERE status = 'pending'").all()).toEqual([{ center_norm: null }]);
 
     res = await put(m, "education_center", "台北中心");
-    expect(await res.json()).toMatchObject({ value: "無", pending_value: "台北中心", status: "pending" });
-    // the rank saved before the center existed now waits for the same review
+    expect(await res.json()).toMatchObject({ pending_value: "台北中心", status: "pending" });
+    // the rank waiting at head office moves to the same center's reviewers
     expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
-    expect(db.raw.prepare("SELECT DISTINCT center_norm FROM amway_review_requests").all()).toEqual([{ center_norm: "台北中心" }]);
+    expect(db.raw.prepare("SELECT DISTINCT center_norm FROM amway_review_requests WHERE status = 'pending'").all()).toEqual([{ center_norm: "台北中心" }]);
 
     for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff-1", ctx());
     let s = await me(m);
@@ -268,16 +267,18 @@ describe("fields and review", () => {
     expect(await pendingReviews(db)).toEqual([]);
   });
 
-  it("other education systems need no review and the rank is approved automatically", async () => {
+  it("other education systems: no review for the system and center, the rank goes to head office", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
     expect(await (await put(m, "education_system", "其他體系B")).json()).toMatchObject({ status: "not_required", value: "其他體系B" });
-    expect(await (await put(m, "rank", "15")).json()).toMatchObject({ status: "not_required", value: "15" }); // the rank needs nothing first
-    expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ status: "not_required", value: "無" });
+    expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ status: "not_required", value: "無" }); // automatic 無: never reviewed
     expect(await pendingReviews(db)).toEqual([]);
+    // the rank is reviewed whatever the system is, by head office only (業主 2026-11-24)
+    expect(await (await put(m, "rank", "15")).json()).toMatchObject({ status: "pending", value: null, pending_value: "15" });
+    expect(db.raw.prepare("SELECT field_key, center_norm FROM amway_review_requests WHERE status = 'pending'").all()).toEqual([{ field_key: "rank", center_norm: null }]);
   });
 
-  it("the rank is free (any order); the center can only be chosen while the system is 寰宇 (else 無, 422 center_requires_hglobal); 無 is never reviewed", async () => {
+  it("the rank is free (any order); the center can only be chosen while the system is 寰宇 (else 無, 422 center_requires_hglobal)", async () => {
     const m = await member("g-a", "甲");
     await enable(m);
     expect((await put(m, "rank", "12")).status).toBe(200); // no system, no center
@@ -288,10 +289,10 @@ describe("fields and review", () => {
     expect((await put(m, "education_center", "台北中心")).status).toBe(422); // another system
     expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ value: "無", status: "not_required" });
     await put(m, "education_system", "寰宇");
-    expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ value: "無", status: "not_required" });
-    expect(await pendingReviews(db)).toEqual([]);
+    expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ pending_value: "無", status: "pending" });
+    expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM vocab_terms WHERE norm = '無'").get()?.n).toBe(0);
-    // a real center later: the rank joins the review of that center
+    // a real center later: the rank joins the review of that center (the explicit 無 request is replaced)
     await put(m, "education_center", "台北中心");
     expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
   });
@@ -302,8 +303,8 @@ describe("fields and review", () => {
     await put(m, "education_system", "寰宇");
     await put(m, "education_center", "無");
     await put(m, "rank", "12");
-    expect(await pendingReviews(db)).toEqual([]);
-    await put(m, "education_center", "新竹"); // pending; the rank saved before now waits for the same review
+    expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]); // 無 and the rank: head office
+    await put(m, "education_center", "新竹"); // pending; the rank waiting at head office moves to the same center
     expect((await pendingReviews(db)).map((r) => r.field_key).sort()).toEqual(["education_center", "rank"]);
     const res = await put(m, "rank", "15"); // changed in the same save: must stay in review (it used to apply at once)
     expect(await res.json()).toMatchObject({ pending_value: "15", status: "pending" });
@@ -401,6 +402,7 @@ describe("spouses share rank", () => {
     const bNumber = db.raw.prepare("SELECT country, number FROM member_numbers WHERE member_id = ?").get(b.id);
     const dup = (await (await call(a, "PUT", "/v1/me/profile/fields/member_number", { value: [bNumber] })).json()) as { duplicate_candidates: { candidate_id: string; rank: string | null }[] };
     expect(dup.duplicate_candidates[0]?.rank).toBeNull(); // only reviewed ranks are shown
+    for (const r of await pendingReviews(db)) await decideReview(db, r.id, "approve", "staff-1", ctx());
     expect((await call(a, "POST", "/v1/me/spouse", { candidate_id: dup.duplicate_candidates[0]?.candidate_id })).status).toBe(200);
     expect((await me(a)).fields.rank?.value).toBe("15");
     expect((await me(b)).fields.rank?.value).toBe("15");
@@ -423,7 +425,7 @@ describe("spouses share rank", () => {
 
 describe("rules (unit)", () => {
   const hg = new Set(["寰宇"]);
-  it("review decisions: 寰宇 alone needs none; with a center the center and the rank do", () => {
+  it("review decisions: the rank is always reviewed; the center while 寰宇", () => {
     const sys = getAmwayField("education_system")!;
     const center = getAmwayField("education_center")!;
     const rank = getAmwayField("rank")!;
@@ -431,10 +433,13 @@ describe("rules (unit)", () => {
     expect(needsReview(sys, "寰宇", { system: hgSys, hasCenter: true })).toBe(false); // the system itself is never reviewed
     expect(needsReview(center, "台北中心", { system: hgSys, hasCenter: true })).toBe(true);
     expect(needsReview(center, "台北中心", { system: { effective: "sys_b", pending: null }, hasCenter: true })).toBe(false);
-    expect(needsReview(rank, "12", { system: hgSys, hasCenter: false })).toBe(false); // no center: nothing to review
+    expect(needsReview(center, "無", { system: hgSys, hasCenter: false })).toBe(true); // an explicit 無 under 寰宇: head office reviews
+    expect(needsReview(center, "無", { system: { effective: "sys_b", pending: null }, hasCenter: false })).toBe(false); // automatic 無
+    expect(needsReview(rank, "12", { system: hgSys, hasCenter: false })).toBe(true); // the rank is reviewed in every case
     expect(needsReview(rank, "12", { system: hgSys, hasCenter: true })).toBe(true);
     expect(needsReview(rank, "12", { system: { effective: null, pending: "hglobal" }, hasCenter: true })).toBe(true);
-    expect(needsReview(rank, "12", { system: { effective: "sys_b", pending: null }, hasCenter: true })).toBe(false);
+    expect(needsReview(rank, "12", { system: { effective: "sys_b", pending: null }, hasCenter: false })).toBe(true);
+    expect(needsReview(rank, "none", { system: hgSys, hasCenter: false })).toBe(false); // 無 is never reviewed
     expect(needsReview(getAmwayField("upline_diamond")!, "某鑽石", { system: hgSys, hasCenter: true })).toBe(false);
     expect(systemKey("寰宇", hg)).toBe("hglobal");
     expect(systemKey("其他", hg)).toBe("其他");

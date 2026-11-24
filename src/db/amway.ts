@@ -158,7 +158,8 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   const centerText = typeof centerAfter === "string" ? centerAfter.trim() : "";
   const realCenter = centerText !== "" && !isNone(centerText);
   const reviewCtx: ReviewContext = { system: systemAfter, hasCenter: realCenter };
-  const centerNorm = realCenter ? normTerm(centerText) : null;
+  // Only a real center of a 寰宇 member is routed to that center's reviewers; every other request goes to head office (secretary, super admin).
+  const centerNorm = realCenter && (systemAfter.effective === HGLOBAL || systemAfter.pending === HGLOBAL) ? normTerm(centerText) : null;
   // The rank is free: it can be saved at any time, whatever the training system and center are (業主 2026-11-23, order 獎銜 > 系統 > 中心).
   // The regional center can only be chosen while the training system is 寰宇; any other system (or none) means the center is 無.
   if (key === "education_center" && value !== null && !isNone(value) && systemAfter.effective !== HGLOBAL) {
@@ -219,12 +220,31 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
     }
   }
 
+  // A rank waiting for review follows the member's center: when the member's routing changes (a real center of a 寰宇 member,
+  // or none), the waiting request moves to the right reviewers (a fresh request replaces the old one).
+  if ((key === "education_center" || key === "education_system") && !(key === "education_system" && systemKey(value, hg) !== HGLOBAL)) {
+    const rr = rows.get("rank");
+    if (rr?.pending_value != null) {
+      const open = await db.prepare("SELECT center_norm FROM amway_review_requests WHERE member_id = ? AND field_key = 'rank' AND status = 'pending'").bind(memberId).first<{ center_norm: string | null }>();
+      if (open && open.center_norm !== centerNorm) {
+        for (const h of await rankHolders(db, memberId)) stmts.push(supersedePending(db, h, "rank", ts));
+        stmts.push(...(await requestReview("rank", rr.pending_value)));
+      }
+    }
+  }
+
   // Leaving 寰宇 (applied at once) releases the center and the rank that were only pending because of it.
   if (key === "education_system" && systemKey(value, hg) !== HGLOBAL) {
     for (const k of ["education_center", "rank"]) {
       const r = rows.get(k);
       if (r?.pending_value == null) continue;
-      for (const h of k === "rank" ? await rankHolders(db, memberId) : [memberId]) {
+      if (k === "rank") {
+        // The rank is still reviewed, now by head office only: a fresh request replaces the one waiting at the center.
+        for (const h of await rankHolders(db, memberId)) stmts.push(supersedePending(db, h, k, ts));
+        stmts.push(...(await requestReview(k, r.pending_value)));
+        continue;
+      }
+      for (const h of [memberId]) {
         stmts.push(supersedePending(db, h, k, ts));
         stmts.push(upsertRow(db, h, k, { value: r.pending_value, pending_value: null, status: "not_required", value_approved: false }, ts));
       }
