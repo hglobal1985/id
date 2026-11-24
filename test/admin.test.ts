@@ -5,6 +5,7 @@ import { createSession, upsertMemberByGoogle } from "../src/db/identity";
 import { issueTokens } from "../src/oidc/tokens";
 import { defaultDeps } from "../src/deps";
 import type { Env } from "../src/env";
+import { reviewRecipients } from "../src/db/staff";
 import { can, permissionsOf } from "../src/admin/roles";
 
 const ISSUER = "https://id.test.example";
@@ -168,6 +169,16 @@ describe("reviews", () => {
     expect(told(hq.id)).toEqual(["staff.review.requested"]);
     expect(told(sa.id)).toEqual(["staff.review.requested"]);
     expect(told(rv.id)).toEqual([]);
+  });
+
+  it("a request with no real center (center 無 or another training system) never reaches a center reviewer", async () => {
+    const hq = await person("hq", "總部秘書", ["secretary"]);
+    const sa = await person("sa", "超管", ["super_admin"]);
+    const rv = await person("rv", "審核員", ["reviewer"]);
+    setCenter(rv.id, "高雄 195");
+    const ids = await reviewRecipients(db, null);
+    expect([...ids].sort()).toEqual([hq.id, sa.id].sort());
+    expect(ids).not.toContain(rv.id);
   });
 
   it("the new positions exist: 會長, 課務, 音控, 票務, 活動 (and 審核員, 總部秘書)", async () => {

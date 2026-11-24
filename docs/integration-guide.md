@@ -45,6 +45,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - 載入頁面（5 分鐘節流）：取 nonce → 導向 `/auth/sso/check?app_id=&nonce=<SHA-256 hex>&return=&state=` → `#sso_code=&sso_member=&state=` 或 `#sso_none=1&state=` → `POST /v1/auth/sso/web-exchange` `{app_id, code, nonce}`（單次、2 分鐘、綁定 App 與 nonce）。
 - 登出：導向 `/auth/sso/logout?app_id=&return=`。
 - 回傳頁必須在登記的網頁版來源底下、不帶 `#`。手機 App 與網頁版之間不連動。
+- **開啟完整版會員中心不再選 Google 帳號（2026-11-24.1，ADR 0038）**：已有 `sso_token` 時，每次都先 `POST /v1/auth/sso/web-code` 取新 code，再用系統瀏覽器（手機 App）或整頁導向（網頁版）開 `/auth/sso/adopt?c=<code>&app_id=&return=<中央>/my/edit`。中央會替這個瀏覽器建立會員中心的登入並直接進入頁面。`return` 只接受中央自己的 `/my/edit` 與 `/my/<會員編號>`（其他路徑 400，不需登記）；code 單次、2 分鐘，失效時退回一般登入頁。
 
 ## 4. App 後端驗證會員
 用 `GET /oauth/jwks` 的公鑰驗證 Access Token（RS256，`typ` 為 `at+jwt`）：`iss` 與 `aud` 都是中央會員網址、`app_id` 等於自己的 app_id、檢查 `exp`。快取 JWKS，遇到不認得的 `kid` 重新抓取。會員主鍵只用 `sub`（即 `member_id`）；不可用信箱、姓名或會員編號辨識會員（會員編號可能重複或被修改）。
@@ -170,3 +171,6 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 3. **刪除**：`POST /v1/me/delete-account`，Bearer Access Token，body `{"reauth_token":"…"}`；只能刪 token 本人。成功 `{"deleted":true}`，效果與網站按鈕完全一致（匿名化並關閉、所有裝置登出、Google 帳號釋放、會員資料與 Amway 資料清除）。App 成功後立刻清本機資料與 Token、回登入畫面；其他已串接 App 收到 `member.deleted`。
 4. **錯誤**：`401 reauth_required`（沒帶或過 10 分鐘，重走第 2 步）、`403 forbidden`、`409 last_super_admin`（message 直接顯示給會員）。被暫停（paused／killed）的 App 不能呼叫。每次刪除寫稽核紀錄（不記信箱，記是哪個 App）。
 5. 標準代碼 `in_app_delete`：做到後在 `GET /v1/apps/{app_id}/handoff?...&standards=` 回報，後台 App 清單會顯示。
+
+## 6.16 審核通知派送（2026-11-24.1，ADR 0038）
+申請當下沒有實際中心（「無」）或系統不是寰宇（含「無」「其他」自訂）的審核申請，通知與審核權限只給總部秘書（`secretary`）與超級管理員（`super_admin`，業主本人）；中心審核員看不到、不會被通知。系統是寰宇且有中心者維持原規則（同中心審核員；沒有時給秘書與超級管理員）。App 不用改，一切以中央回傳為準。

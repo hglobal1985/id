@@ -21,7 +21,8 @@ import { consumeNonce, createAppSession, getApp } from "../db/apps";
 import { adoptBrowser, createSsoCode, liveSso, liveSsoById, logoutSso, startSso, touchSso, useSsoCode, type SsoRow } from "../db/sso";
 import { timingSafeEqual } from "../lib/crypto";
 import { resolveIssuer } from "../oidc/config";
-import { clearCookie, readCookie, writeCookie } from "../auth/cookies";
+import { SESSION_COOKIE, clearCookie, readCookie, writeCookie } from "../auth/cookies";
+import { LIFETIME, createSession } from "../db/identity";
 import { bearerAuth } from "./auth";
 import { APP_STATE, NONCE_HASH, SignInSchema, fail, limited, resolveApp, sha256Hex, tokenPair } from "./app-auth";
 import { escapeHtml } from "../web/pages";
@@ -33,6 +34,8 @@ const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 const SsoToken = z.object({ sso_token: z.string().max(200) });
 export const SSO_COOKIE = "hgid_sso";
 const COOKIE_MAX_AGE = 30 * 24 * 3600;
+/** Central pages an adopt may land on: the member center (/my/edit) and the member's own page (/my/<number>). */
+const CENTRAL_RETURN = /^\/my\/(edit|[A-Za-z0-9]{1,32})$/;
 
 const startRoute = createRoute({
   method: "post",
@@ -188,7 +191,32 @@ export function registerAppSsoRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) 
     return c.redirect(`${ret}#${new URLSearchParams(fragment).toString()}`, 302);
   }
 
+  /** A return to the central member pages themselves (e.g. https://id.hglobal1985.com/my/edit): the path, else null. */
+  function centralReturn(c: C): string | null {
+    const ret = c.req.query("return") ?? "";
+    const issuer = resolveIssuer(c.env, c.req.url);
+    if (!ret.startsWith(`${issuer}/`)) return null;
+    const path = ret.slice(issuer.length);
+    return CENTRAL_RETURN.test(path) ? path : null;
+  }
+
   app.get("/auth/sso/adopt", async (c) => {
+    const central = centralReturn(c);
+    if (central) {
+      // Open the member center without asking for a Google account: the code proves a live shared sign-in, so the
+      // central site gets its own session for the same member. Single use, 2 minutes.
+      const a = await getApp(c.env.DB, c.req.query("app_id"), deps.now());
+      if (!a || a.status !== "active") return problem(c, "這個 App 無法使用共用登入。");
+      const now = deps.now();
+      const code = await useSsoCode(c.env.DB, c.req.query("c"), "adopt", now);
+      const sso = code ? await liveSsoById(c.env.DB, code.sso_id, now) : null;
+      c.header("cache-control", "no-store");
+      if (!sso) return c.redirect(`/login?return_to=${encodeURIComponent(central)}`, 302);
+      writeCookie(c, SSO_COOKIE, await adoptBrowser(c.env.DB, sso.id), COOKIE_MAX_AGE);
+      const { token } = await createSession(c.env.DB, sso.member_id, now);
+      writeCookie(c, SESSION_COOKIE, token, LIFETIME.session);
+      return c.redirect(central, 302);
+    }
     const t = await target(c);
     if (!t) return problem(c, "這個 App 沒有登記這個回傳網址。");
     const now = deps.now();

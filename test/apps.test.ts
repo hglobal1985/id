@@ -167,7 +167,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-23.3", digest: "ab567022ab68406e" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-24.1", digest: "c8b82c05b0b7aab7" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -648,6 +648,30 @@ describe("shared sign-in", () => {
     expect((await get("/v1/me/profile", bearer(shop.access_token))).status).toBe(401);
     expect((await get("/v1/me/profile", bearer(t.access_token))).status).toBe(401);
     expect(fragment(await get(checkUrl({}), cookie))).toEqual({ sso_none: "1", state: "st" });
+  });
+
+  it("adopt with a return to the central /my/edit signs the browser in without asking for Google", async () => {
+    other();
+    const t = await signIn();
+    const sso = await startSso(t);
+    const codeOf = async () => ((await (await post("/v1/auth/sso/web-code", { sso_token: sso })).json()) as { code: string }).code;
+    const url = (c: string, ret: string) => "/auth/sso/adopt?" + new URLSearchParams({ c, app_id: "learn", return: ret }).toString();
+    const r = await get(url(await codeOf(), `${ISSUER}/my/edit`));
+    expect(r.status).toBe(302);
+    expect(r.headers.get("location")).toBe("/my/edit");
+    const cookies = r.headers.get("set-cookie") as string;
+    expect(cookies).toContain("__Host-hgid_session=");
+    // the central session works: the page opens (no redirect to the login page)
+    const session = /__Host-hgid_session=[^;]+/.exec(cookies)?.[0] as string;
+    expect((await get("/my/edit", { cookie: session })).status).toBe(200);
+    // single use: the same code again goes to the normal login, never opens the page
+    const again = await get(url("x".repeat(43), `${ISSUER}/my/edit`));
+    expect(again.headers.get("location")).toBe("/login?return_to=%2Fmy%2Fedit");
+    expect(again.headers.get("set-cookie")).toBeNull();
+    // only the central member pages are allowed, nothing else on the central site or elsewhere
+    const bad = await get(url(await codeOf(), `${ISSUER}/admin`));
+    expect(bad.status).toBe(400);
+    expect((await get(url(await codeOf(), "https://evil.example/my/edit"))).status).toBe(400);
   });
 });
 
