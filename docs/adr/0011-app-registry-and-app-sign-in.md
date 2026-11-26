@@ -3,7 +3,7 @@
 狀態：已採用（2026-11-10）。業主決定：App 的登記與串接方式與 starry.phd 中央會員相同。
 
 ## 決定
-- **所有 App 登記在資料庫** `registered_apps`（`definition` 是一筆 JSON，寫入與讀取都用同一個 `parseApp` 驗證）。超級管理員在後台新增與編輯，不必改程式碼或部署。App 不能刪除；不再使用時把狀態設為 `killed`。
+- **所有 App 登記在資料庫** `registered_apps`（`definition` 是一筆 JSON，寫入與讀取都用同一個 `parseApp` 驗證）。超級管理員在後台新增與編輯，不必改程式碼或部署。不再使用時把狀態設為 `killed`；已停用且沒有會員的 App 可由超級管理員刪除登記（業主 2026-11-26 同意，稽核紀錄保留）。
 - **三個平台共用一個 app_id**：iOS、Android、網頁版。新增時空白欄位依 app_id 自動產生：`com.hglobal1985.<app_id>`（Bundle ID 與套件名稱）、`https://<app_id>.hglobal1985.com`（網頁版來源）、`<app_id>://auth/google`（App 回傳網址）。
 - **狀態開關** `app_status_overrides`：active／paused／killed，後台一鍵切換。登記與狀態在每個 isolate 的記憶體快取 30 秒（不寫入資料表），所以 30 秒內全球生效。
 - `GET /v1/apps/{app_id}/config`：公開，回傳狀態、最低版本與公開設定。

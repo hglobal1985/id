@@ -163,7 +163,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 
 ## 8. 新 App 登記（業主）
-後台 → App → 新增 App：填 `app_id` 與名稱即可，其餘欄位留空會自動產生。30 秒內生效，可用 `GET /v1/apps/<app_id>/config` 確認。App 不能刪除，不再使用時按「停用」。
+後台 → App → 新增 App：填 `app_id` 與名稱即可，其餘欄位留空會自動產生。30 秒內生效，可用 `GET /v1/apps/<app_id>/config` 確認。不再使用時先按「停用」；停用且沒有會員的 App 可在後台按「刪除登記」永久刪除（稽核紀錄保留）。
 
 ## 6.15 App 內直接刪除帳號（2026-11-23.3，ADR 0037，所有 App 一體適用）
 會員在任何串接的 App 內按「刪除帳號」就直接刪除並清空所有資料，不用再被帶去 `/my/edit`。

@@ -7,7 +7,7 @@ import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definitionFromForm, type AppEntry } from "../apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, buildHandoffPointer, handoffUrl, isUpToDate } from "../apps/handoff";
-import { APP_STANDARDS, appChecks, appStats, getApp, isAppWebOrigin, listApps, readStoredApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
+import { APP_STANDARDS, appChecks, appStats, getApp, isAppWebOrigin, listApps, readStoredApp, deleteApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
 import { rolesOf } from "../db/staff";
 import { can, type Permission } from "../admin/roles";
 import { resolveIssuer } from "../oidc/config";
@@ -89,7 +89,7 @@ const createAppRoute = createRoute({
   method: "post",
   path: "/v1/admin/apps",
   tags: ["admin"],
-  summary: "Register a new App (blank platform fields are derived from the app_id). Apps cannot be deleted; use status killed.",
+  summary: "Register a new App (blank platform fields are derived from the app_id). Delete it with DELETE /v1/admin/apps/{app_id} once it is stopped (killed) and has no members.",
   security,
   request: { body: { required: true, content: json(FormSchema.extend({ app_id: z.string().max(32) })) } },
   responses: { 201: { description: "Registered", content: json(Any) }, ...common, 409: err("app_exists"), 422: err("invalid_field") },
@@ -103,6 +103,16 @@ const updateAppRoute = createRoute({
   security,
   request: { params: AppIdParam, body: { required: true, content: json(FormSchema) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("app_not_found"), 422: err("invalid_field") },
+});
+
+const deleteAppRoute = createRoute({
+  method: "delete",
+  path: "/v1/admin/apps/{app_id}",
+  tags: ["admin"],
+  summary: "Delete an App registration for good (super admin; only a stopped App with no members)",
+  security,
+  request: { params: AppIdParam },
+  responses: { 200: { description: "Deleted", content: json(Any) }, ...common, 404: err("app_not_found"), 409: err("app_not_stopped or app_has_members") },
 });
 
 const statusRoute = createRoute({
@@ -252,6 +262,17 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     }
     await saveApp(c.env.DB, entry, "update", { memberId: staff.memberId, requestId: c.get("requestId") }, deps.now());
     return c.json({ app: appDefinition(entry) }, 200);
+  });
+
+  app.openapi(deleteAppRoute, async (c) => {
+    const d = deny(c, "apps.manage");
+    if (d) return d as never;
+    const appId = c.req.valid("param").app_id;
+    const r = await deleteApp(c.env.DB, appId, { memberId: c.get("staff").memberId, requestId: c.get("requestId") }, deps.now());
+    if (r === "not_found") return notFound(c);
+    if (r === "not_killed") return c.json(errorBody("app_not_stopped", "請先按「停用」，停用後才能刪除。", c.get("requestId")), 409) as never;
+    if (r === "has_members") return c.json(errorBody("app_has_members", "這款 App 已經有會員，不能刪除；請保持停用。", c.get("requestId")), 409) as never;
+    return c.json({ app_id: appId, deleted: true }, 200);
   });
 
   app.openapi(statusRoute, async (c) => {

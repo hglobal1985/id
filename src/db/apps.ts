@@ -140,6 +140,36 @@ export async function setAppStatus(db: D1Database, appId: string, status: AppSta
   return true;
 }
 
+export type DeleteAppResult = "ok" | "not_found" | "not_killed" | "has_members";
+
+/**
+ * Remove an App registration for good. Only a stopped (killed) App with no members can go, so nobody loses anything.
+ * Its sessions, sign-in leftovers, webhook settings and service credential go with it; the audit log stays.
+ */
+export async function deleteApp(db: D1Database, appId: string, actor: { memberId: string; requestId: string }, now: Date): Promise<DeleteAppResult> {
+  const stored = await db.prepare("SELECT 1 AS found FROM registered_apps WHERE app_id = ?").bind(appId).first<{ found: number }>();
+  if (!stored) return "not_found";
+  const effective = await db.prepare("SELECT status FROM app_status_overrides WHERE app_id = ?").bind(appId).first<{ status: AppStatus }>();
+  const entry = await readStoredApp(db, appId);
+  if ((effective?.status ?? entry?.status) !== "killed") return "not_killed";
+  const members = await db.prepare("SELECT COUNT(*) AS n FROM member_apps WHERE app_id = ?").bind(appId).first<{ n: number }>();
+  if ((members?.n ?? 0) > 0) return "has_members";
+  await db.batch([
+    db.prepare("DELETE FROM app_sessions WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM app_nonces WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM sso_codes WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM webhook_events WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM app_webhooks WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM app_service_credentials WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM app_handoff_reports WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM app_status_overrides WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM registered_apps WHERE app_id = ?").bind(appId),
+    auditStatement(db, { actorType: "staff", actorId: actor.memberId, action: "app.delete", targetType: "app", targetId: appId, appId, result: "success", requestId: actor.requestId }, now),
+  ]);
+  clearAppCache();
+  return "ok";
+}
+
 export interface AppStats {
   members: number;
   active_sessions: number;

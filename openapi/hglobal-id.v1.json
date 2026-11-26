@@ -8932,7 +8932,7 @@
         "tags": [
           "admin"
         ],
-        "summary": "Register a new App (blank platform fields are derived from the app_id). Apps cannot be deleted; use status killed.",
+        "summary": "Register a new App (blank platform fields are derived from the app_id). Delete it with DELETE /v1/admin/apps/{app_id} once it is stopped (killed) and has no members.",
         "security": [
           {
             "session": []
@@ -9096,6 +9096,82 @@
           },
           "422": {
             "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Delete an App registration for good (super admin; only a stopped App with no members)",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated or reauth_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "app_not_stopped or app_has_members",
             "content": {
               "application/json": {
                 "schema": {

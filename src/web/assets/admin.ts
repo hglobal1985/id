@@ -572,11 +572,15 @@ export const ADMIN_JS = String.raw`
             b.can_manage ? el("button", { class: "btn-edit", text: "編輯登記資料", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, a)); } }) : null,
             a.status !== "active" ? el("button", { text: "恢復正常", onclick: setStatus(a, "active") }) : null,
             a.status !== "paused" ? el("button", { text: "一鍵暫停", onclick: setStatus(a, "paused") }) : null,
-            a.status !== "killed" ? el("button", { class: "danger", text: "停用", onclick: setStatus(a, "killed") }) : null
+            a.status !== "killed" ? el("button", { class: "danger", text: "停用", onclick: setStatus(a, "killed") }) : null,
+            b.can_manage && a.status === "killed" && !a.members ? el("button", { class: "danger", text: "刪除登記", onclick: function () {
+              if (!confirm("確定要刪除「" + a.name + "」（" + a.app_id + "）的登記嗎？刪除後無法復原。")) return;
+              api("DELETE", "/v1/admin/apps/" + encodeURIComponent(a.app_id)).then(function (res) { if (res.status === 200) reload(); else say(box, false, errText(res)); });
+            } }) : null
           ])
         ]);
       });
-      pane.appendChild(card("App 管理", [el("p", { class: "help", text: "串接指令最新版本 " + b.handoff_version + "（" + b.handoff_updated + "）。狀態變更 30 秒內生效。App 不能刪除，不再使用時按「停用」。" })]
+      pane.appendChild(card("App 管理", [el("p", { class: "help", text: "串接指令最新版本 " + b.handoff_version + "（" + b.handoff_updated + "）。狀態變更 30 秒內生效。不再使用時先按「停用」，停用且沒有會員的 App 可以按「刪除登記」。" })]
         .concat(b.invalid.length ? [el("p", { class: "msg bad", text: "登記資料損壞、目前無法使用的 App：" + b.invalid.join("、") })] : [])
         .concat(rows.length ? rows : [el("p", { class: "help", text: "尚未登記任何 App。" })])
         .concat([el("div", { class: "inline" }, [b.can_manage ? el("button", { class: "primary", text: "新增 App", onclick: function () { pane.textContent = ""; pane.appendChild(form(b, null)); } }) : null, box])])));
