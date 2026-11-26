@@ -470,7 +470,17 @@ describe("back office", () => {
     expect(await errorCode(await admin(sa, "POST", "/v1/admin/apps", { app_id: "shop", name: "again" }))).toBe("app_exists");
     expect((await admin(sa, "POST", "/v1/admin/apps", { app_id: "Bad Id", name: "x" })).status).toBe(422);
     expect((await admin(sa, "POST", "/v1/admin/apps", { app_id: "ok2", name: "x", web_origins: ["http://insecure.example.com"] })).status).toBe(422);
-    expect((await admin(sa, "DELETE", "/v1/admin/apps/shop")).status).toBe(404); // Apps cannot be deleted
+    // Delete: super admin only, and only a stopped App with no members.
+    expect((await admin(sec, "DELETE", "/v1/admin/apps/shop")).status).toBe(403);
+    expect(await errorCode(await admin(sa, "DELETE", "/v1/admin/apps/shop"))).toBe("app_not_stopped");
+    expect((await admin(sa, "PUT", "/v1/admin/apps/shop/status", { status: "killed" })).status).toBe(200);
+    expect((await admin(sa, "DELETE", "/v1/admin/apps/nope")).status).toBe(404);
+    expect((await admin(sa, "DELETE", "/v1/admin/apps/shop")).status).toBe(200);
+    expect((await admin(sa, "DELETE", "/v1/admin/apps/shop")).status).toBe(404);
+    expect((await get("/v1/apps/shop/config")).status).toBe(404);
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM app_status_overrides WHERE app_id = 'shop'").get()).toEqual({ n: 0 });
+    expect(db.raw.prepare("SELECT action FROM audit_log WHERE action = 'app.delete'").get()).toEqual({ action: "app.delete" });
+    await admin(sa, "POST", "/v1/admin/apps", { app_id: "shop", name: "商店" });
 
     const list = (await (await admin(sa, "GET", "/v1/admin/apps")).json()) as { apps: { app_id: string; status: string; members: number }[]; handoff_version: string; can_manage: boolean };
     expect(list.apps.map((a) => [a.app_id, a.status])).toEqual([["learn", "paused"], ["shop", "active"]]);
