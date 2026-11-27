@@ -42,7 +42,7 @@ const errors = {
   401: { description: "unauthenticated", content: { "application/json": { schema: ErrorBodySchema } } },
   403: { description: "forbidden (scope)", content: { "application/json": { schema: ErrorBodySchema } } },
 };
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const security = [{ bearer: [] }];
 
 const MemberNumberEntrySchema = z.object({ country: z.string(), number: z.string() }).openapi("MemberNumberEntry");
@@ -83,7 +83,7 @@ const DefinitionsSchema = z
     fields: z.array(FieldDefinitionSchema),
     blocks: z.array(z.object({ key: z.string(), label: z.string(), order: z.number().int() })).openapi({ description: "The big blocks of the page in the order the super admin set (avatar, amway, basic, education, contact, birthday = 生日與生命靈數); render the blocks in this order." }),
     info: z.array(z.object({ key: z.string(), group: z.string(), order: z.number().int(), label: z.string(), type: z.string(), collapsed: z.boolean() })),
-    avatar: z.record(z.unknown()),
+    avatar: z.record(z.string(), z.unknown()),
   })
   .openapi("ProfileFieldDefinitions");
 
@@ -100,7 +100,7 @@ const ProfileFieldSchema = z.object({
 const ProfileSchema = z
   .object({
     member_id: z.string(),
-    fields: z.record(ProfileFieldSchema),
+    fields: z.record(z.string(), ProfileFieldSchema),
     avatar: z.object({ url: z.string().nullable(), source: z.enum(["none", "google", "upload"]), always_public: z.literal(true) }),
     info: z.object({
       member_id: z.string(),
@@ -113,7 +113,7 @@ const ProfileSchema = z
     }),
     derived: z.object({ visibility: z.enum(["public", "private"]) }).openapi({ description: "Visibility of the zodiac and life number chart (key `derived` in PUT /v1/me/profile/visibility)." }),
     badges: z.array(z.object({ kind: z.enum(["system", "center", "rank"]), text: z.string(), size: z.number().int() })).openapi({ description: "Boxes shown beside the name (training system, regional center, reviewed rank); only while 我是Amway會員 is on and only when filled." }),
-    life_chart: z.record(z.unknown()).nullable().openapi({ description: "Life number chart data (zodiac, birthday, talent and life numbers; rings per digit 1-9) when a birthday is set." }),
+    life_chart: z.record(z.string(), z.unknown()).nullable().openapi({ description: "Life number chart data (zodiac, birthday, talent and life numbers; rings per digit 1-9) when a birthday is set." }),
   })
   .openapi("Profile");
 
@@ -181,9 +181,9 @@ const visibilityRoute = createRoute({
   tags: ["profile"],
   summary: "Set public/private per field (partial update). The avatar is always public.",
   security,
-  request: { body: { required: true, content: json(z.object({ fields: z.record(z.enum(["public", "private"])) })) } },
+  request: { body: { required: true, content: json(z.object({ fields: z.record(z.string(), z.enum(["public", "private"])) })) } },
   responses: {
-    200: { description: "Saved", content: json(z.object({ fields: z.record(z.enum(["public", "private"])) })) },
+    200: { description: "Saved", content: json(z.object({ fields: z.record(z.string(), z.enum(["public", "private"])) })) },
     ...errors,
     422: { description: "invalid_field", content: json(ErrorBodySchema) },
   },
@@ -230,7 +230,7 @@ const lifeChartPreviewRoute = createRoute({
   summary: "Life number chart for a birthday, for a live preview on the edit page (nothing is saved)",
   security,
   request: { query: z.object({ birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }) },
-  responses: { 200: { description: "Chart", content: json(z.object({ life_chart: z.record(z.unknown()), zodiac: z.string() })) }, ...errors, 422: { description: "invalid_field", content: json(ErrorBodySchema) } },
+  responses: { 200: { description: "Chart", content: json(z.object({ life_chart: z.record(z.string(), z.unknown()), zodiac: z.string() })) }, ...errors, 422: { description: "invalid_field", content: json(ErrorBodySchema) } },
 });
 const avatarDeleteRoute = createRoute({
   method: "delete",

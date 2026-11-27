@@ -12,7 +12,7 @@ import { revokeSession } from "../db/identity";
 import { auditStatement } from "../db/audit";
 import { taipeiIso } from "../lib/time";
 
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 const security = [{ session: [] }];
 const common = { 401: err("unauthenticated"), 403: err("forbidden") };
@@ -60,7 +60,7 @@ const exportRoute = createRoute({
   tags: ["account"],
   summary: "Download everything the system holds about me, as JSON (member site only)",
   security,
-  responses: { 200: { description: "My data", content: json(z.record(z.unknown())) }, ...common },
+  responses: { 200: { description: "My data", content: json(z.record(z.string(), z.unknown())) }, ...common },
 });
 
 const IndexingSchema = z.object({ allowed: z.boolean() }).openapi("SearchIndexing");

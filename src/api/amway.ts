@@ -18,7 +18,7 @@ import { AMWAY_FIELDS, HGLOBAL_CENTER_MESSAGE, HGLOBAL_CENTER_WORDS, amwayMissin
 import { bearerAuth, missingScope } from "./auth";
 import { taipeiIso } from "../lib/time";
 
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const security = [{ bearer: [] }];
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 const common = { 401: err("unauthenticated"), 403: err("forbidden (scope) or amway_disabled") };
@@ -35,7 +35,7 @@ const definitionsRoute = createRoute({
   tags: ["amway"],
   summary: "Amway field definitions and option lists in the order the super admin set (cache up to 5 minutes). Rank options are in ladder order and each carries `badge_url` (the public absolute address of its badge picture, or null when the rank has none) and `badge` ({width, height, art_top, art_bottom}: the 380x720 canvas and where the artwork sits in it, or null). Apps only read these; they keep no badge gallery of their own.",
   security,
-  responses: { 200: { description: "Definitions", content: json(z.record(z.unknown()).openapi("AmwayFieldDefinitions")) }, ...common },
+  responses: { 200: { description: "Definitions", content: json(z.record(z.string(), z.unknown()).openapi("AmwayFieldDefinitions")) }, ...common },
 });
 const meRoute = createRoute({
   method: "get",
@@ -53,7 +53,7 @@ const meRoute = createRoute({
             hglobal_systems: z.array(z.string()).openapi({ description: "Training-system words marked as H-Global1985 (the edit page switches the regional center to its list while one of them is chosen)" }),
             hglobal: z.boolean().openapi({ description: "The training system (effective or pending) is a term marked as H-Global1985: the regional education center offers its own related words (field definition suggest_when_hglobal)." }),
             missing: z.array(z.string()).openapi({ description: "Required Amway fields still empty (saved values), in screen order: rank, education_system, and education_center only while the system is 寰宇 (with any other system the center is 無 automatically). Empty while 我是Amway會員 is off. 無 counts as filled in." }),
-            fields: z.record(FieldStateSchema.extend({ visibility: z.enum(["public", "private"]) })),
+            fields: z.record(z.string(), FieldStateSchema.extend({ visibility: z.enum(["public", "private"]) })),
           })
           .openapi("MyAmway"),
       ),
@@ -170,7 +170,7 @@ export function registerAmwayRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const filled = (k: string) => fields[k]?.value != null || fields[k]?.pending_value != null;
     const enabled = member?.amway_enabled === 1;
     const missing = amwayMissing({ enabled, rank: filled("rank"), system: filled("education_system"), hglobal, center: filled("education_center") });
-    return c.json({ enabled, hglobal, hglobal_systems: (hg.results ?? []).map((x) => x.term), missing, fields }, 200);
+    return c.json({ enabled, hglobal, hglobal_systems: (hg.results ?? []).map((x) => x.term), missing, fields }, 200) as never; // status 是固定的幾種狀態，但讀出來的型別是文字（zod 4 型別較嚴）
   });
 
   app.openapi(enabledRoute, async (c) => {

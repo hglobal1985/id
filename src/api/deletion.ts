@@ -14,7 +14,7 @@ import { epochSeconds } from "../lib/time";
 import { avatarKey, dropFiles } from "../lib/files";
 import { SESSION_COOKIE, clearCookie } from "../auth/cookies";
 
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 
 const deleteRoute = createRoute({

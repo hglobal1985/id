@@ -29,7 +29,7 @@ import { escapeHtml } from "../web/pages";
 import { SITE_CSP, sitePage } from "../web/layout";
 
 type C = Context<AppBindings>;
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 const SsoToken = z.object({ sso_token: z.string().max(200) });
 export const SSO_COOKIE = "hgid_sso";

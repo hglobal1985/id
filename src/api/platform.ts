@@ -21,9 +21,9 @@ import { allowed } from "../lib/ratelimit";
 import { submitTerm } from "../db/vocab";
 
 type C = Context<AppBindings>;
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
-const Any = z.record(z.unknown());
+const Any = z.record(z.string(), z.unknown());
 const AppIdParam = z.object({ app_id: z.string().max(32).openapi({ example: "learn" }) });
 
 const tokenRoute = createRoute({
@@ -91,7 +91,7 @@ const memberDataRoute = createRoute({
     body: { required: true, content: json(z.object({ member_ids: z.array(z.string().uuid()).min(1).max(MEMBER_LOOKUP_MAX), fields: z.array(z.string().max(40)).min(1).max(60), use: z.enum(DATA_USES) })) },
   },
   responses: {
-    200: { description: "Members", content: json(z.object({ members: z.array(z.object({ member_id: z.string(), fields: z.record(z.unknown()), rank_label: z.string().nullable().optional().openapi({ description: "Only when `rank` is in `fields`: the Chinese wording of the member's approved rank (same text as GET /v1/amway/field-definitions rank.options), or null." }), rank_badge: z.object({ badge_url: z.string(), badge: z.object({ width: z.number(), height: z.number(), art_top: z.number(), art_bottom: z.number() }) }).nullable().optional().openapi({ description: "Only when `rank` is in `fields`: the badge picture (public absolute address and canvas geometry), or null when the rank has none." }) })), not_found: z.array(z.string()) }).openapi("MemberDataLookup")) },
+    200: { description: "Members", content: json(z.object({ members: z.array(z.object({ member_id: z.string(), fields: z.record(z.string(), z.unknown()), rank_label: z.string().nullable().optional().openapi({ description: "Only when `rank` is in `fields`: the Chinese wording of the member's approved rank (same text as GET /v1/amway/field-definitions rank.options), or null." }), rank_badge: z.object({ badge_url: z.string(), badge: z.object({ width: z.number(), height: z.number(), art_top: z.number(), art_bottom: z.number() }) }).nullable().optional().openapi({ description: "Only when `rank` is in `fields`: the badge picture (public absolute address and canvas geometry), or null when the rank has none." }) })), not_found: z.array(z.string()) }).openapi("MemberDataLookup")) },
     401: err("unauthenticated"),
     403: err("forbidden or field_not_allowed"),
     422: err("invalid_field"),
@@ -212,7 +212,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
         service_credential: service,
       },
       200,
-    );
+    ) as never; // 回傳內容含唯讀清單，型別比宣告的寬鬆；實際內容與宣告一致（zod 4 型別較嚴，杜杜龍 2026-11-27）
   });
 
   app.openapi(webhookPutRoute, async (c) => {
