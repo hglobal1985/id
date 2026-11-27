@@ -18,7 +18,7 @@ import { registerAppReviewRoutes } from "./app-reviews";
 import { registerAppStaffRoutes } from "./app-staff";
 import { approvedCenterOf, decodeCursor, encodeCursor, listCenterMembers } from "../db/center-members";
 
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const security = [{ bearer: [] }];
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 

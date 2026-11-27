@@ -14,9 +14,9 @@ import { resolveIssuer } from "../oidc/config";
 import { bearerAuth } from "./auth";
 
 type C = Context<AppBindings>;
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
-const Any = z.record(z.unknown());
+const Any = z.record(z.string(), z.unknown());
 const AppIdParam = z.object({ app_id: z.string().max(32).openapi({ example: "learn" }) });
 
 const configRoute = createRoute({
@@ -35,7 +35,7 @@ const configRoute = createRoute({
             app_id: z.string(),
             status: z.enum(["active", "paused", "killed"]),
             min_version: z.string().openapi({ example: "1.0.0" }),
-            config: z.record(z.unknown()).openapi({ description: "Public settings only; never secrets." }),
+            config: z.record(z.string(), z.unknown()).openapi({ description: "Public settings only; never secrets." }),
           })
           .openapi("AppConfig"),
       ),
@@ -230,7 +230,7 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     return c.json(
       { apps: apps.map(row), invalid: broken, handoff_version: HANDOFF_VERSION, handoff_updated: HANDOFF_UPDATED, scopes: APP_SCOPES, statuses: APP_STATUSES, can_manage: can(c.get("staff").roles, "apps.manage") },
       200,
-    );
+    ) as never; // 回傳內容含唯讀清單，型別比宣告的寬鬆；實際內容與宣告一致（zod 4 型別較嚴，杜杜龍 2026-11-27）
   });
 
   app.openapi(createAppRoute, async (c) => {

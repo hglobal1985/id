@@ -10,13 +10,13 @@ import { sniffImage } from "../db/profile";
 import { addLink, addPlatform, deletePlatform, listLinks, listPlatforms, removeLink, renamePlatform, reorderPlatforms, setLinkIcon, setPlatformIcon, updateLink } from "../db/social";
 import { LINK_ICON_MAX_BYTES, PLATFORM_ICON_MAX_BYTES, cleanLabel, platformKeyOf, validateSocialUrl } from "../social/rules";
 
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 const security = [{ bearer: [] }];
 const common = { 401: err("unauthenticated"), 403: err("forbidden (scope)") };
 const adminSecurity = [{ session: [] }];
 const adminCommon = { 401: err("unauthenticated"), 403: err("forbidden") };
-const Any = z.record(z.unknown());
+const Any = z.record(z.string(), z.unknown());
 const IdParam = z.object({ id: z.string().max(64) });
 const KeyParam = z.object({ key: z.string().max(40) });
 

@@ -15,9 +15,9 @@ import { getMember } from "../db/identity";
 import { getApp } from "../db/apps";
 import { auditStatement, auditedRecently } from "../db/audit";
 
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
-const Any = z.record(z.unknown());
+const Any = z.record(z.string(), z.unknown());
 const SEARCH_LIMIT = 20;
 const STAFF_LIMIT = 200;
 

@@ -121,6 +121,111 @@
           "sub"
         ]
       },
+      "ProfileFieldDefinitions": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "order": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "order"
+              ]
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldDefinition"
+            }
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "order": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "order"
+              ]
+            },
+            "description": "The big blocks of the page in the order the super admin set (avatar, amway, basic, education, contact, birthday = 生日與生命靈數); render the blocks in this order."
+          },
+          "info": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "collapsed": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "key",
+                "group",
+                "order",
+                "label",
+                "type",
+                "collapsed"
+              ]
+            }
+          },
+          "avatar": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "version",
+          "groups",
+          "fields",
+          "blocks",
+          "info",
+          "avatar"
+        ]
+      },
       "FieldDefinition": {
         "type": "object",
         "properties": {
@@ -256,111 +361,6 @@
           "visibility"
         ]
       },
-      "ProfileFieldDefinitions": {
-        "type": "object",
-        "properties": {
-          "version": {
-            "type": "string"
-          },
-          "groups": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "key": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                },
-                "order": {
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "key",
-                "label",
-                "order"
-              ]
-            }
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FieldDefinition"
-            }
-          },
-          "blocks": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "key": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                },
-                "order": {
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "key",
-                "label",
-                "order"
-              ]
-            },
-            "description": "The big blocks of the page in the order the super admin set (avatar, amway, basic, education, contact, birthday = 生日與生命靈數); render the blocks in this order."
-          },
-          "info": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "key": {
-                  "type": "string"
-                },
-                "group": {
-                  "type": "string"
-                },
-                "order": {
-                  "type": "integer"
-                },
-                "label": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                },
-                "collapsed": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "key",
-                "group",
-                "order",
-                "label",
-                "type",
-                "collapsed"
-              ]
-            }
-          },
-          "avatar": {
-            "type": "object",
-            "additionalProperties": {}
-          }
-        },
-        "required": [
-          "version",
-          "groups",
-          "fields",
-          "blocks",
-          "info",
-          "avatar"
-        ]
-      },
       "ErrorBody": {
         "type": "object",
         "properties": {
@@ -391,46 +391,6 @@
         },
         "required": [
           "error"
-        ]
-      },
-      "MemberNumberEntry": {
-        "type": "object",
-        "properties": {
-          "country": {
-            "type": "string"
-          },
-          "number": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "country",
-          "number"
-        ]
-      },
-      "FieldValue": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MemberNumberEntry"
-            }
-          },
-          {
-            "type": "null"
-          },
-          {
-            "type": "null"
-          }
         ]
       },
       "Profile": {
@@ -626,6 +586,43 @@
           "life_chart"
         ]
       },
+      "FieldValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberNumberEntry"
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "MemberNumberEntry": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "country",
+          "number"
+        ]
+      },
       "ProfileFieldWrite": {
         "type": "object",
         "properties": {
@@ -799,37 +796,6 @@
         "type": "object",
         "additionalProperties": {}
       },
-      "AmwayValue": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "option": {
-                "type": "string"
-              },
-              "custom_text": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "option",
-              "custom_text"
-            ]
-          },
-          {
-            "type": "null"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
       "MyAmway": {
         "type": "object",
         "properties": {
@@ -904,6 +870,34 @@
           "hglobal",
           "missing",
           "fields"
+        ]
+      },
+      "AmwayValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "option": {
+                "type": "string"
+              },
+              "custom_text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "option",
+              "custom_text"
+            ]
+          },
+          {
+            "type": "null"
+          }
         ]
       },
       "Notification": {
@@ -1167,6 +1161,41 @@
           "custom"
         ]
       },
+      "AppSignIn": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AppTokenPair"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "object",
+                "properties": {
+                  "member_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "example": "active"
+                  },
+                  "is_new": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "member_id",
+                  "status",
+                  "is_new"
+                ]
+              }
+            },
+            "required": [
+              "user"
+            ]
+          }
+        ]
+      },
       "AppTokenPair": {
         "type": "object",
         "properties": {
@@ -1203,41 +1232,6 @@
           "refresh_token",
           "refresh_expires_in",
           "scope"
-        ]
-      },
-      "AppSignIn": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/AppTokenPair"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "user": {
-                "type": "object",
-                "properties": {
-                  "member_id": {
-                    "type": "string"
-                  },
-                  "status": {
-                    "type": "string",
-                    "example": "active"
-                  },
-                  "is_new": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "member_id",
-                  "status",
-                  "is_new"
-                ]
-              }
-            },
-            "required": [
-              "user"
-            ]
-          }
         ]
       },
       "AppConfig": {
@@ -1667,6 +1661,7 @@
               "description": "Space-separated; must include openid. Supported: openid profile profile.read profile.basic.write profile.avatar.write profile.contact.write profile.birthday.write profile.visibility.write profile.spouse.write amway.read amway.write"
             },
             "required": true,
+            "description": "Space-separated; must include openid. Supported: openid profile profile.read profile.basic.write profile.avatar.write profile.contact.write profile.birthday.write profile.visibility.write profile.spouse.write amway.read amway.write",
             "name": "scope",
             "in": "query"
           },
@@ -1711,6 +1706,7 @@
               "description": "none | login | consent | select_account"
             },
             "required": false,
+            "description": "none | login | consent | select_account",
             "name": "prompt",
             "in": "query"
           },
@@ -4274,6 +4270,7 @@
               "description": "Part of the display name; empty lists the first page"
             },
             "required": false,
+            "description": "Part of the display name; empty lists the first page",
             "name": "q",
             "in": "query"
           },
@@ -4285,6 +4282,7 @@
               "description": "Default 20, at most 50"
             },
             "required": false,
+            "description": "Default 20, at most 50",
             "name": "limit",
             "in": "query"
           },
@@ -4295,6 +4293,7 @@
               "description": "`next_cursor` of the previous page"
             },
             "required": false,
+            "description": "`next_cursor` of the previous page",
             "name": "cursor",
             "in": "query"
           },
@@ -4305,6 +4304,7 @@
               "description": "super_admin and secretary only: the center to list (name from the 地區教育中心 vocabulary)"
             },
             "required": false,
+            "description": "super_admin and secretary only: the center to list (name from the 地區教育中心 vocabulary)",
             "name": "center",
             "in": "query"
           }
@@ -5306,9 +5306,6 @@
                           "option",
                           "custom_text"
                         ]
-                      },
-                      {
-                        "type": "null"
                       },
                       {
                         "type": "null"
@@ -8831,10 +8828,11 @@
             "schema": {
               "type": "string",
               "maxLength": 200,
-              "description": "Comma-separated platform standards the App meets (webhook, delete_copy, no_email_copy, snapshot_reconcile, least_scope). Omit to keep the last report.",
-              "example": "webhook,delete_copy"
+              "example": "webhook,delete_copy",
+              "description": "Comma-separated platform standards the App meets (webhook, delete_copy, no_email_copy, snapshot_reconcile, least_scope). Omit to keep the last report."
             },
             "required": false,
+            "description": "Comma-separated platform standards the App meets (webhook, delete_copy, no_email_copy, snapshot_reconcile, least_scope). Omit to keep the last report.",
             "name": "standards",
             "in": "query"
           }

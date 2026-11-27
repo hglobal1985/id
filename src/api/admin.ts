@@ -31,11 +31,11 @@ import { loadLayout, saveLayout } from "../db/layout";
 import { BLOCK_PREFIX, LAYOUT_GROUPS, LAYOUT_GROUP_LABELS, defaultLayout, validateLayout } from "../profile/layout";
 
 type C = Context<AppBindings>;
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 const common = { 401: err("unauthenticated or reauth_required"), 403: err("forbidden") };
 const security = [{ session: [] }];
-const Any = z.record(z.unknown());
+const Any = z.record(z.string(), z.unknown());
 
 function staffAuth(deps: Deps): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
@@ -179,7 +179,7 @@ const layoutPutRoute = createRoute({
   tags: ["admin"],
   summary: "Save the order of the fields of every group (each group must list exactly its fields); null resets to the built-in order",
   security,
-  request: { body: { required: true, content: json(z.object({ order: z.record(z.array(z.string().max(64))).nullable() })) } },
+  request: { body: { required: true, content: json(z.object({ order: z.record(z.string(), z.array(z.string().max(64))).nullable() })) } },
   responses: { 200: { description: "Saved", content: json(Any) }, ...common, 422: err("invalid_field") },
 });
 
