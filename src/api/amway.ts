@@ -290,6 +290,13 @@ async function renderNotification(
       title = payload.alert === "recovered" ? "網站已恢復" : "網站打不開";
       body = `${String(payload.name ?? "網站")}${payload.alert === "recovered" ? " 已恢復正常。" : " 巡檢失敗（" + String(payload.note ?? "") + "），請盡快查看。"}`;
       break;
+    case "eco.error_digest":
+      title = "錯誤回報週報";
+      {
+        const list: unknown = payload.apps;
+        body = `最近 7 天各 App 前台共回報 ${Number(payload.total ?? 0)} 次錯誤。` + (Array.isArray(list) ? (list as { name?: unknown; total?: unknown }[]).map((a) => `${String(a.name ?? "")} ${Number(a.total ?? 0)} 次`).join("、") : "");
+      }
+      break;
     case "policy.updated":
       title = "隱私權政策已更新";
       body = "我們更新了隱私權政策：您設定為「隱藏」的資料，仍可能被寰宇生態系內經登記的 App 為提供服務而使用，但不會對外公開，也不會提供給生態系以外的人。詳見頁尾的「隱私權政策」。";

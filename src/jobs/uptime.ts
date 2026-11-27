@@ -28,12 +28,12 @@ export async function loadSiteStates(db: D1Database): Promise<Map<string, StateR
   return new Map((r.results ?? []).map((x) => [x.url, x]));
 }
 
-async function superAdmins(db: D1Database): Promise<string[]> {
+export async function superAdmins(db: D1Database): Promise<string[]> {
   const r = await db.prepare("SELECT DISTINCT s.member_id FROM staff_roles s JOIN members m ON m.id = s.member_id WHERE s.role = 'super_admin' AND m.status = 'active'").all<{ member_id: string }>();
   return (r.results ?? []).map((x) => x.member_id);
 }
 
-async function contactEmails(db: D1Database, ids: string[]): Promise<string[]> {
+export async function contactEmails(db: D1Database, ids: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const id of ids) {
     const r = await db.prepare("SELECT value FROM profile_field_values WHERE member_id = ? AND field_key = 'contact_email'").bind(id).first<{ value: string }>();

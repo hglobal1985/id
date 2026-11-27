@@ -14,3 +14,4 @@
 ## 實作紀錄
 - 2026-11-27 Dependabot：兩個程式庫各加 `.github/dependabot.yml`。
 - 2026-11-28 網站巡檢：`src/jobs/uptime.ts`、`src/platform/uptime.ts`、`eco_uptime_state`（migration 0032）；只在正式環境巡檢；Email 走 `send_email` 綁定（借用 learn 網域的寄件人）。
+- 2026-11-28 錯誤回報週報：`POST /v1/apps/{app_id}/error-reports`（不用登入，依 App 與連線來源限流）收 `{kind, page, app_version, count}` 統計，存在 `eco_error_counts`（migration 0033，每天每個 App 最多 200 種組合，保留 35 天）；`src/jobs/error-digest.ts` 在設定的星期、台北 09:00 彙整最近 7 天，站內通知（kind `eco.error_digest`）＋Email 給超級管理員，沒有錯誤就不寄；`eco_digest_runs` 確保一天只寄一次。只在正式環境執行。串接指令升 2026-11-27.4（三、18 (3)、檢查清單 43）。

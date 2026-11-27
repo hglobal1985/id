@@ -151,6 +151,18 @@ describe("registry rules", () => {
     expect(allowedReturn(a, "other://auth/google")).toBeNull();
   });
 
+  it("錯誤回報：不用登入、只收統計、不合規定回 422、不認識的 App 回 404、不參與時不存", async () => {
+    const good = { reports: [{ kind: "network", page: "/courses/12345678?token=secret", app_version: "1.4.0", count: 2 }] };
+    expect(await (await post("/v1/apps/learn/error-reports", good)).json()).toEqual({ accepted: 1 });
+    const row = db.raw.prepare("SELECT page, count FROM eco_error_counts WHERE app_id = 'learn'").get() as { page: string; count: number };
+    expect(row).toEqual({ page: "/courses/:id", count: 2 });
+    expect(JSON.stringify(db.raw.prepare("SELECT * FROM eco_error_counts").all())).not.toContain("secret");
+    expect(await errorCode(await post("/v1/apps/learn/error-reports", { reports: [{ kind: "x", page: "/a", app_version: "1.0.0" }] }))).toBe("invalid_field");
+    expect(await errorCode(await post("/v1/apps/nope/error-reports", good))).toBe("app_not_found");
+    db.raw.prepare("INSERT INTO eco_feature_apps (feature_key, app_id, participating, updated_at) VALUES ('error_digest', 'learn', 0, 'x')").run();
+    expect(await (await post("/v1/apps/learn/error-reports", good)).json()).toEqual({ accepted: 0 });
+  });
+
   it("the migration registers 寰宇行動大學 as app_id learn", async () => {
     const r = await get("/v1/apps/learn/config");
     expect(r.status).toBe(200);
@@ -172,7 +184,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-27.3", digest: "9408d3e56bc2c78f" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-27.4", digest: "499f1136e7853799" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
