@@ -33,7 +33,7 @@ if (!values.name) fail("--name is required");
 if (!values.redirect?.length) fail("--redirect is required (exact https URL; repeatable)");
 if (!["none", "client_secret_basic", "client_secret_post"].includes(values.auth)) fail("--auth: none | client_secret_basic | client_secret_post");
 for (const u of [...values.redirect, ...values["post-logout"]]) {
-  let ok = false;
+  let ok;
   try {
     const p = new URL(u);
     ok = p.protocol === "https:" && !p.hash && !u.includes("*") && p.href === u;

@@ -96,7 +96,7 @@ export async function lookupContacts(db: D1Database, appId: string, purpose: str
     .all<{ id: string; g: string | null; gv: number; ce: string | null }>();
   const contacts: Contact[] = [];
   for (const r of rows.results ?? []) {
-    let own: string | null = null;
+    let own: string | null;
     try {
       const v = r.ce ? (JSON.parse(r.ce) as unknown) : null;
       own = typeof v === "string" && v.trim() ? v.trim() : null;

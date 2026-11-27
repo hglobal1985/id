@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { describe, it, expect, beforeEach } from "vitest";
 import { createApp } from "../src/app";
 import { createTestD1, type TestD1 } from "./helpers/d1.mjs";

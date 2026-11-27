@@ -58,7 +58,7 @@ async function authenticateClient(
   const auth = c.req.header("authorization");
   if (auth?.startsWith("Basic ")) {
     usedBasic = true;
-    let decoded = "";
+    let decoded: string;
     try {
       decoded = atob(auth.slice(6).trim());
     } catch {

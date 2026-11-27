@@ -250,7 +250,7 @@ async function renderNotification(
   memberId: string,
   r: { id: string; kind: string; payload: string | null; created_at: string; read_at: string | null },
 ) {
-  let payload: Record<string, string> = {};
+  let payload: Record<string, string>;
   try {
     payload = r.payload ? (JSON.parse(r.payload) as Record<string, string>) : {};
   } catch {
