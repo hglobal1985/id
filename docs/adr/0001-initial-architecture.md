@@ -13,4 +13,4 @@
 
 ## 後果
 - 公開 repo：機密只存在 Workers Secrets 與 GitHub Actions Secrets。
-- 部署前需要業主備妥：Google OAuth 用戶端與 redirect URI、Cloudflare Token、GitHub Secrets。
+- 部署前需要杜杜龍備妥：Google OAuth 用戶端與 redirect URI、Cloudflare Token、GitHub Secrets。

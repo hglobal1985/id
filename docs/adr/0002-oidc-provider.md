@@ -18,5 +18,5 @@
 `/oauth/token`、`/oauth/userinfo` 依 RFC 6749／6750 回 `{ "error": "...", "error_description": "..." }`，讓標準 OIDC 函式庫可直接使用。`/v1` 的 API 仍使用共用格式 `{ error: { code, message, request_id, details } }`。
 
 ## 後續
-- `client_id`／`redirect_uri` 的實際登記、Google OAuth 用戶端、Secrets 由業主在部署前設定（見 `docs/oidc-setup.md`）。
+- `client_id`／`redirect_uri` 的實際登記、Google OAuth 用戶端、Secrets 由杜杜龍在部署前設定（見 `docs/oidc-setup.md`）。
 - 限流、通行密鑰、跨系統共用登入（一次性簽章通行證）在後續 PR。

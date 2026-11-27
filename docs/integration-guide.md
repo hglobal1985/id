@@ -57,7 +57,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **Fail closed**：查不到、逾時、非 200 一律視為不符合。
 - 快取最長 1 日，只能放記憶體或短時效快取服務，不寫入資料庫。
 - `reason` 只供內部記錄，不可顯示給會員。
-- `GET /v1/eligibility/context`（需要 `amway.read`）→ `{member_id, roles:[{role,label}], hglobal_verified, center:{key,label}|null}`：登入者**自己**的職務、是否為已驗證的寰宇、已核准的中心。給需要「依中心／職務分派工作」的 App 使用（例如課程報名由同中心窗口審核）；比較中心一律用 `center.key`。非 200 一律視為沒有職務、未驗證。**例外（業主 2026-11-12）**：App 可以把 `center.label` 保存在它為該會員建立的紀錄上（例如報名紀錄），只用於分派審核與對帳；其餘 Amway 資料仍不得保存。
+- `GET /v1/eligibility/context`（需要 `amway.read`）→ `{member_id, roles:[{role,label}], hglobal_verified, center:{key,label}|null}`：登入者**自己**的職務、是否為已驗證的寰宇、已核准的中心。給需要「依中心／職務分派工作」的 App 使用（例如課程報名由同中心窗口審核）；比較中心一律用 `center.key`。非 200 一律視為沒有職務、未驗證。**例外（杜杜龍 2026-11-12）**：App 可以把 `center.label` 保存在它為該會員建立的紀錄上（例如報名紀錄），只用於分派審核與對帳；其餘 Amway 資料仍不得保存。
 
 ## 6. 資料與文字規則
 - Amway 相關資料（會員編號、獎銜、上手、資格結果）不得被 App 或 App 後端保存，也不得寫入日誌或分析工具。
@@ -74,44 +74,44 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 
 ## 6.7 平台規範補充（2026-11-12.9）
 - **本名**：欄位 `legal_name`（畫面標籤 2026-11-14 起為「本名」，原稱「本姓」「真實姓名」；預設不公開）。只在報名付費課程與對帳當下用會員本人的 token 讀 `GET /v1/me/profile` 的 `fields.legal_name`；不保存、不寫日誌、不另建欄位。
-- **Amway 三欄順序與中心規則（2026-11-23.1，業主 2026-11-23）**：資料頁與 `GET /v1/amway/field-definitions` 的欄位順序是獎銜 → 直銷商培訓系統 → 地區教育中心（名字旁方框順序不變：系統、中心、獎銜）。獎銜永遠可選、可送出，與系統、中心無關（`system_center_required` 已取消）。地區教育中心只有在系統屬於 `hglobal_systems`（寰宇）時才能選；系統不是寰宇（其他、「無」、沒填）時 App 自動送 `"無"` 並停用該欄（視為已填、不審核），後端對非寰宇卻送非「無」的中心回 `422 invalid_field`（`details.reason = center_requires_hglobal`）。必填與審核規則不變。
-- **寰宇中心名稱提醒（2026-11-24.3，業主 2026-11-24）**：飛登、蓁分享、有賢社、聚冠是寰宇旗下的中心，不是獨立的系統。自訂系統的文字包含其中任一詞時：畫面在輸入框下方即時顯示提醒（不阻擋輸入）；中央 `PUT /v1/me/amway/fields/education_system` 回 `422`、`details.reason` 為 `use_hglobal_center`，`message` 為「「{詞}」屬於寰宇系統：請把「系統」改選「寰宇」，再從「中心」切換選擇。」。詞清單與提醒範本由 `GET /v1/amway/field-definitions` 的 `education_system.hglobal_center_words`／`hglobal_center_message` 提供，App 不寫死；業主增減詞時 App 不用改程式。既有會員資料不由 App 改，由中央／後台處理。
-- **自訂系統、勾選列與必填標籤（2026-11-23.2，業主 2026-11-23）**：系統選「其他」時隱藏「地區教育中心」欄，同一位置顯示「自訂系統」輸入框，文字直接存進 `education_system`，中心視為 `"無"`（仍送出）；改選別的系統時輸入框消失。勾選「我是 Amway 會員」後該勾選列隱藏（取消入口各 App 自行安排）；勾「無」時下拉欄位寬度維持勾選前的寬度。「必填」標籤動態顯示：獎銜、系統（含自訂系統）未填才顯示；中心只在系統是寰宇且未選時顯示；`GET /v1/me/amway` 的 `missing` 是同一套判斷（已儲存的值）。
+- **Amway 三欄順序與中心規則（2026-11-23.1，杜杜龍 2026-11-23）**：資料頁與 `GET /v1/amway/field-definitions` 的欄位順序是獎銜 → 直銷商培訓系統 → 地區教育中心（名字旁方框順序不變：系統、中心、獎銜）。獎銜永遠可選、可送出，與系統、中心無關（`system_center_required` 已取消）。地區教育中心只有在系統屬於 `hglobal_systems`（寰宇）時才能選；系統不是寰宇（其他、「無」、沒填）時 App 自動送 `"無"` 並停用該欄（視為已填、不審核），後端對非寰宇卻送非「無」的中心回 `422 invalid_field`（`details.reason = center_requires_hglobal`）。必填與審核規則不變。
+- **寰宇中心名稱提醒（2026-11-24.3，杜杜龍 2026-11-24）**：飛登、蓁分享、有賢社、聚冠是寰宇旗下的中心，不是獨立的系統。自訂系統的文字包含其中任一詞時：畫面在輸入框下方即時顯示提醒（不阻擋輸入）；中央 `PUT /v1/me/amway/fields/education_system` 回 `422`、`details.reason` 為 `use_hglobal_center`，`message` 為「「{詞}」屬於寰宇系統：請把「系統」改選「寰宇」，再從「中心」切換選擇。」。詞清單與提醒範本由 `GET /v1/amway/field-definitions` 的 `education_system.hglobal_center_words`／`hglobal_center_message` 提供，App 不寫死；杜杜龍增減詞時 App 不用改程式。既有會員資料不由 App 改，由中央／後台處理。
+- **自訂系統、勾選列與必填標籤（2026-11-23.2，杜杜龍 2026-11-23）**：系統選「其他」時隱藏「地區教育中心」欄，同一位置顯示「自訂系統」輸入框，文字直接存進 `education_system`，中心視為 `"無"`（仍送出）；改選別的系統時輸入框消失。勾選「我是 Amway 會員」後該勾選列隱藏（取消入口各 App 自行安排）；勾「無」時下拉欄位寬度維持勾選前的寬度。「必填」標籤動態顯示：獎銜、系統（含自訂系統）未填才顯示；中心只在系統是寰宇且未選時顯示；`GET /v1/me/amway` 的 `missing` 是同一套判斷（已儲存的值）。
 - **獎銜「無」**：選項（含「無」）來自 `GET /v1/amway/field-definitions` 的 `rank.options`；會員值 `fields.rank.value` 為 `null` 或 `"none"` 都代表「無」。對「無」顯示什麼文字由各 App 決定。
-- **會員資料的使用範圍**：會員的「公開／隱藏」只管對外公開頁，不限制寰宇生態系內的 App；業主在後台替每款 App 勾選可用欄位（含隱藏的），App 用 `POST /v1/apps/{app_id}/members/lookup` 讀取（見 6.8、ADR 0022）。
-- **獎銜與獎章圖（2026-11-22.2）**：`members/lookup` 的 `fields` 含 `rank` 時，每位會員多回 `rank_label`（中文名稱）與 `rank_badge`（`badge_url` 與 `badge` 幾何），服務 Token 不必再讀 `field-definitions`；業主在後台勾選 `rank` 才可用（見 ADR 0034）。
-- **串接指令放在雲端（2026-11-22.3）**：完整指令固定公開在 `https://id.hglobal1985.com/handoff/<app_id>`（純文字、永遠最新、沒有金鑰）。交接時只要貼「請讀這個網址並照做」那幾行（後台「給開發 AI 的串接指令」頁最上面有複製鈕），不必貼整份；AI 更新時重新讀取網址、只補差異（ADR 0035）。\n- **深色模式**：跟隨系統，配色依視覺規範 1.5；業主核准的例外才可保留自己的配色。
+- **會員資料的使用範圍**：會員的「公開／隱藏」只管對外公開頁，不限制寰宇生態系內的 App；杜杜龍在後台替每款 App 勾選可用欄位（含隱藏的），App 用 `POST /v1/apps/{app_id}/members/lookup` 讀取（見 6.8、ADR 0022）。
+- **獎銜與獎章圖（2026-11-22.2）**：`members/lookup` 的 `fields` 含 `rank` 時，每位會員多回 `rank_label`（中文名稱）與 `rank_badge`（`badge_url` 與 `badge` 幾何），服務 Token 不必再讀 `field-definitions`；杜杜龍在後台勾選 `rank` 才可用（見 ADR 0034）。
+- **串接指令放在雲端（2026-11-22.3）**：完整指令固定公開在 `https://id.hglobal1985.com/handoff/<app_id>`（純文字、永遠最新、沒有金鑰）。交接時只要貼「請讀這個網址並照做」那幾行（後台「給開發 AI 的串接指令」頁最上面有複製鈕），不必貼整份；AI 更新時重新讀取網址、只補差異（ADR 0035）。\n- **深色模式**：跟隨系統，配色依視覺規範 1.5；杜杜龍核准的例外才可保留自己的配色。
 - **測試環境**：正式前用 staging（`https://hglobal-id-staging.hglobal1985-static.workers.dev`，會員、金鑰、App 登記獨立）。`http://localhost` 不能登記；手機用已登記的深層連結，網頁用 https 預覽網址。測試版共用登入鍵名建議 `hglobal.sso.staging`。
 - **新規範流程**：任何新規範先寫進串接指令與更新檢查清單並升版，各 App 只補差異（見 `AGENTS.md`「平台規範」）。
 
 ## 6.8 平台資料標準（2026-11-12.10，所有 App 一體適用）
 完整設計與規格見 [ADR 0021](adr/0021-platform-standards.md)。
 - **原則**：①個人資料正本只在中央，App 只存 `member_id`，複製要有同步與刪除機制；②交易紀錄存「當時快照」，對帳靠付款代碼或金流交易編號，不靠姓名；③需要聯絡方式走中央的聯絡查詢，不長期保存副本；④變動與刪除由中央 webhook 通知，App 照辦；⑤只拿到最小權限，中央留稽核。
-- **webhook**：事件 `member.profile_changed`（`fields` 只有欄位名稱）、`member.deleted`、`webhook.test`；POST JSON，標頭 `X-HG-Event-Id`／`X-HG-Timestamp`／`X-HG-Attempt`／`X-HG-Signature: v1=HMAC-SHA256(金鑰, 時間戳.原始內容)`；驗簽用原始內容、常數時間、時間窗 5 分鐘、依 `id` 去重、5 秒內回 2xx。至少一次投遞，失敗在 1 分、5 分、30 分、2 小時、6 小時、24 小時重試（共 7 次），紀錄保存 30 天。金鑰由業主在後台取得，只放伺服器環境變數。
-- **聯絡查詢**：服務金鑰（後台建立，只放伺服器）→ `POST /v1/service/token` → `POST /v1/apps/{app_id}/contacts/lookup`（≤ 50 個 `member_id`、`purpose` 須經業主核准）。信箱用完即丟；中央每次稽核（不記信箱）。
-- **最小權限**：新 App 預設只有 `amway.read`；多的權限由業主在後台勾選；收到 403 不自行繞過。
+- **webhook**：事件 `member.profile_changed`（`fields` 只有欄位名稱）、`member.deleted`、`webhook.test`；POST JSON，標頭 `X-HG-Event-Id`／`X-HG-Timestamp`／`X-HG-Attempt`／`X-HG-Signature: v1=HMAC-SHA256(金鑰, 時間戳.原始內容)`；驗簽用原始內容、常數時間、時間窗 5 分鐘、依 `id` 去重、5 秒內回 2xx。至少一次投遞，失敗在 1 分、5 分、30 分、2 小時、6 小時、24 小時重試（共 7 次），紀錄保存 30 天。金鑰由杜杜龍在後台取得，只放伺服器環境變數。
+- **聯絡查詢**：服務金鑰（後台建立，只放伺服器）→ `POST /v1/service/token` → `POST /v1/apps/{app_id}/contacts/lookup`（≤ 50 個 `member_id`、`purpose` 須經杜杜龍核准）。信箱用完即丟；中央每次稽核（不記信箱）。
+- **最小權限**：新 App 預設只有 `amway.read`；多的權限由杜杜龍在後台勾選；收到 403 不自行繞過。
 - **符合度回報**：`GET /v1/apps/{app_id}/handoff?integrated=<版本>&standards=webhook,delete_copy,no_email_copy,snapshot_reconcile,least_scope`（只列已做到的），後台 App 清單顯示結果。
 
 ## 6.9 會員資料查詢（2026-11-13.1，ADR 0022）
 - `POST /v1/apps/{app_id}/members/lookup`，服務 Token；`{"member_ids":[≤100],"fields":["legal_name","rank",…],"use":"process"|"display"}` → `{"members":[{"member_id","fields":{…}}],"not_found":[…]}`。
-- 只能讀在該 App 登入過的會員、只能讀業主在後台勾選的欄位（含會員設為隱藏的）；沒勾回 `403 field_not_allowed`。需要審核的 Amway 欄位只回已審核的；非 Amway 會員的 Amway 欄位為 `null`。
+- 只能讀在該 App 登入過的會員、只能讀杜杜龍在後台勾選的欄位（含會員設為隱藏的）；沒勾回 `403 field_not_allowed`。需要審核的 Amway 欄位只回已審核的；非 Amway 會員的 Amway 欄位為 `null`。
 - 只取需要的欄位；不長期保存、不寫日誌與分析工具、不轉給寰宇生態系以外；中央每次稽核（App、筆數、欄位名稱、用途，不含內容）。對外公開頁仍然只顯示會員設為公開的欄位。
 - **批次與上手欄位（2026-11-20.2，ADR 0032）**：一次最多 **100** 個 `member_id`（超過 `422`）。`members` **依請求順序**、同一個 id 只出現一次；查不到的（沒在該 App 登入過、已停用、已刪除）列在 `not_found`，不會讓整批失敗。回傳形狀與以前相同（不改版）。
-- **上手欄位**：`upline_platinum`（上手白金）、`upline_diamond`（上手鑽石）：文字（會員自己填的名字，不是會員 ID）；沒有待審核狀態；沒填或會員沒開 Amway 專區為 `null`。與其他欄位一樣要業主在「平台設定」勾選，沒勾 `403 field_not_allowed`。
+- **上手欄位**：`upline_platinum`（上手白金）、`upline_diamond`（上手鑽石）：文字（會員自己填的名字，不是會員 ID）；沒有待審核狀態；沒填或會員沒開 Amway 專區為 `null`。與其他欄位一樣要杜杜龍在「平台設定」勾選，沒勾 `403 field_not_allowed`。
 - **頻率與效能**：每個 App 每分鐘 120 次（`429`，`retry-after: 60`）。單次 100 筆只做固定幾次資料庫查詢（不隨人數增加；`test/roundtrips.test.ts` 防退步）。實際牆鐘時間取決於 Worker 與資料庫的距離（見 ADR 0025），請以 staging／正式實測為準。
 - **App 端**：列表頁只讀目前這一頁、匯出分批讀；結果只放記憶體或短暫快取，不寫資料庫與日誌；失敗（403／422／429／逾時／5xx）顯示「未提供」，不影響其他功能。
 
 ## 6.10 頭銜與行業類別欄位（2026-11-15.1）
-- **頭銜**（`job_title`，2026-11-15 起標籤由「職稱」改稱「頭銜」，代碼不變）：`tags`（多項，最多 10 項、每項 ≤ 50 字）、預設公開、`profile.basic.write`；順序在「行業類別」之後、「公司／單位」之前。定義的 `suggest` 為 `job_title`，輸入時呼叫 `GET /v1/vocab/suggestions?pool=job_title&q=…` 顯示關聯詞。值是文字陣列：`PUT /v1/me/profile/fields/job_title`（`{"value":["經理"]}`）。輸入過的頭銜自動進詞庫，業主在後台「關聯詞」編輯、合併、刪除。
-- **行業類別**（`occupation`，原稱「職業」「行業與工作」，代碼不變）：改為**單選下拉選單**（`type: "select"`），沒有關聯詞輸入。選項在欄位定義的 `options`（`value` 與 `label` 相同，順序即顯示順序），內建台灣常見行業別，業主在後台「關聯詞」頁維護（新增、改名、合併、刪除，App 不用改）。選項多，下拉要可搜尋。值是單一文字：`PUT /v1/me/profile/fields/occupation`（`{"value":"製造業"}`、`null` 清除），必須在目前清單內，否則 `422 not_an_option`；已存的值就算之後從清單刪除，仍會顯示、可原樣保存。舊版的標籤陣列請改成單選並容忍舊陣列值。
-- 其他會員的這兩個欄位走 `POST /v1/apps/{app_id}/members/lookup`（業主在後台勾選 `job_title`、`occupation`）。欄位定義版本 `2026-11-15.1`。
+- **頭銜**（`job_title`，2026-11-15 起標籤由「職稱」改稱「頭銜」，代碼不變）：`tags`（多項，最多 10 項、每項 ≤ 50 字）、預設公開、`profile.basic.write`；順序在「行業類別」之後、「公司／單位」之前。定義的 `suggest` 為 `job_title`，輸入時呼叫 `GET /v1/vocab/suggestions?pool=job_title&q=…` 顯示關聯詞。值是文字陣列：`PUT /v1/me/profile/fields/job_title`（`{"value":["經理"]}`）。輸入過的頭銜自動進詞庫，杜杜龍在後台「關聯詞」編輯、合併、刪除。
+- **行業類別**（`occupation`，原稱「職業」「行業與工作」，代碼不變）：改為**單選下拉選單**（`type: "select"`），沒有關聯詞輸入。選項在欄位定義的 `options`（`value` 與 `label` 相同，順序即顯示順序），內建台灣常見行業別，杜杜龍在後台「關聯詞」頁維護（新增、改名、合併、刪除，App 不用改）。選項多，下拉要可搜尋。值是單一文字：`PUT /v1/me/profile/fields/occupation`（`{"value":"製造業"}`、`null` 清除），必須在目前清單內，否則 `422 not_an_option`；已存的值就算之後從清單刪除，仍會顯示、可原樣保存。舊版的標籤陣列請改成單選並容忍舊陣列值。
+- 其他會員的這兩個欄位走 `POST /v1/apps/{app_id}/members/lookup`（杜杜龍在後台勾選 `job_title`、`occupation`）。欄位定義版本 `2026-11-15.1`。
 
 ## 6.10.1 欄位異動（2026-11-14.6）
 - 刪除「使用語言」（`languages`）；中央已刪除會員存的舊值。畫面照欄位定義產生，自然消失。
 - 「介面語言」（`locale`）預設繁體中文：沒選過時 `GET /v1/me/profile` 的 `fields.locale.value` 為 `"zh-TW"`，欄位定義多一個 `default_value`；預設值只用來顯示，不寫回中央。欄位定義版本 `2026-11-14.4`。
 
 ## 6.11 下拉重新整理（2026-11-14.3，所有 App、所有頁面一體適用）
-業主 2026-11-14 決定：每個畫面都要支援「在頁面最上方往下拉 = 重新整理」，取代網頁版沒有重新整理按鈕的缺陷。
+杜杜龍 2026-11-14 決定：每個畫面都要支援「在頁面最上方往下拉 = 重新整理」，取代網頁版沒有重新整理按鈕的缺陷。
 - **手勢**：捲到最頂端時往下拖超過約 70 px 放開才觸發；拖動時有指示（下拉重新整理 → 放開重新整理 → 載入中），用主色；沒過門檻就彈回。
 - **觸發後**：重新讀取該頁資料與 config；不重載整個 App、不登出、不動共用登入；失敗用 toast；有未儲存修改先確認。
 - **不誤觸**：不在最頂端、在輸入框／下拉／彈出視窗／可橫向捲動區域內、載入中、距上次不到 2 秒，都不觸發。
@@ -123,13 +123,13 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **資料**：`GET /v1/amway/field-definitions` 的 `rank` 選項每個都有 `badge_url`（公開絕對網址，沒有徽章是 `null`）與 `badge`（`{width, height, art_top, art_bottom}`，畫布 380×720 與圖案上下緣，沒有徽章是 `null`）。33 個獎銜中 24 個有徽章，`none`、`r03`、`r06`、`r09`、`r12`、`r12a`、`r15`、`r18`、`r21` 是 `null`。
 - **圖片網址**：`https://id.hglobal1985.com/badges/<獎銜代碼>.png?v=<版本>`（例如 `/badges/f_double_diamond.png?v=1`）；公開、`image/png`、一年 immutable 快取、`access-control-allow-origin: *`。更新時版本號變、網址變：**一律用 API 給的完整網址**，不要自己拼、不要寫死、不要存副本。
 - **顯示標準**（完整內容在串接指令三、13，檢查清單 25）：會員抬頭裡緊貼獎銜標籤右邊；顯示高度 92、版面只佔頭像高度 48（上下各溢出約 22）；呼吸 1.1 倍／2.6 秒（只改大小）；4 顆星形閃光球（位置依圖案範圍比例，高度 72 為基準等比縮放）；「減少動態效果」時只顯示靜態徽章；無徽章或載入失敗整塊不顯示。
-- App 不自己存圖庫、不自己新增徽章；新增獎銜時由業主在中央後台「獎銜徽章」上傳。
+- App 不自己存圖庫、不自己新增徽章；新增獎銜時由杜杜龍在中央後台「獎銜徽章」上傳。
 
 ## 6.16 在 App 內指派職務（2026-11-21.1，ADR 0033）
 給需要讓管理者直接在 App 內指定會員擔任審核員、會長、課務、音控、票務、活動的 App（例如行動大學）。
 - `GET /v1/eligibility/staff`：不帶 `q` ＝ 有職務的會員（最多 200）；帶 `q`（2–30 字）＝ 搜尋顯示名稱含關鍵字的啟用會員（最多 20），有沒有職務都找得到。回 `{assignable_roles:[{role,label}], members:[{member_id, display_name, roles:[{role,label,assignable}]}]}`。
 - `PUT /v1/eligibility/staff/{member_id}`，body `{"roles":["sound","course"]}`：`roles` 是事後應有的可指派職務完整清單（空陣列＝全部移除）。回 `{member_id, roles:[…事後全部職務], changed}`。
-- 呼叫者本人的 App 會員 Token（`amway.read`）。**誰可用由中央判斷**：與後台相同的 `staff.manage`（目前只有超級管理員），否則 `403`；業主要替 App 勾 `display_name`，否則 `403 field_not_allowed`。
+- 呼叫者本人的 App 會員 Token（`amway.read`）。**誰可用由中央判斷**：與後台相同的 `staff.manage`（目前只有超級管理員），否則 `403`；杜杜龍要替 App 勾 `display_name`，否則 `403 field_not_allowed`。
 - **可指派**：`reviewer`、`president`、`course`、`sound`、`ticket`、`activity`。`super_admin`、`secretary` 只能在中央後台設定：帶了 `422`，對象原本的這兩種職務與額外權限不動。只能給出自己權限涵蓋的職務（`403`）；對象不存在或已停用 `404`。
 - 每次查詢與指派都稽核（呼叫者、App、對象、職務變化；不記搜尋字與姓名）。App 只在管理者本人開啟時即時讀取、不保存名單；非 200 當作沒有權限；指派前要確認。
 
@@ -138,7 +138,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - `GET /v1/eligibility/reviews`、`POST /v1/eligibility/reviews/{id}/decision`（body `{"decision":"approve"|"reject"}`）：呼叫者本人的 App 會員 Token（`amway.read`）。
 - **規則與中央後台完全一致**（由中央判斷）：`super_admin`、`secretary` 看到並可處理全部；`reviewer`（審核員）只看得到、只能處理自己已審核教育中心的申請；沒有審核職務回 403；不屬於自己中心的處理回 403；已處理過回 404。
 - **回傳**：`{scope:"all"|"center", reviews:[{id, member_id, display_name, field_key, field_label, center, current_value, requested_value, created_at}]}`（最舊在前、最多 200 筆）；沒有信箱、電話、會員編號。處理後申請人收到通知、審核員的「等待審核」通知標成已完成。
-- **授權**：業主在後台「平台設定」替 App 勾 `display_name`，否則 `403 field_not_allowed`。每次列出與處理都有稽核。
+- **授權**：杜杜龍在後台「平台設定」替 App 勾 `display_name`，否則 `403 field_not_allowed`。每次列出與處理都有稽核。
 - App 只在審核人員本人開啟時即時讀取；待審中的申請與整份待審名單不保存；任何非 200 當作沒有權限；處理前要確認。
 - **已處理紀錄（2026-11-22.4，ADR 0036）**：審核完成後 App 可保存已處理紀錄供查詢：申請人姓名快照（處理當下的 `display_name`，不跟著改名）、申請內容快照（欄位名稱、原本的值、申請的值、修改後通過的值）、處理結果、處理時間、審核人員顯示名稱。快照只供查詢，不得用來判斷資格或權限；不得保存 Amway 會員編號、上手、資格查詢結果、整份待審名單、搜尋字；姓名與申請內容不進日誌、分析工具、錯誤回報；收到 `member.deleted` 要把該會員的姓名與申請內容快照清成空白（不用刪整筆）。這是三、7「Amway 資料不得保存」唯一的例外。沒有新的程式要做。
 - **修改後通過（2026-11-20.1，ADR 0031）**：decision 的 body 可多帶選填 `value`（格式同欄位定義：文字，或 `{option, custom_text}`），例如 `{"decision":"approve","value":"新竹 122"}`。只有 `approve` 可帶（`reject` 帶 value `422`）；只能改 `education_system`、`education_center`、`rank`；不合規則（不在選項、空白、過長）`422`。與申請不同時以 `value` 核准，回應 `modified: true`，申請人的通知寫明經審核者修改。原申請值與修改後的值記在該筆申請上，稽核只記「有修改」、不記值。只有自己中心權限的審核員不能把中心改成別的中心（`403`）。
@@ -150,20 +150,20 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - **誰可查**：`sound`（音控）、`president`（會長）且有已審核教育中心 → 只回自己的中心（指定別的中心回 403）；`super_admin`、`secretary` 可帶 `center=<詞庫中的中心名稱>`（不存在 404；沒帶且沒有自己的中心 422）；其他人 403；非 App 內登入的 Token 403。
 - **名單**：教育中心已審核且相同（`center.key`）、帳號啟用、Amway 開啟，不含自己；沒登入過這款 App 的也列出（`signed_in_app`）。`q` 只比對顯示名稱。`limit` 預設 20、上限 50，`cursor` 翻頁。
 - **回傳**：`{center:{key,label}, members:[{member_id, display_name, avatar_url|null, signed_in_app}], next_cursor|null}`；沒有信箱、電話、獎銜或其他 Amway 欄位。
-- **授權**：業主要在後台「平台設定」替 App 勾 `display_name`（頭像再勾 `avatar`，沒勾時 `avatar_url` 為 null），否則 `403 field_not_allowed`。每次查詢都有稽核（不記搜尋字與姓名）。
+- **授權**：杜杜龍要在後台「平台設定」替 App 勾 `display_name`（頭像再勾 `avatar`，沒勾時 `avatar_url` 為 null），否則 `403 field_not_allowed`。每次查詢都有稽核（不記搜尋字與姓名）。
 - App 只存被指派者的 `member_id` 與當下顯示名稱；確認對方仍在同中心用對方本人的 `GET /v1/eligibility/context`。
 
 ## 6.14 新增職稱詞條（2026-11-15.5，ADR 0029）
 - `POST /v1/vocab/suggestions`，**服務 token**（`POST /v1/service/token`，與聯絡查詢相同；不是會員登入），body `{"pool":"job_title","value":"區域經理"}`。
 - 只開放 `job_title`（其他詞庫 `403`）；`value` 去除前後空白、最長 50 字（空或過長 `400`）；已有的詞（不分大小寫與全半形）不重複新增，回既有的詞，`created: false`。成功 `200 {pool, value, created}`。
-- 新詞是**待核可**：業主在後台「關聯詞」核可後才出現在別人的建議（`GET /v1/vocab/suggestions`）；刪除＝拒絕。沒帶或帶錯 token `401`。不需要在後台另開權限。
+- 新詞是**待核可**：杜杜龍在後台「關聯詞」核可後才出現在別人的建議（`GET /v1/vocab/suggestions`）；刪除＝拒絕。沒帶或帶錯 token `401`。不需要在後台另開權限。
 - 限制：每個 App 每分鐘 30 次、待核可最多 200 個（`429`）；每次新增都有稽核（App、時間、字）。不讀寫任何會員自己的職稱。
 - App 端：`404`／`405`／`501`（沒開放）、`401`、`429`、逾時、`5xx` 先暫存稍後重送；`400` 不重送。
 
 ## 7. 串接指令版本回報
 App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/handoff?integrated=<採用的版本>`：回傳最新版本、`up_to_date` 與最新指令文字，並記錄 App 採用的版本。後台 App 清單會顯示是否最新。
 
-## 8. 新 App 登記（業主）
+## 8. 新 App 登記（杜杜龍）
 後台 → App → 新增 App：填 `app_id` 與名稱即可，其餘欄位留空會自動產生。30 秒內生效，可用 `GET /v1/apps/<app_id>/config` 確認。不再使用時先按「停用」；停用且沒有會員的 App 可在後台按「刪除登記」永久刪除（稽核紀錄保留）。
 
 ## 6.15 App 內直接刪除帳號（2026-11-23.3，ADR 0037，所有 App 一體適用）
@@ -175,8 +175,8 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 5. 標準代碼 `in_app_delete`：做到後在 `GET /v1/apps/{app_id}/handoff?...&standards=` 回報，後台 App 清單會顯示。
 
 ## 6.16 審核通知派送（2026-11-24.1，ADR 0038）
-申請當下沒有實際中心（「無」）或系統不是寰宇（含「無」「其他」自訂）的審核申請，通知與審核權限只給總部秘書（`secretary`）與超級管理員（`super_admin`，業主本人）；中心審核員看不到、不會被通知。系統是寰宇且有中心者維持原規則（同中心審核員；沒有時給秘書與超級管理員）。App 不用改，一切以中央回傳為準。
+申請當下沒有實際中心（「無」）或系統不是寰宇（含「無」「其他」自訂）的審核申請，通知與審核權限只給總部秘書（`secretary`）與超級管理員（`super_admin`，杜杜龍本人）；中心審核員看不到、不會被通知。系統是寰宇且有中心者維持原規則（同中心審核員；沒有時給秘書與超級管理員）。App 不用改，一切以中央回傳為準。
 
-## 6.17 審核規則改版（2026-11-24.2，ADR 0038，業主決定）
+## 6.17 審核規則改版（2026-11-24.2，ADR 0038，杜杜龍決定）
 - 獎銜：只要不是「無」，不論系統與中心一律審核（`status: pending`，核准前沒有生效值、別人看不到）。中心：系統是寰宇時審核（實際中心或明確勾「無」）；系統不是寰宇時中心自動「無」、不審核。系統本身不審核。
 - 派送：寰宇＋實際中心 → 該中心審核員（沒有時給秘書與超級管理員）；其他一律只給總部秘書與超級管理員。使用審核資料的 App 不用改，一切以中央回傳為準。

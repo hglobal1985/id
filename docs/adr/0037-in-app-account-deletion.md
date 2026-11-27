@@ -1,9 +1,9 @@
 # ADR 0037：App 內直接刪除帳號（所有 App 一體適用）
 
-日期：2026-11-23　狀態：採用（業主決定）
+日期：2026-11-23　狀態：採用（杜杜龍決定）
 
 ## 背景
-`POST /v1/me/delete-account` 原本只接受會員網站的 session，App 只能放按鈕把會員帶去 `/my/edit` 重新登入再按一次。業主要求取消二次跳轉：會員在任何串接 App 內按「刪除帳號」就直接刪除並清空所有資料。
+`POST /v1/me/delete-account` 原本只接受會員網站的 session，App 只能放按鈕把會員帶去 `/my/edit` 重新登入再按一次。杜杜龍要求取消二次跳轉：會員在任何串接 App 內按「刪除帳號」就直接刪除並清空所有資料。
 
 ## 決定
 - **刪除端點雙軌**：會員網站維持原樣（session，10 分鐘內登入）；App 改用會員自己的 App Access Token（Bearer）加 `reauth_token`。只能刪 token 本人；OIDC 用戶端的 token 仍是 `403`。被暫停或下架的 App，token 本來就無效（`401`）。

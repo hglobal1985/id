@@ -1,8 +1,8 @@
-# OIDC 與 Google 登入：部署前設定（業主操作）
+# OIDC 與 Google 登入：部署前設定（杜杜龍操作）
 
 > **2026-11-10 更新**：新的 App 一律在後台登記並使用登入中繼（見 `docs/integration-guide.md` 與 ADR 0011），不需要 client secret，也不需要本頁第 3 節。第 3 節只保留給仍在使用 `/oauth/*` 的既有用戶端；範例中的 `elearning` 是舊名稱（現為寰宇行動大學，app_id `learn`）。實際部署步驟以 `docs/deploy.md` 為準。
 
-以下都由業主在自己的終端機或主控台操作。**金鑰、Client Secret 不要貼進對話、Issue、PR 或日誌。**
+以下都由杜杜龍在自己的終端機或主控台操作。**金鑰、Client Secret 不要貼進對話、Issue、PR 或日誌。**
 
 ## 1. Google OAuth 用戶端（H-Global1985 專用 Google Cloud 專案）
 - 類型：網頁應用程式。

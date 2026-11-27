@@ -225,7 +225,7 @@ describe("fields and review", () => {
     await enable(m);
     let res = await put(m, "education_system", "寰宇");
     expect(await res.json()).toMatchObject({ value: "寰宇", pending_value: null, status: "not_required" });
-    res = await put(m, "rank", "12"); // reviewed in every case (業主 2026-11-24); no real center: head office only
+    res = await put(m, "rank", "12"); // reviewed in every case (杜杜龍 2026-11-24); no real center: head office only
     expect(await res.json()).toMatchObject({ value: null, pending_value: "12", status: "pending" });
     res = await put(m, "education_center", "無"); // an explicit 無 under 寰宇 is reviewed by head office too
     expect(await res.json()).toMatchObject({ value: null, pending_value: "無", status: "pending" });
@@ -273,7 +273,7 @@ describe("fields and review", () => {
     expect(await (await put(m, "education_system", "其他體系B")).json()).toMatchObject({ status: "not_required", value: "其他體系B" });
     expect(await (await put(m, "education_center", "無")).json()).toMatchObject({ status: "not_required", value: "無" }); // automatic 無: never reviewed
     expect(await pendingReviews(db)).toEqual([]);
-    // the rank is reviewed whatever the system is, by head office only (業主 2026-11-24)
+    // the rank is reviewed whatever the system is, by head office only (杜杜龍 2026-11-24)
     expect(await (await put(m, "rank", "15")).json()).toMatchObject({ status: "pending", value: null, pending_value: "15" });
     expect(db.raw.prepare("SELECT field_key, center_norm FROM amway_review_requests WHERE status = 'pending'").all()).toEqual([{ field_key: "rank", center_norm: null }]);
   });
