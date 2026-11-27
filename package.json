@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/typescript7/bin/tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "openapi": "tsx scripts/generate-openapi.mjs",
@@ -29,8 +29,9 @@
     "@types/node": "^22.20.7",
     "eslint": "^10.15.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.74.0",
+    "typescript7": "npm:typescript@^7.0.2",
     "vite": "^8.4.0",
     "vitest": "^5.1.2",
     "wrangler": "^4.168.0"
