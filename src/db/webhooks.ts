@@ -100,6 +100,36 @@ export async function enqueueStatements(db: D1Database, memberId: string, type: 
   return out;
 }
 
+/**
+ * 網站巡檢警報（eco.alert）：每位收件的超級管理員、每款「有開 webhook、他用過、沒有選擇不參與巡檢」的 App 各一則事件。
+ * detail 只有網站名稱、掛了／恢復、簡短備註，不含個資；手機推播由 App 收到後自己發。
+ */
+export async function enqueueEcoAlertStatements(db: D1Database, memberIds: string[], detail: { name: string; alert: "down" | "recovered"; note: string }, now: Date): Promise<D1PreparedStatement[]> {
+  const t = epochSeconds(now);
+  const ts = taipeiIso(now);
+  const json = JSON.stringify({ name: detail.name.slice(0, 60), alert: detail.alert, note: detail.note.slice(0, 120) });
+  const out: D1PreparedStatement[] = [];
+  let n = 0;
+  for (const memberId of memberIds) {
+    const apps = await db
+      .prepare(
+        `SELECT ma.app_id AS app_id FROM member_apps ma JOIN app_webhooks w ON w.app_id = ma.app_id AND w.enabled = 1
+         LEFT JOIN eco_feature_apps f ON f.app_id = ma.app_id AND f.feature_key = 'uptime_watch'
+         WHERE ma.member_id = ? AND COALESCE(f.participating, 1) = 1`,
+      )
+      .bind(memberId)
+      .all<{ app_id: string }>();
+    for (const { app_id } of apps.results ?? []) {
+      out.push(
+        db
+          .prepare("INSERT INTO webhook_events (id, app_id, member_id, type, fields, detail, created_at, status, attempts, next_attempt_epoch, purge_epoch) VALUES (?, ?, ?, 'eco.alert', NULL, ?, ?, 'pending', 0, ?, ?)")
+          .bind(`evt_${uuidv7(now.getTime() + n++)}`, app_id, memberId, json, ts, t, t + EVENT_RETENTION_SECONDS),
+      );
+    }
+  }
+  return out;
+}
+
 export async function enqueueEvent(db: D1Database, memberId: string, type: WebhookEventType, fields: string[] | null, now: Date): Promise<void> {
   const stmts = await enqueueStatements(db, memberId, type, fields, now);
   if (stmts.length) await db.batch(stmts);
@@ -111,6 +141,7 @@ interface DueRow {
   member_id: string;
   type: string;
   fields: string | null;
+  detail: string | null;
   created_at: string;
   attempts: number;
   url: string | null;
@@ -127,7 +158,7 @@ export async function deliverDue(db: D1Database, env: Env, now: Date, send: Fetc
   const t = epochSeconds(now);
   const due = await db
     .prepare(
-      `SELECT e.id, e.app_id, e.member_id, e.type, e.fields, e.created_at, e.attempts, w.url, w.secret_version, w.enabled
+      `SELECT e.id, e.app_id, e.member_id, e.type, e.fields, e.detail, e.created_at, e.attempts, w.url, w.secret_version, w.enabled
        FROM webhook_events e LEFT JOIN app_webhooks w ON w.app_id = e.app_id
        WHERE e.status = 'pending' AND e.next_attempt_epoch <= ? ORDER BY e.next_attempt_epoch LIMIT ?`,
     )

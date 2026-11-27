@@ -2,7 +2,7 @@
 // Events carry the member id and field NAMES only, never values: the App reads what it needs from the central system.
 import { base64url, utf8 } from "../lib/crypto";
 
-export const WEBHOOK_EVENTS = ["member.profile_changed", "member.deleted", "webhook.test"] as const;
+export const WEBHOOK_EVENTS = ["member.profile_changed", "member.deleted", "webhook.test", "eco.alert"] as const;
 export type WebhookEventType = (typeof WEBHOOK_EVENTS)[number];
 
 /** Seconds to wait after the 1st, 2nd … failed attempt: 1 min, 5 min, 30 min, 2 h, 6 h, 24 h. After the 7th failure the event is `failed`. */
@@ -27,11 +27,14 @@ export interface EventBody {
   member_id: string;
   /** Names of the changed profile fields (member.profile_changed only). */
   fields?: string[];
+  /** eco.alert only: which site, down or up, and a short note. No personal data. */
+  detail?: { name: string; alert: "down" | "recovered"; note: string };
 }
 
-export function bodyOf(e: { id: string; type: string; created_at: string; app_id: string; member_id: string; fields: string | null }): string {
+export function bodyOf(e: { id: string; type: string; created_at: string; app_id: string; member_id: string; fields: string | null; detail?: string | null }): string {
   const body: EventBody = { id: e.id, type: e.type as WebhookEventType, created_at: e.created_at, app_id: e.app_id, member_id: e.member_id };
   if (e.fields) body.fields = JSON.parse(e.fields) as string[];
+  if (e.detail) body.detail = JSON.parse(e.detail) as EventBody["detail"];
   return JSON.stringify(body);
 }
 

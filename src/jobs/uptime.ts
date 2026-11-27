@@ -3,6 +3,7 @@
 import { taipeiIso, epochSeconds } from "../lib/time";
 import { loadEcoSettings } from "../db/eco-features";
 import { PROBE_TIMEOUT_MS, describeError, isProbeDue, nextState, type Alert, type ProbeResult, type SiteState } from "../platform/uptime";
+import { enqueueEcoAlertStatements } from "../db/webhooks";
 import { sendMail, type Mailer } from "./mail";
 
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
@@ -56,6 +57,11 @@ async function sendAlerts(db: D1Database, mailer: Mailer | undefined, notifyPush
     await db.batch(
       admins.flatMap((id) => items.map((it) => db.prepare("INSERT INTO notifications (id, member_id, kind, payload, created_at) VALUES (lower(hex(randomblob(16))), ?, 'eco.uptime', ?, ?)").bind(id, JSON.stringify({ name: it.name, alert: it.alert, note: it.note }), ts))),
     );
+    // 手機推播：用 webhook 事件 eco.alert 通知各 App，由 App 自己推給這位超級管理員的裝置（沒設 webhook 的 App 收不到，站內通知照常）。
+    for (const it of items) {
+      const stmts = await enqueueEcoAlertStatements(db, admins, it, now);
+      if (stmts.length) await db.batch(stmts);
+    }
   }
   if (notifyEmail && mailer) {
     const lines = items.map((it) => `${it.alert === "down" ? "【掛了】" : "【已恢復】"}${it.name}（${it.note}）`);
