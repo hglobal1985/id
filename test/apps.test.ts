@@ -169,7 +169,7 @@ describe("registry rules", () => {
     const body = (await r.json()) as { config: { eco_features: Record<string, { enabled: boolean }> } };
     expect(body).toEqual({ app_id: "learn", status: "active", min_version: "0.0.0", config: { eco_features: expect.any(Object) } });
     // 生態系統功能：預設全部參與；只有 weekly_backup 附公開欄位。
-    expect(Object.keys(body.config.eco_features).sort()).toEqual(["dependency_alerts", "error_digest", "screenshot_test", "uptime_watch", "weekly_backup"]);
+    expect(Object.keys(body.config.eco_features).sort()).toEqual(["dependency_alerts", "error_digest", "uptime_watch", "weekly_backup"]);
     expect(body.config.eco_features.weekly_backup).toEqual({ enabled: true, weekday: 0, keep: 8 });
     expect(await errorCode(await get("/v1/apps/nope/config"))).toBe("app_not_found");
     const row = db.raw.prepare("SELECT definition FROM registered_apps WHERE app_id = 'learn'").get() as { definition: string };
@@ -184,7 +184,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-27.6", digest: "3782d77b66a9f49a" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-27.7", digest: "6540ffc00fd726f9" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -479,7 +479,7 @@ describe("生態系統功能", () => {
     expect((await admin(rv, "GET", "/v1/admin/eco-features")).status).toBe(403);
     const view = (await (await admin(sec, "GET", "/v1/admin/eco-features")).json()) as { can_manage: boolean; features: { key: string; apps: { app_id: string; participating: boolean; effective: boolean }[] }[] };
     expect(view.can_manage).toBe(false);
-    expect(view.features.map((f) => f.key)).toEqual(["dependency_alerts", "uptime_watch", "error_digest", "weekly_backup", "screenshot_test"]);
+    expect(view.features.map((f) => f.key)).toEqual(["dependency_alerts", "uptime_watch", "error_digest", "weekly_backup"]);
     expect(view.features[0]?.apps[0]).toMatchObject({ app_id: "learn", participating: true, effective: true });
     expect((await admin(sec, "PUT", "/v1/admin/eco-features/weekly_backup", { keep: 4 })).status).toBe(403);
 

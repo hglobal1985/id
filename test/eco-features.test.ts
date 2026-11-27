@@ -32,10 +32,10 @@ describe("生態系統功能：設定規則", () => {
   it("App 看到的設定：關閉或不參與就是 enabled false，且看不到通知對象與網址", () => {
     const all = Object.fromEntries(ECO_FEATURES.map((k) => [k, structuredClone(ECO_CATALOG[k].defaults)])) as Parameters<typeof appVisibleConfig>[0];
     all.error_digest.enabled = false;
-    const cfg = appVisibleConfig(all, new Map([["screenshot_test", false]]));
+    const cfg = appVisibleConfig(all, new Map([["uptime_watch", false]]));
     expect(cfg.error_digest).toEqual({ enabled: false });
-    expect(cfg.screenshot_test).toEqual({ enabled: false });
-    expect(cfg.uptime_watch).toEqual({ enabled: true });
+    expect(cfg.uptime_watch).toEqual({ enabled: false });
+    expect(cfg.dependency_alerts).toEqual({ enabled: true });
     expect(cfg.weekly_backup).toEqual({ enabled: true, weekday: 0, keep: 8 });
     expect(JSON.stringify(cfg)).not.toContain("notify");
   });

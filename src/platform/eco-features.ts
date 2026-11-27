@@ -2,7 +2,7 @@
 // 本檔不依賴框架：功能清單、預設值、驗證、以及「某個 App 實際看到的設定」。
 // 各功能的執行（巡檢、週報、備份…）各自在後續的 PR 實作，這裡只負責「設定」與「誰參與」。
 
-export const ECO_FEATURES = ["dependency_alerts", "uptime_watch", "error_digest", "weekly_backup", "screenshot_test"] as const;
+export const ECO_FEATURES = ["dependency_alerts", "uptime_watch", "error_digest", "weekly_backup"] as const;
 export type EcoFeatureKey = (typeof ECO_FEATURES)[number];
 
 export const UPTIME_INTERVALS = [5, 10, 15, 30, 60] as const;
@@ -84,15 +84,6 @@ export const ECO_CATALOG: Record<EcoFeatureKey, EcoFeatureInfo> = {
     fields: ["weekday", "keep"],
     app_visible: ["weekday", "keep"],
     defaults: { enabled: true, notify_push: true, notify_email: false, weekday: 0, keep: 8 },
-  },
-  screenshot_test: {
-    key: "screenshot_test",
-    label: "主要畫面自動截圖測試",
-    summary: "GitHub Actions 用 Playwright 截主要畫面（手機 390px），與上次比對，有差異才通知。",
-    app_duty: "App 的程式庫提供截圖清單（頁面網址與等待條件）；不耗 AI 額度。",
-    fields: [],
-    app_visible: [],
-    defaults: { enabled: true, notify_push: true, notify_email: false },
   },
 };
 

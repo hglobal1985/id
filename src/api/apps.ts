@@ -27,7 +27,7 @@ const configRoute = createRoute({
   path: "/v1/apps/{app_id}/config",
   tags: ["apps"],
   summary: "Status, minimum version and public settings an App reads at launch",
-  description: "Show maintenance when status is paused, stop when killed, and require an update below min_version. Changes take effect within 30 seconds. config.eco_features says, per ecosystem feature (dependency_alerts, uptime_watch, error_digest, weekly_backup, screenshot_test), whether this App takes part (enabled) plus the few public settings it needs.",
+  description: "Show maintenance when status is paused, stop when killed, and require an update below min_version. Changes take effect within 30 seconds. config.eco_features says, per ecosystem feature (dependency_alerts, uptime_watch, error_digest, weekly_backup), whether this App takes part (enabled) plus the few public settings it needs.",
   request: { params: AppIdParam },
   responses: {
     200: {
