@@ -1,0 +1,45 @@
+# 清理舊分支（杜杜龍 2026-11-27 同意，與行動大學同一份）：每個 AI 對話都會開自己的分支，沒合併或合併前留下的分支不會自己消失。
+# 只刪「內容已經全部在 main 裡」的分支（已合併，或每個修改都已經用其他方式併進 main），
+# 而且最後更新超過 3 天、沒有開著的 PR。還有沒併進 main 的修改的分支一律保留。
+# 執行方式：GitHub → Actions →「清理舊分支」→ Run workflow；另外每週一早上自動跑一次。
+# 「全部清除」選項（杜杜龍 2026-11-27）：除了 main 與還開著的 PR 全部刪除；只在杜杜龍確認所有功能都已上線時使用。
+name: 清理舊分支
+on:
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "全部清除：除了 main 與還開著的 PR，其他分支全部刪除（包含還沒合併的；杜杜龍確認所有功能都已上線時才用）"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 1 * * 1"
+permissions:
+  contents: write
+  pull-requests: read
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 刪除內容已經在 main 裡的舊分支
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          open=$(gh pr list --state open --limit 500 --json headRefName -q '.[].headRefName')
+          cutoff=$(date -d '3 days ago' +%s)
+          all="${{ inputs.all }}"
+          deleted=0; kept=0
+          for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v -E '^origin(/HEAD|/main)?$'); do
+            b=${ref#origin/}
+            if echo "$open" | grep -qx "$b"; then kept=$((kept+1)); continue; fi
+            if [ "$all" != "true" ]; then
+              if [ "$(git log -1 --format=%ct "$ref")" -gt "$cutoff" ]; then kept=$((kept+1)); continue; fi
+              if [ "$(git cherry origin/main "$ref" | grep -c '^+')" != "0" ]; then kept=$((kept+1)); continue; fi
+            fi
+            echo "刪除 $b"
+            git push origin --delete "$b" && deleted=$((deleted+1))
+          done
+          echo "已刪除 $deleted 個分支，保留 $kept 個（還有沒併進 main 的修改、最近 3 天內有更新、或有開著的 PR）"
