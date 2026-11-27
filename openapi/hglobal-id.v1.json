@@ -8791,6 +8791,127 @@
         }
       }
     },
+    "/v1/apps/{app_id}/error-reports": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Send front-end error counts for the weekly error digest (no sign-in; no personal data)",
+        "description": "Part of the ecosystem feature error_digest. Send only counts: kind (crash, render, network, api, auth, other), page (a path only; query strings are dropped and id-like segments become :id), app_version (like 1.2.3) and count. Never send messages, stack traces, tokens, names or emails. Up to 20 reports per call. When this App does not take part (config.eco_features.error_digest.enabled is false) nothing is stored and accepted is 0. Limited per App and per client; on 429 wait for Retry-After and send later.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 32,
+              "example": "learn"
+            },
+            "required": true,
+            "name": "app_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reports": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "maxLength": 20,
+                          "example": "network"
+                        },
+                        "page": {
+                          "type": "string",
+                          "maxLength": 300,
+                          "example": "/courses/123"
+                        },
+                        "app_version": {
+                          "type": "string",
+                          "maxLength": 20,
+                          "example": "1.4.0"
+                        },
+                        "count": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "page",
+                        "app_version"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 20
+                  }
+                },
+                "required": [
+                  "reports"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "accepted"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "app_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/handoff": {
       "get": {
         "tags": [

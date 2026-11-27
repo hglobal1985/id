@@ -181,7 +181,7 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 - 獎銜：只要不是「無」，不論系統與中心一律審核（`status: pending`，核准前沒有生效值、別人看不到）。中心：系統是寰宇時審核（實際中心或明確勾「無」）；系統不是寰宇時中心自動「無」、不審核。系統本身不審核。
 - 派送：寰宇＋實際中心 → 該中心審核員（沒有時給秘書與超級管理員）；其他一律只給總部秘書與超級管理員。使用審核資料的 App 不用改，一切以中央回傳為準。
 
-## 6.18 生態系統功能（2026-11-27.3，ADR 0039，所有 App 一體適用）
+## 6.18 生態系統功能（2026-11-27.4，ADR 0039，所有 App 一體適用）
 杜杜龍 2026-11-27 決定：套件漏洞提醒、網站巡檢、錯誤回報週報、資料每週備份、主要畫面截圖測試是整個生態系的**系統功能**，由中央統一設定、各 App 一體參與。
 - 設定與參與狀態存在中央（`eco_features`、`eco_feature_apps`），後台「系統功能」頁可看到每個 App 有沒有參與每一項，並調整開關、頻率、通知對象（推播／Email）；`apps.operate` 可看、`apps.manage` 可改。
 - App 讀 `GET /v1/apps/{app_id}/config` 的 `config.eco_features`：`{ dependency_alerts:{enabled}, uptime_watch:{enabled}, error_digest:{enabled}, weekly_backup:{enabled, weekday, keep}, screenshot_test:{enabled} }`。沒有欄位視為 false。通知對象、網址清單只存在中央。

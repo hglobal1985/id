@@ -8,7 +8,9 @@ import { ErrorBodySchema, errorBody } from "../errors";
 import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definitionFromForm, type AppEntry } from "../apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, buildHandoffPointer, handoffUrl, isUpToDate } from "../apps/handoff";
 import { APP_STANDARDS, appChecks, appStats, getApp, isAppWebOrigin, listApps, readStoredApp, deleteApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
-import { ecoConfigFor } from "../db/eco-features";
+import { addErrorCounts, ecoConfigFor, loadEcoAppRows, loadEcoSettings } from "../db/eco-features";
+import { ErrorReportError, MAX_COUNT_PER_REPORT, MAX_REPORTS_PER_CALL, ERROR_KINDS, normalizeReports } from "../platform/error-digest";
+import { allowed } from "../lib/ratelimit";
 import { rolesOf } from "../db/staff";
 import { can, type Permission } from "../admin/roles";
 import { resolveIssuer } from "../oidc/config";
@@ -43,6 +45,29 @@ const configRoute = createRoute({
     },
     404: err("app_not_found"),
   },
+});
+
+const errorReportRoute = createRoute({
+  method: "post",
+  path: "/v1/apps/{app_id}/error-reports",
+  tags: ["apps"],
+  summary: "Send front-end error counts for the weekly error digest (no sign-in; no personal data)",
+  description: `Part of the ecosystem feature error_digest. Send only counts: kind (${ERROR_KINDS.join(", ")}), page (a path only; query strings are dropped and id-like segments become :id), app_version (like 1.2.3) and count. Never send messages, stack traces, tokens, names or emails. Up to ${MAX_REPORTS_PER_CALL} reports per call. When this App does not take part (config.eco_features.error_digest.enabled is false) nothing is stored and accepted is 0. Limited per App and per client; on 429 wait for Retry-After and send later.`,
+  request: {
+    params: AppIdParam,
+    body: {
+      required: true,
+      content: json(
+        z.object({
+          reports: z
+            .array(z.object({ kind: z.string().max(20).openapi({ example: "network" }), page: z.string().max(300).openapi({ example: "/courses/123" }), app_version: z.string().max(20).openapi({ example: "1.4.0" }), count: z.number().int().min(1).max(MAX_COUNT_PER_REPORT).optional() }))
+            .min(1)
+            .max(MAX_REPORTS_PER_CALL),
+        }),
+      ),
+    },
+  },
+  responses: { 200: { description: "Stored", content: json(z.object({ accepted: z.number().int() })) }, 404: err("app_not_found"), 422: err("invalid_field"), 429: err("rate_limited") },
 });
 
 const handoffRoute = createRoute({
@@ -187,6 +212,28 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     if (!a) return notFound(c);
     c.header("cache-control", "no-store");
     return c.json({ app_id: a.app_id, status: a.status, min_version: a.min_version, config: { ...a.config, eco_features: await ecoConfigFor(c.env.DB, a.app_id) } }, 200);
+  });
+
+  app.openapi(errorReportRoute, async (c) => {
+    const a = await getApp(c.env.DB, c.req.valid("param").app_id, deps.now());
+    if (!a) return notFound(c);
+    const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+    if (!(await allowed(c.env.RL_WRITE, `errrep:${a.app_id}:${ip}`)) || !(await allowed(c.env.RL_WRITE, `errrep:${a.app_id}`))) {
+      c.header("retry-after", "60");
+      return c.json(errorBody("rate_limited", "Too many requests", c.get("requestId")), 429) as never;
+    }
+    let reports;
+    try {
+      reports = normalizeReports(c.req.valid("json").reports);
+    } catch (e) {
+      if (!(e instanceof ErrorReportError)) throw e;
+      return c.json(errorBody("invalid_field", e.message, c.get("requestId")), 422) as never;
+    }
+    const [settings, rows] = await Promise.all([loadEcoSettings(c.env.DB), loadEcoAppRows(c.env.DB)]);
+    const part = rows.find((r) => r.feature_key === "error_digest" && r.app_id === a.app_id)?.participating ?? true;
+    if (!settings.error_digest.enabled || !part) return c.json({ accepted: 0 }, 200);
+    c.header("cache-control", "no-store");
+    return c.json({ accepted: await addErrorCounts(c.env.DB, a.app_id, reports, deps.now()) }, 200);
   });
 
   app.use("/v1/apps/:app_id/handoff", bearerAuth(deps));
