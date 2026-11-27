@@ -1,6 +1,6 @@
 # ADR 0027：獎銜徽章圖庫放在中央
 
-日期：2026-11-15。狀態：程式已寫並測試；部署後要實測。來源：行動大學 repo `docs/central-request-rank-badges.md`（業主已決定：以後所有寰宇 App 讀同一套徽章圖庫，圖庫放中央）。
+日期：2026-11-15。狀態：程式已寫並測試；部署後要實測。來源：行動大學 repo `docs/central-request-rank-badges.md`（杜杜龍已決定：以後所有寰宇 App 讀同一套徽章圖庫，圖庫放中央）。
 
 ## 決定
 - 24 張徽章圖（PNG、380×720、透明背景）放在中央的 R2（正式 `hglobal-id-files`、測試 `hglobal-id-files-staging`），鍵 `badges/<獎銜代碼>.png`，用獎銜代碼命名（不是原本的編號）。來源是行動大學 R2 bucket `learn` 的 `Pin-Level/`（只讀，未改動）。

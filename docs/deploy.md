@@ -1,4 +1,4 @@
-# 部署步驟（業主操作）
+# 部署步驟（杜杜龍操作）
 
 金鑰、Token、Client Secret 都只放在 GitHub 或 Cloudflare 的「機密設定」裡，不要貼進對話、Issue、PR。
 
@@ -28,14 +28,14 @@
    - **Secrets** 分頁新增 `GOOGLE_CLIENT_SECRET`。
 
 ### 4. 把機密放進 Worker（不用在自己電腦輸入）
-由 Claude 執行 GitHub 的 **Worker secrets** 流程：在 GitHub 的機器裡產生簽章金鑰並直接存進 Cloudflare，沒有人看得到；Google Client Secret 也一併轉存。業主不用操作。
+由 Claude 執行 GitHub 的 **Worker secrets** 流程：在 GitHub 的機器裡產生簽章金鑰並直接存進 Cloudflare，沒有人看得到；Google Client Secret 也一併轉存。杜杜龍不用操作。
 
 ## 之後的部署
 - **測試環境**：每次合併到 main、CI 成功後自動部署。
-- **正式環境**：業主在對話中同意後，由 Claude 啟動 Deploy 流程（選 `production`）。不需要在 GitHub 按核准。
+- **正式環境**：杜杜龍在對話中同意後，由 Claude 啟動 Deploy 流程（選 `production`）。不需要在 GitHub 按核准。
 
-## 正式環境上線前（需業主核准）
+## 正式環境上線前（需杜杜龍核准）
 1. 建立正式資料庫 `hglobal-id`，把 ID 填進 `wrangler.jsonc`。正式環境是全新系統，不匯入任何舊會員（ADR 0009 已廢止）。
 2. 網域 `id.hglobal1985.com` 指到 Worker。
-3. 業主用指定的超級管理員 Google 帳號第一次登入，再用 `scripts/grant-role.mjs` 設定為超級管理員。
+3. 杜杜龍用指定的超級管理員 Google 帳號第一次登入，再用 `scripts/grant-role.mjs` 設定為超級管理員。
 4. App 在後台登記（後台 → App → 新增 App），不用腳本；寰宇行動大學（`learn`）已由 migration 0011 登記。

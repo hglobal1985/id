@@ -11,7 +11,7 @@ import { normTerm } from "../vocab/terms";
 export const HGLOBAL = "hglobal";
 
 /**
- * Words that mean a 寰宇 center, not a training system of its own (業主 2026-11-24). A custom training system whose text contains one
+ * Words that mean a 寰宇 center, not a training system of its own (杜杜龍 2026-11-24). A custom training system whose text contains one
  * of them is refused (422 use_hglobal_center): the member should choose 寰宇 as the system and the center from the list.
  * Kept here once; apps read it from the field definition (education_system.hglobal_center_words) and never hard-code it.
  */
@@ -156,7 +156,7 @@ export interface ReviewContext {
 export function needsReview(def: AmwayFieldDef, value: AmwayValue, ctx: ReviewContext): boolean {
   if (def.review === "never" || value === null) return false;
   const isHglobal = ctx.system.effective === HGLOBAL || ctx.system.pending === HGLOBAL;
-  // 業主 2026-11-24: a new rank is always reviewed (except 無). With 寰宇 and a real center the reviewers of that center decide;
+  // 杜杜龍 2026-11-24: a new rank is always reviewed (except 無). With 寰宇 and a real center the reviewers of that center decide;
   // with no real center, or any other training system (incl. none/其他), only the head-office secretaries and super admins do.
   // A center is reviewed only while the member is 寰宇: a real center by that center's reviewers, an explicit 無 by head office.
   if (def.key === "education_center") return isHglobal;
@@ -169,7 +169,7 @@ export function sameValue(a: AmwayValue, b: AmwayValue): boolean {
 }
 
 /**
- * Which of the three Amway fields still have to be filled in (業主 2026-11-23). One rule for the server (`missing` in GET /v1/me/amway)
+ * Which of the three Amway fields still have to be filled in (杜杜龍 2026-11-23). One rule for the server (`missing` in GET /v1/me/amway)
  * and the member center's screen (which mirrors it live): nothing is required while 我是Amway會員 is off; the rank and the training
  * system are required once it is on (無 counts as filled in); the regional center is required only while the system is 寰宇 and no
  * center (or 無) is chosen yet. With any other system, or none yet, the center is 無 automatically and is never asked for.

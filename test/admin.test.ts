@@ -171,7 +171,7 @@ describe("reviews", () => {
     expect(told(rv.id)).toEqual([]);
   });
 
-  it("a rank under another training system, or with center 無, is told only to head office (業主 2026-11-24)", async () => {
+  it("a rank under another training system, or with center 無, is told only to head office (杜杜龍 2026-11-24)", async () => {
     const hq = await person("hq", "總部秘書", ["secretary"]);
     const sa = await person("sa", "超管", ["super_admin"]);
     const rv = await person("rv", "審核員", ["reviewer"]);

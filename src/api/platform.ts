@@ -166,7 +166,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     if (appId !== c.req.valid("param").app_id) return c.json(errorBody("forbidden", "This credential belongs to another App", c.get("requestId")), 403) as never;
     const a = await getApp(c.env.DB, appId, deps.now());
     const { member_ids, purpose } = c.req.valid("json");
-    if (!a || !a.contact_purposes.includes(purpose)) return c.json(errorBody("purpose_not_allowed", "這個用途沒有獲得業主授權", c.get("requestId"), { purpose }), 403) as never;
+    if (!a || !a.contact_purposes.includes(purpose)) return c.json(errorBody("purpose_not_allowed", "這個用途沒有獲得杜杜龍授權", c.get("requestId"), { purpose }), 403) as never;
     c.header("cache-control", "no-store");
     return c.json(await lookupContacts(c.env.DB, appId, purpose, member_ids, c.get("requestId"), deps.now()), 200);
   });
@@ -185,7 +185,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     const unknown = fields.filter((f) => !MEMBER_DATA_FIELDS.some((o) => o.key === f));
     if (unknown.length) return c.json(errorBody("invalid_field", "不認得的欄位", c.get("requestId"), { fields: unknown }), 422) as never;
     const denied = fields.filter((f) => !a?.member_data_fields.includes(f));
-    if (!a || denied.length) return c.json(errorBody("field_not_allowed", "這些欄位沒有獲得業主授權", c.get("requestId"), { fields: denied }), 403) as never;
+    if (!a || denied.length) return c.json(errorBody("field_not_allowed", "這些欄位沒有獲得杜杜龍授權", c.get("requestId"), { fields: denied }), 403) as never;
     c.header("cache-control", "no-store");
     return c.json(await lookupMemberData(c.env.DB, appId, use, member_ids, [...new Set(fields)], c.get("requestId"), deps.now(), resolveIssuer(c.env, c.req.url)), 200);
   });
@@ -241,7 +241,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
       ? await rotateWebhookSecret(c.env.DB, c.env, a.app_id, c.get("staff").memberId, c.get("requestId"), deps.now())
       : await currentWebhookSecret(c.env.DB, c.env, a.app_id);
     c.header("cache-control", "no-store");
-    return c.json({ secret, note: "只顯示這一次，請由業主放進這款 App 的伺服器環境變數；不要貼到對話、Issue 或 PR。" }, 200);
+    return c.json({ secret, note: "只顯示這一次，請由杜杜龍放進這款 App 的伺服器環境變數；不要貼到對話、Issue 或 PR。" }, 200);
   });
 
   app.openapi(webhookTestRoute, async (c) => {
@@ -271,7 +271,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     if (!a) return notFound(c);
     const secret = await rotateServiceSecret(c.env.DB, a.app_id, c.get("staff").memberId, c.get("requestId"), deps.now());
     c.header("cache-control", "no-store");
-    return c.json({ client_secret: secret, note: "只顯示這一次，請由業主放進這款 App 的伺服器環境變數；不要貼到對話、Issue 或 PR。舊的金鑰已失效。" }, 200);
+    return c.json({ client_secret: secret, note: "只顯示這一次，請由杜杜龍放進這款 App 的伺服器環境變數；不要貼到對話、Issue 或 PR。舊的金鑰已失效。" }, 200);
   });
 
   app.openapi(serviceRevokeRoute, async (c) => {

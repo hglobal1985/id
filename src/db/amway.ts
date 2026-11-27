@@ -160,7 +160,7 @@ export async function writeAmwayField(db: D1Database, memberId: string, key: str
   const reviewCtx: ReviewContext = { system: systemAfter, hasCenter: realCenter };
   // Only a real center of a 寰宇 member is routed to that center's reviewers; every other request goes to head office (secretary, super admin).
   const centerNorm = realCenter && (systemAfter.effective === HGLOBAL || systemAfter.pending === HGLOBAL) ? normTerm(centerText) : null;
-  // The rank is free: it can be saved at any time, whatever the training system and center are (業主 2026-11-23, order 獎銜 > 系統 > 中心).
+  // The rank is free: it can be saved at any time, whatever the training system and center are (杜杜龍 2026-11-23, order 獎銜 > 系統 > 中心).
   // The regional center can only be chosen while the training system is 寰宇; any other system (or none) means the center is 無.
   if (key === "education_center" && value !== null && !isNone(value) && systemAfter.effective !== HGLOBAL) {
     return { ok: false, reason: "center_requires_hglobal", message: "地區教育中心只有在直銷商培訓系統為寰宇時才能選擇，其他情況請填「無」" };

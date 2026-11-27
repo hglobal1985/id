@@ -488,7 +488,7 @@ export const ADMIN_JS = String.raw`
         var p = r.body, box = m(), id = encodeURIComponent(a.app_id);
         var url = el("input", { type: "text", placeholder: "https://…（只能是 https 網域）", value: p.webhook ? p.webhook.url : null });
         var secretBox = el("div", { class: "help" });
-        function shown(res) { if (res.status === 200 && res.body.secret) { secretBox.textContent = "金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.secret; } else if (res.status === 200 && res.body.client_secret) { secretBox.textContent = "服務金鑰（只顯示這一次，由業主放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.client_secret; } else if (!reauth(res)) say(box, false, errText(res)); }
+        function shown(res) { if (res.status === 200 && res.body.secret) { secretBox.textContent = "金鑰（只顯示這一次，由杜杜龍放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.secret; } else if (res.status === 200 && res.body.client_secret) { secretBox.textContent = "服務金鑰（只顯示這一次，由杜杜龍放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.client_secret; } else if (!reauth(res)) say(box, false, errText(res)); }
         var chk = {};
         var scopeRows = p.scope_options.map(function (o) {
           var on = p.scopes.indexOf(o.key) >= 0, c = cbox(o.label + "（" + o.key + "）", on, function (v) { chk[o.key] = v; });
