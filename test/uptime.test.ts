@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FAILURES_BEFORE_ALERT, isProbeDue, nextState } from "../src/platform/uptime";
+import { bodyOf } from "../src/webhooks/events";
 import { runUptime } from "../src/jobs/uptime";
 import { createTestD1 } from "./helpers/d1.mjs";
 import { saveEcoSettings } from "../src/db/eco-features";
@@ -75,5 +76,25 @@ describe("網站巡檢工作", () => {
     await runUptime(db, undefined, fetcher, t0);
     await runUptime(db, undefined, fetcher, new Date(t0.getTime() + 5 * 60_000));
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'eco.uptime'").get()).toEqual({ n: 1 });
+  });
+
+  it("掛了與恢復時對有 webhook、管理員用過、沒選擇不參與的 App 送 eco.alert（不含個資）", async () => {
+    const db = setup();
+    db.raw.prepare("INSERT INTO app_webhooks (app_id, url, secret_version, enabled, created_at, updated_at) VALUES ('learn', 'https://learn.example.com/w', 1, 1, 'x', 'x'), ('check', 'https://check.example.com/w', 1, 1, 'x', 'x'), ('noapp', 'https://n.example.com/w', 1, 1, 'x', 'x')").run();
+    db.raw.prepare("INSERT INTO eco_feature_apps (feature_key, app_id, participating, updated_at) VALUES ('uptime_watch', 'check', 0, 'x')").run();
+    for (const a of ["learn", "check"]) db.raw.prepare("INSERT INTO member_apps (member_id, app_id, first_seen_at, last_seen_at) VALUES (?, ?, 'x', 'x')").run(sa, a);
+    await saveEcoSettings(db, "uptime_watch", settings, { memberId: sa, requestId: "r" }, new Date());
+    let up = false;
+    const fetcher = async () => new Response("x", { status: up ? 200 : 503 });
+    const t0 = new Date("2026-11-28T00:00:00Z");
+    await runUptime(db, undefined, fetcher, t0);
+    await runUptime(db, undefined, fetcher, new Date(t0.getTime() + 5 * 60_000));
+    up = true;
+    await runUptime(db, undefined, fetcher, new Date(t0.getTime() + 10 * 60_000));
+    const rows = db.raw.prepare("SELECT app_id, member_id, type, detail FROM webhook_events ORDER BY created_at").all() as { app_id: string; member_id: string; type: string; detail: string }[];
+    expect(rows.map((r) => [r.app_id, r.member_id, r.type])).toEqual([["learn", sa, "eco.alert"], ["learn", sa, "eco.alert"]]);
+    expect(JSON.parse(rows[0]!.detail)).toMatchObject({ name: "行動大學", alert: "down" });
+    expect(JSON.parse(rows[1]!.detail)).toMatchObject({ alert: "recovered" });
+    expect(bodyOf({ id: "e", type: "eco.alert", created_at: "t", app_id: "learn", member_id: sa, fields: null, detail: rows[0]!.detail })).toContain('"detail":{"name":"行動大學"');
   });
 });
