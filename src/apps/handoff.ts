@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-27.2";
-export const HANDOFF_UPDATED = "2026-11-27 21:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-27.3";
+export const HANDOFF_UPDATED = "2026-11-28 09:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -187,6 +187,10 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 都用呼叫者本人在這款 App 的會員 Access Token（需要 amway.read）；不可用服務 token。誰可以用由中央判斷（與中央後台「指派職務與權限」相同的權限 staff.manage，目前只有超級管理員），沒有權限回 403；杜杜龍要在後台「平台設定」替這款 App 勾選 display_name，否則回 403 field_not_allowed。",
     "   - 可指派的職務只有：reviewer（審核員）、president（會長）、course（課務）、sound（音控）、ticket（票務）、activity（活動）。super_admin（超級管理員）與 secretary（總部秘書）只能在中央後台設定：帶了回 422，被指派者原本的這兩種職務不會被動到；額外權限也不會被動到。呼叫者只能給出自己權限涵蓋的職務（否則 403）；對象不存在或已停用回 404。",
     "   - 每次查詢與指派中央都有稽核（呼叫者、App、對象、職務變化；不記搜尋字與姓名）。App 端規則：只在管理者本人開啟時即時讀取、不保存名單與搜尋字、不寫日誌；顯示前不要自行判斷權限，任何非 200 一律當作沒有權限；指派與移除前要有確認步驟；成功後以回應的 roles 更新畫面。",
+    "18. 生態系統功能（平台功能，杜杜龍 2026-11-27；對所有現在與未來的 App 一體適用，中央後台「系統功能」頁可看到每個 App 有沒有參與每一項，並可自訂開關、頻率、通知對象）：",
+    `   - 讀設定：GET ${origin}/v1/apps/${id}/config 的 config.eco_features（啟動與回到前景時本來就會讀，不用另外呼叫）。格式：{ dependency_alerts:{enabled}, uptime_watch:{enabled}, error_digest:{enabled}, weekly_backup:{enabled, weekday, keep}, screenshot_test:{enabled} }。enabled 為 false（杜杜龍整體關閉，或對這款 App 選了不參與）就不要做那一項；沒有這個欄位（中央舊版）一律視為 false。通知對象、網址清單等只存在中央，App 看不到也不需要。`,
+    "   - 五項功能與 App 要做的事：(1) dependency_alerts 套件安全漏洞提醒：程式庫要有 .github/dependabot.yml（每週檢查所有套件目錄與 GitHub Actions，自動開修正 PR）；修正 PR 通過檢查才合併，不可關掉檢查。(2) uptime_watch 網站自動巡檢：網站要有公開、不含機密的健康網址，回 200 與版本資訊（例如 /version 或 /api/v2/version 回報 sha），並把網址告訴杜杜龍登記到後台；中央依設定的頻率巡檢，掛了推播與 Email 通知杜杜龍。(3) error_digest 錯誤回報週報：前台錯誤回報除了寫日誌，還要能被統計（只含錯誤種類、發生頁面、App 版本、次數，不含個資、Token、姓名、信箱、Amway 欄位）；每週由中央彙整通知。(4) weekly_backup 重要資料每週備份：App 提供備份匯出，內容只限依法或業務必須永久保存的資料（不含 Amway 資料、暫存資料、Token），備份檔存 R2、不放進公開程式庫，保留份數依 config.eco_features.weekly_backup.keep，並附還原說明。(5) screenshot_test 主要畫面自動截圖測試：程式庫提供截圖清單（頁面網址、等待條件），由 GitHub Actions 用 Playwright 以手機 390px 截圖並與上次比對，有差異才通知；不耗 AI 額度。",
+    "   - 規則：每一項都是平台規範，不是某個 App 的特例；App 不可自己另做一套通知（不自己寄信、不自己推播給杜杜龍）。新增 App 時照這份做完，後台「系統功能」頁才會顯示它參與。功能的實際執行（巡檢、週報、備份、截圖）由中央與共用工具負責，App 只負責上面列的配合事項；尚未開放執行的功能，enabled 仍會回報，App 先把配合事項做好即可。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報杜杜龍（移除機密需要杜杜龍核准，不要自己刪）。",
@@ -245,7 +249,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "39. 寰宇中心名稱提醒（2026-11-24.3，三、5）：自訂系統（系統選「其他」）的文字只要包含 field-definitions 中 education_system 的 hglobal_center_words（目前：飛登、蓁分享、有賢社、聚冠），畫面在輸入框下方即時顯示紅／橘色提醒（用 hglobal_center_message，{word} 換成命中的詞；不阻擋輸入；詞清單一律讀中央，不寫死）；中央也會擋：PUT /v1/me/amway/fields/education_system 回 422、details.reason 為 use_hglobal_center，message 就是提醒文字，直接顯示。這些詞其實是寰宇旗下的中心，會員應改選系統「寰宇」再選中心。App 不自行修改既有會員資料。",
     "40. 登入永不過期（2026-11-27.1，三、2）：Refresh Token 與共用登入都沒有期限，只有登出、登出所有裝置、停權、刪除帳號會結束。檢查：App 沒有自己的登入期限或「太久沒用就登出」；網頁版 Refresh Token 從 sessionStorage 改放 localStorage，多分頁換發要加鎖；手機仍放系統安全儲存。中央的「查審核清單」「查職務清單」不再每次都寫稽核（同一人同一款 App 一小時記一次），App 端也請把這兩份清單暫存幾分鐘，不要每開一次畫面就重問。",
     "41. 用語調整（2026-11-27.2，沒有新的程式要做）：指令裡的「業主」一律改稱「杜杜龍」（擁有者本人的稱呼），規則內容不變。只要把 App 內的串接版本常數更新成新版。",
-    "42. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要杜杜龍處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "42. 生態系統功能（2026-11-27.3，三、18）：啟動時讀 config.eco_features（沒有這個欄位視為全部 false）；程式庫有 .github/dependabot.yml（每週）；網站有公開的健康網址並回報 sha；前台錯誤回報可被統計且不含個資；備份匯出只含必須永久保存的資料；有截圖清單；不自己另做通知給杜杜龍。",
+    "43. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要杜杜龍處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

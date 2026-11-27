@@ -8,6 +8,7 @@ import { ErrorBodySchema, errorBody } from "../errors";
 import { APP_SCOPES, APP_STATUSES, AppDefinitionError, appDefinition, definitionFromForm, type AppEntry } from "../apps/registry";
 import { HANDOFF_UPDATED, HANDOFF_VERSION, HANDOFF_VERSION_PATTERN, buildHandoff, buildHandoffPointer, handoffUrl, isUpToDate } from "../apps/handoff";
 import { APP_STANDARDS, appChecks, appStats, getApp, isAppWebOrigin, listApps, readStoredApp, deleteApp, reportIntegratedVersion, saveApp, setAppStatus } from "../db/apps";
+import { ecoConfigFor } from "../db/eco-features";
 import { rolesOf } from "../db/staff";
 import { can, type Permission } from "../admin/roles";
 import { resolveIssuer } from "../oidc/config";
@@ -24,7 +25,7 @@ const configRoute = createRoute({
   path: "/v1/apps/{app_id}/config",
   tags: ["apps"],
   summary: "Status, minimum version and public settings an App reads at launch",
-  description: "Show maintenance when status is paused, stop when killed, and require an update below min_version. Changes take effect within 30 seconds.",
+  description: "Show maintenance when status is paused, stop when killed, and require an update below min_version. Changes take effect within 30 seconds. config.eco_features says, per ecosystem feature (dependency_alerts, uptime_watch, error_digest, weekly_backup, screenshot_test), whether this App takes part (enabled) plus the few public settings it needs.",
   request: { params: AppIdParam },
   responses: {
     200: {
@@ -185,7 +186,7 @@ export function registerAppRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const a = await getApp(c.env.DB, c.req.valid("param").app_id, deps.now());
     if (!a) return notFound(c);
     c.header("cache-control", "no-store");
-    return c.json({ app_id: a.app_id, status: a.status, min_version: a.min_version, config: { ...a.config } }, 200);
+    return c.json({ app_id: a.app_id, status: a.status, min_version: a.min_version, config: { ...a.config, eco_features: await ecoConfigFor(c.env.DB, a.app_id) } }, 200);
   });
 
   app.use("/v1/apps/:app_id/handoff", bearerAuth(deps));
