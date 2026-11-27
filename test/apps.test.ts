@@ -154,7 +154,11 @@ describe("registry rules", () => {
   it("the migration registers 寰宇行動大學 as app_id learn", async () => {
     const r = await get("/v1/apps/learn/config");
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ app_id: "learn", status: "active", min_version: "0.0.0", config: {} });
+    const body = (await r.json()) as { config: { eco_features: Record<string, { enabled: boolean }> } };
+    expect(body).toEqual({ app_id: "learn", status: "active", min_version: "0.0.0", config: { eco_features: expect.any(Object) } });
+    // 生態系統功能：預設全部參與；只有 weekly_backup 附公開欄位。
+    expect(Object.keys(body.config.eco_features).sort()).toEqual(["dependency_alerts", "error_digest", "screenshot_test", "uptime_watch", "weekly_backup"]);
+    expect(body.config.eco_features.weekly_backup).toEqual({ enabled: true, weekday: 0, keep: 8 });
     expect(await errorCode(await get("/v1/apps/nope/config"))).toBe("app_not_found");
     const row = db.raw.prepare("SELECT definition FROM registered_apps WHERE app_id = 'learn'").get() as { definition: string };
     expect(parseApp(JSON.parse(row.definition))).toMatchObject({ name: "寰宇行動大學", ios_bundle_id: "com.hglobal1985.learn", web_origins: ["https://learn.hglobal1985.com"] });
@@ -168,7 +172,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-27.2", digest: "98d71598d0b2e078" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-27.3", digest: "9408d3e56bc2c78f" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -176,7 +180,7 @@ describe("handoff text", () => {
 
   it("has the H-Global1985 rules and no secrets or other-system brand names", () => {
     const text = buildHandoff(definitionFromForm({ app_id: "learn", name: "寰宇行動大學" }, { defaults: true }), "https://id.hglobal1985.com");
-    for (const must of ["只補差異", "/v1/eligibility/check", "check-batch", "amway.read", "/v1/amway/field-definitions", "最多快取 1 日", "Fail closed", "Amway 資料不得被 App 保存", "starry.phd、Amway 這兩個寫法", "https://id.hglobal1985.com/auth/google/start?app_id=learn", "learn://auth/google", "/v1/auth/sso/exchange", "com.hglobal1985.shared", "登出所有 App", "/v1/vocab/suggestions", "新增碩士學歷", "原生的下拉選單", "原生勾選框", "不要有二次確認", "隨機提案", "磁碟片圖示＋儲存", "隨機產生，不可修改", "always_public", "電腦版的 Enter 鍵", "點進欄位不用打字就直接列出整份清單", "名字旁的方框", "TW9475831", "navigator.share", "三點相連的分享符號", "生日與生命靈數是同一個區塊", "固定一行", "/v1/social/platforms", "新增連結", "地區教育中心", "suggest_when_hglobal", "網頁標題統一寫「會員中心」"]) {
+    for (const must of ["只補差異", "/v1/eligibility/check", "check-batch", "amway.read", "/v1/amway/field-definitions", "最多快取 1 日", "Fail closed", "Amway 資料不得被 App 保存", "starry.phd、Amway 這兩個寫法", "https://id.hglobal1985.com/auth/google/start?app_id=learn", "learn://auth/google", "/v1/auth/sso/exchange", "com.hglobal1985.shared", "登出所有 App", "/v1/vocab/suggestions", "新增碩士學歷", "原生的下拉選單", "原生勾選框", "不要有二次確認", "隨機提案", "磁碟片圖示＋儲存", "隨機產生，不可修改", "always_public", "電腦版的 Enter 鍵", "點進欄位不用打字就直接列出整份清單", "名字旁的方框", "TW9475831", "navigator.share", "三點相連的分享符號", "生日與生命靈數是同一個區塊", "固定一行", "/v1/social/platforms", "新增連結", "地區教育中心", "suggest_when_hglobal", "網頁標題統一寫「會員中心」", "config.eco_features", "dependabot.yml", "不自己另做通知給杜杜龍"]) {
       expect(text).toContain(must);
     }
     // the design standard: the document is linked and its key numbers are in the text
@@ -452,6 +456,34 @@ describe("sign-in relay", () => {
     const state = new URL(r.headers.get("location") as string).searchParams.get("state") as string;
     expect((await admin(sa, "PUT", "/v1/admin/apps/learn", { name: "寰宇行動大學", web_origins: ["https://new.hglobal1985.com"], return_urls: ["learn://auth/google"] })).status).toBe(200);
     expect((await callback({ code: "good-code", state })).status).toBe(400);
+  });
+});
+
+describe("生態系統功能", () => {
+  it("超管可以改設定與讓某個 App 不參與；秘書只能看；App 讀 config 立刻生效", async () => {
+    const sa = await staff("sa", ["super_admin"]);
+    const sec = await staff("sec", ["secretary"]);
+    const rv = await staff("rv", ["reviewer"]);
+    expect((await admin(rv, "GET", "/v1/admin/eco-features")).status).toBe(403);
+    const view = (await (await admin(sec, "GET", "/v1/admin/eco-features")).json()) as { can_manage: boolean; features: { key: string; apps: { app_id: string; participating: boolean; effective: boolean }[] }[] };
+    expect(view.can_manage).toBe(false);
+    expect(view.features.map((f) => f.key)).toEqual(["dependency_alerts", "uptime_watch", "error_digest", "weekly_backup", "screenshot_test"]);
+    expect(view.features[0]?.apps[0]).toMatchObject({ app_id: "learn", participating: true, effective: true });
+    expect((await admin(sec, "PUT", "/v1/admin/eco-features/weekly_backup", { keep: 4 })).status).toBe(403);
+
+    expect((await admin(sa, "PUT", "/v1/admin/eco-features/weekly_backup", { keep: 4, weekday: 3 })).status).toBe(200);
+    expect(await errorCode(await admin(sa, "PUT", "/v1/admin/eco-features/weekly_backup", { keep: 99 }))).toBe("invalid_field");
+    expect(await errorCode(await admin(sa, "PUT", "/v1/admin/eco-features/nope", {}))).toBe("feature_not_found");
+    expect(await errorCode(await admin(sa, "PUT", "/v1/admin/eco-features/uptime_watch", { sites: [{ name: "x", url: "https://evil.example/" }] }))).toBe("invalid_field");
+    const cfg = async () => ((await (await get("/v1/apps/learn/config")).json()) as { config: { eco_features: Record<string, Record<string, unknown>> } }).config.eco_features;
+    expect((await cfg()).weekly_backup).toEqual({ enabled: true, weekday: 3, keep: 4 });
+
+    expect((await admin(sa, "PUT", "/v1/admin/eco-features/weekly_backup/apps/learn", { participating: false })).status).toBe(200);
+    expect((await cfg()).weekly_backup).toEqual({ enabled: false });
+    expect((await admin(sa, "PUT", "/v1/admin/eco-features/weekly_backup/apps/nope", { participating: false })).status).toBe(404);
+    expect((await admin(sa, "PUT", "/v1/admin/eco-features/uptime_watch", { enabled: false })).status).toBe(200);
+    expect((await cfg()).uptime_watch).toEqual({ enabled: false });
+    expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'eco_feature.%'").get()).toEqual({ n: 3 });
   });
 });
 

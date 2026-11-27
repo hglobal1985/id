@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["members.read", "會員", members],
-    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "欄位順序", layoutTab], ["social.manage", "社群平台", socialAdmin], ["badges.manage", "獎銜徽章", function () { badgesAdmin(); }], ["apps.operate", "App", apps], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
+    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "欄位順序", layoutTab], ["social.manage", "社群平台", socialAdmin], ["badges.manage", "獎銜徽章", function () { badgesAdmin(); }], ["apps.operate", "App", apps], ["apps.operate", "系統功能", ecoTab], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -417,6 +417,68 @@ export const ADMIN_JS = String.raw`
         el("button", { type: "button", class: "btn-save", text: "儲存順序", onclick: function () { api("POST", "/v1/admin/social-platforms/reorder", { keys: list.map(function (p) { return p.key; }) }).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已儲存順序" : errText(res)); }); } }),
         add, el("button", { type: "button", text: "新增平台", onclick: function () { api("POST", "/v1/admin/social-platforms", { name: add.value }).then(done); } }), box
       ]));
+    });
+  }
+
+  // 生態系統功能：每一項功能的設定，以及每個 App 有沒有參與（杜杜龍 2026-11-27）。
+  function ecoTab() {
+    var DAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+    var STAT = { ok: "正常", warn: "注意", fail: "有問題" };
+    api("GET", "/v1/admin/eco-features").then(function (r) {
+      if (r.status !== 200) { pane.appendChild(card("系統功能", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+      var b = r.body;
+      pane.appendChild(card("生態系統功能", [el("p", { class: "help", text: "這些功能所有 App 一體適用。每個功能可以整體開關、調整頻率與通知方式，也可以讓個別 App 不參與。App 讀 config 的 eco_features 就知道自己要不要做。" + (b.can_manage ? "" : "（你只能查看，不能修改。）") })]));
+      function toggle(label, on, set) {
+        var btn = el("button", { type: "button", class: "chk", role: "checkbox", "aria-checked": on ? "true" : "false", "aria-label": label, disabled: !b.can_manage, onclick: function () {
+          on = !on; btn.setAttribute("aria-checked", on ? "true" : "false"); set(on);
+        } }, [el("span", { class: "box" })]);
+        return el("span", { class: "inline" }, [btn, el("span", { text: label })]);
+      }
+      function pickDay(cur, set) {
+        return HG.dropdown({ options: DAYS.map(function (d, i) { return { value: String(i), label: d }; }), value: String(cur), block: true, onchange: function (v) { set(Number(v)); } });
+      }
+      b.features.forEach(function (f) {
+        var s = JSON.parse(JSON.stringify(f.settings)), box = m();
+        var kids = [
+          el("p", { text: f.summary }),
+          el("p", { class: "help", text: "App 要做的事：" + f.app_duty }),
+          toggle("啟用這項功能", s.enabled, function (v) { s.enabled = v; }),
+          toggle("通知杜杜龍：推播", s.notify_push, function (v) { s.notify_push = v; }),
+          toggle("通知杜杜龍：Email", s.notify_email, function (v) { s.notify_email = v; })
+        ];
+        if (f.fields.indexOf("interval_minutes") >= 0) {
+          kids.push(el("div", { class: "row" }, [el("label", { text: "巡檢頻率" }), HG.dropdown({ options: b.limits.intervals.map(function (n) { return { value: String(n), label: "每 " + n + " 分鐘" }; }), value: String(s.interval_minutes), block: true, onchange: function (v) { s.interval_minutes = Number(v); } })]));
+        }
+        if (f.fields.indexOf("weekday") >= 0) kids.push(el("div", { class: "row" }, [el("label", { text: "星期幾執行（台北時間）" }), pickDay(s.weekday, function (v) { s.weekday = v; })]));
+        if (f.fields.indexOf("keep") >= 0) {
+          var keep = el("input", { type: "number", min: "1", max: String(b.limits.max_keep), value: String(s.keep), disabled: !b.can_manage });
+          keep.addEventListener("input", function () { s.keep = Number(keep.value); });
+          kids.push(el("div", { class: "row" }, [el("label", { text: "保留最近幾份備份" }), keep]));
+        }
+        if (f.fields.indexOf("sites") >= 0) {
+          var sites = el("textarea", { placeholder: "名稱 網址（一行一個，只能是 hglobal1985.com 的 https 網址）", disabled: !b.can_manage });
+          sites.value = s.sites.map(function (x) { return x.name + " " + x.url; }).join("\n");
+          sites.addEventListener("input", function () {
+            s.sites = sites.value.split("\n").map(function (l) { return l.trim(); }).filter(function (l) { return l; }).map(function (l) { var i = l.lastIndexOf(" "); return { name: i < 0 ? "" : l.slice(0, i).trim(), url: i < 0 ? l : l.slice(i + 1) }; });
+          });
+          kids.push(el("div", { class: "row" }, [el("label", { text: "要巡檢的網站（最多 " + b.limits.max_sites + " 個）" }), sites]));
+        }
+        if (b.can_manage) kids.push(el("div", { class: "inline" }, [el("button", { type: "button", class: "btn-save", text: "儲存", onclick: function () {
+          api("PUT", "/v1/admin/eco-features/" + f.key, s).then(function (res) { say(box, res.status === 200, res.status === 200 ? "已儲存" : errText(res)); });
+        } }), box]));
+        var rows = f.apps.map(function (a) {
+          return el("tr", {}, [
+            el("td", { text: a.name + "（" + a.app_id + "）" }),
+            el("td", {}, [toggle("參與", a.participating, function (v) {
+              api("PUT", "/v1/admin/eco-features/" + f.key + "/apps/" + encodeURIComponent(a.app_id), { participating: v }).then(function (res) { say(box, res.status === 200, res.status === 200 ? a.name + (v ? " 已參與" : " 不參與") : errText(res)); });
+            })]),
+            el("td", { class: a.effective ? "y" : "", text: a.effective ? "●" : "·" }),
+            el("td", { text: a.last_status ? (STAT[a.last_status] || a.last_status) + "（" + (a.last_checked_at || "") + "）" + (a.last_note ? " " + a.last_note : "") : "尚無紀錄" })
+          ]);
+        });
+        kids.push(el("table", { class: "dots" }, [el("tr", {}, [el("th", { text: "App" }), el("th", { text: "參與" }), el("th", { text: "目前生效" }), el("th", { text: "最近結果" })])].concat(rows)));
+        pane.appendChild(card(f.label, kids));
+      });
     });
   }
 
