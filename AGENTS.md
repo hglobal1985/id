@@ -57,7 +57,7 @@
 App 的 AI 拿到新版指令只補差異；沒有寫進指令包的規範，視為不存在。
 
 ### 生態系統功能（杜杜龍 2026-11-27，ADR 0039）
-套件漏洞提醒、網站巡檢、錯誤回報週報、每週備份、截圖測試是平台功能，設定存中央（`src/platform/eco-features.ts`、後台「系統功能」頁），App 只讀 `config.eco_features`。新增這類功能要：加進 `ECO_CATALOG`、同一個 PR 寫進串接指令（三、18 與檢查清單）並升版本、更新 `docs/integration-guide.md`。
+套件漏洞提醒、網站巡檢、錯誤回報週報、每週備份、截圖測試是平台功能，設定存中央（`src/platform/eco-features.ts`、後台「系統功能」頁），App 只讀 `config.eco_features`。套件漏洞提醒＝每個程式庫都要有 `.github/dependabot.yml`（每週檢查，修正 PR 照一般 PR 流程過 CI 才合併）。新增這類功能要：加進 `ECO_CATALOG`、同一個 PR 寫進串接指令（三、18 與檢查清單）並升版本、更新 `docs/integration-guide.md`。
 
 ## 6. 對會員顯示的文字
 - 品牌只用 **starry.phd**、**Amway**，不用「繁星」「安麗」的中文名稱；前台畫面不顯示「寰宇」「H-Global1985」「hglobal」（App 選單裡的選項與隱私權文件除外，杜杜龍 2026-11-11），網頁標題統一「會員中心」。
