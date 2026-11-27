@@ -33,10 +33,12 @@
     "production": {
       "name": "hglobal-id",
       // GOOGLE_CLIENT_ID is added here once the owner creates the H-Global1985 Google OAuth client.
-      "vars": { "ENVIRONMENT": "production", "ISSUER": "https://id.hglobal1985.com" },
+      "vars": { "ENVIRONMENT": "production", "ISSUER": "https://id.hglobal1985.com", "EMAIL_FROM": "noreply@learn.hglobal1985.com" },
       // Served only at the custom domain (Cloudflare creates the DNS record and certificate on deploy).
       "routes": [{ "pattern": "id.hglobal1985.com", "custom_domain": true }],
       "workers_dev": false,
+      // 網站巡檢的 Email 通知（杜杜龍 2026-11-27）：寄件人借用行動大學已開通的網域，不需金鑰；測試環境不巡檢也不寄信。
+      "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["noreply@learn.hglobal1985.com"] }],
       // Production database created 2026-11-10 (APAC) with the owner's approval.
       "d1_databases": [
         { "binding": "DB", "database_name": "hglobal-id", "database_id": "c0c3f5bf-5641-4d08-b170-4243c76cc72e", "migrations_dir": "migrations" }

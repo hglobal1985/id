@@ -56,3 +56,18 @@ export async function ecoConfigFor(db: D1Database, appId: string): Promise<Recor
   const part = new Map(rows.filter((x) => x.app_id === appId).map((x) => [x.feature_key, x.participating] as const));
   return appVisibleConfig(settings, part);
 }
+
+export interface UptimeRow {
+  url: string;
+  name: string;
+  status: "up" | "down";
+  last_checked_at: string;
+  last_change_at: string;
+  last_note: string | null;
+}
+
+/** 設定頁顯示用：每個被巡檢網址目前的狀態。 */
+export async function loadUptimeStates(db: D1Database): Promise<UptimeRow[]> {
+  const r = await db.prepare("SELECT url, name, status, last_checked_at, last_change_at, last_note FROM eco_uptime_state ORDER BY name").all<UptimeRow>();
+  return r.results ?? [];
+}

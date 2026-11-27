@@ -7,7 +7,7 @@ import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { can, type Permission } from "../admin/roles";
 import { listApps } from "../db/apps";
-import { loadEcoAppRows, loadEcoSettings, saveEcoSettings, setEcoParticipation } from "../db/eco-features";
+import { loadUptimeStates, loadEcoAppRows, loadEcoSettings, saveEcoSettings, setEcoParticipation } from "../db/eco-features";
 import { ECO_CATALOG, ECO_FEATURES, EcoError, MAX_KEEP, MAX_SITES, UPTIME_INTERVALS, isEcoFeature, normalizeSettings } from "../platform/eco-features";
 
 type C = Context<AppBindings>;
@@ -49,7 +49,7 @@ export function registerEcoFeatureRoutes(app: OpenAPIHono<AppBindings>, deps: De
   app.openapi(listRoute, async (c) => {
     const d = deny(c, "apps.operate");
     if (d) return d as never;
-    const [settings, rows, { apps }] = await Promise.all([loadEcoSettings(c.env.DB), loadEcoAppRows(c.env.DB), listApps(c.env.DB, deps.now())]);
+    const [settings, rows, { apps }, uptime] = await Promise.all([loadEcoSettings(c.env.DB), loadEcoAppRows(c.env.DB), listApps(c.env.DB, deps.now()), loadUptimeStates(c.env.DB)]);
     const features = ECO_FEATURES.map((key) => {
       const info = ECO_CATALOG[key];
       const s = settings[key];
@@ -68,7 +68,7 @@ export function registerEcoFeatureRoutes(app: OpenAPIHono<AppBindings>, deps: De
         }),
       };
     });
-    return c.json({ features, limits: { intervals: UPTIME_INTERVALS, max_sites: MAX_SITES, max_keep: MAX_KEEP }, can_manage: can(c.get("staff").roles, "apps.manage", c.get("staff").grants) }, 200) as never;
+    return c.json({ features, uptime, limits: { intervals: UPTIME_INTERVALS, max_sites: MAX_SITES, max_keep: MAX_KEEP }, can_manage: can(c.get("staff").roles, "apps.manage", c.get("staff").grants) }, 200) as never;
   });
 
   app.openapi(saveRoute, async (c) => {

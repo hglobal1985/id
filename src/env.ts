@@ -19,6 +19,9 @@ export interface Env {
   WEBHOOK_SIGNING_KEY?: string;
   /** R2 bucket for avatars and social icons (wrangler.jsonc `r2_buckets`). Absent in local tests: files then stay in D1. */
   FILES?: R2Bucket;
+  /** Cloudflare Email Service 的寄信綁定（send_email）。沒綁定就不寄 Email（站內通知照常）。 */
+  EMAIL?: { send(msg: { from: { email: string; name: string }; to: string; subject: string; text: string }): Promise<unknown> };
+  EMAIL_FROM?: string;
   /** Rate Limiting bindings (wrangler.jsonc `ratelimits`). */
   RL_READ?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   RL_WRITE?: { limit(o: { key: string }): Promise<{ success: boolean }> };
