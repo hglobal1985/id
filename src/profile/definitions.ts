@@ -92,7 +92,7 @@ export function resolveCountry(input: string): string | null {
   const upper = t.toUpperCase();
   if (COUNTRY_SET.has(upper)) return upper;
   const lower = t.toLowerCase();
-  let en: Intl.DisplayNames | null = null;
+  let en: Intl.DisplayNames | null;
   try {
     en = new Intl.DisplayNames(["en"], { type: "region" });
   } catch {

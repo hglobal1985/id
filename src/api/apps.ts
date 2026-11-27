@@ -154,7 +154,7 @@ export function registerAppCors(app: OpenAPIHono<AppBindings>, deps: Deps) {
     const origin = c.req.header("origin");
     const path = new URL(c.req.url).pathname;
     if (!origin || path.startsWith("/v1/admin/") || origin === new URL(c.req.url).origin) return next();
-    let ok = false;
+    let ok: boolean;
     try {
       ok = await isAppWebOrigin(c.env.DB, origin, deps.now());
     } catch {
