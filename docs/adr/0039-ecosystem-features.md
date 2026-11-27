@@ -10,3 +10,7 @@
 
 ## 後續（各自一個 PR）
 1. Dependabot（三個程式庫）　2. 網站巡檢　3. 錯誤回報週報　4. 每週備份　5. 截圖測試。
+
+## 實作紀錄
+- 2026-11-27 Dependabot：兩個程式庫各加 `.github/dependabot.yml`。
+- 2026-11-28 網站巡檢：`src/jobs/uptime.ts`、`src/platform/uptime.ts`、`eco_uptime_state`（migration 0032）；只在正式環境巡檢；Email 走 `send_email` 綁定（借用 learn 網域的寄件人）。

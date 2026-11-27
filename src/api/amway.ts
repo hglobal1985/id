@@ -286,6 +286,10 @@ async function renderNotification(
       body = `有會員送出需要審核的「${label}」，請在本頁上方的「待審核」處理。`;
       actions = ["open_review_queue"];
       break;
+    case "eco.uptime":
+      title = payload.alert === "recovered" ? "網站已恢復" : "網站打不開";
+      body = `${String(payload.name ?? "網站")}${payload.alert === "recovered" ? " 已恢復正常。" : " 巡檢失敗（" + String(payload.note ?? "") + "），請盡快查看。"}`;
+      break;
     case "policy.updated":
       title = "隱私權政策已更新";
       body = "我們更新了隱私權政策：您設定為「隱藏」的資料，仍可能被寰宇生態系內經登記的 App 為提供服務而使用，但不會對外公開，也不會提供給生態系以外的人。詳見頁尾的「隱私權政策」。";

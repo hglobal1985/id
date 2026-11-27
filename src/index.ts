@@ -3,6 +3,7 @@ import type { Env } from "./env";
 import { runCleanup } from "./jobs/cleanup";
 import { deliverDue, purgeOldEvents } from "./db/webhooks";
 import { requeueUnreviewed } from "./jobs/requeue";
+import { runUptime } from "./jobs/uptime";
 import { moveAvatarsToR2, sweepAvatars } from "./jobs/files";
 
 const app = createApp();
@@ -23,6 +24,9 @@ export default {
         (r) => { if (r.moved || r.failed.length) console.log(JSON.stringify({ job: "avatars_to_r2", moved: r.moved, failed: r.failed })); },
         (e) => console.log(JSON.stringify({ job: "avatars_to_r2", error: e instanceof Error ? e.name + ":" + e.message.slice(0, 120) : "error" })),
       ));
+    // 網站自動巡檢（依後台「系統功能」設定的頻率；失敗不影響其他排程工作）。
+    const mailer = env.EMAIL && env.EMAIL_FROM ? { binding: env.EMAIL, from: env.EMAIL_FROM, name: "會員中心" } : undefined;
+    if (env.ENVIRONMENT === "production") ctx.waitUntil(runUptime(env.DB, mailer, (u, i) => fetch(u, i), now).then((n) => { if (n) console.log(JSON.stringify({ job: "uptime", probed: n })); }, () => console.log(JSON.stringify({ job: "uptime", error: true }))));
     if (now.getUTCHours() === 19 && now.getUTCMinutes() < 5) {
       ctx.waitUntil(
         Promise.all([runCleanup(env.DB, now), purgeOldEvents(env.DB, now), sweepAvatars(env.DB, env.FILES, now)]).then(([r, purged, swept]) => {

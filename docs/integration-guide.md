@@ -187,3 +187,4 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 - App 讀 `GET /v1/apps/{app_id}/config` 的 `config.eco_features`：`{ dependency_alerts:{enabled}, uptime_watch:{enabled}, error_digest:{enabled}, weekly_backup:{enabled, weekday, keep}, screenshot_test:{enabled} }`。沒有欄位視為 false。通知對象、網址清單只存在中央。
 - App 要做的事見串接指令「三、18」與檢查清單第 42 項；App 不可自己另做一套通知。
 - 實際執行（巡檢、週報、備份、截圖）分別在後續 PR 實作；設定頁的「最近結果」由執行端回寫。
+- **已開始執行：網站自動巡檢（uptime_watch）**：只在正式環境，中央排程每 5 分鐘醒一次，依後台設定的頻率（5～60 分鐘）對「系統功能」頁列出的網址發 GET（8 秒逾時、只算 2xx 正常）；連續失敗 2 次才算掛了，掛了與恢復各通知一次。通知＝站內通知（kind `eco.uptime`，給超級管理員）＋Email（正式 Worker 的 `send_email` 綁定，寄件人借用 `noreply@learn.hglobal1985.com`，收件人是超級管理員的聯絡信箱；信裡只有網站名稱、原因與時間）。手機推播要由 App 端轉送站內通知，尚未接上。網址只能是 hglobal1985.com 的 https。

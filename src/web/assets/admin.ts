@@ -476,6 +476,11 @@ export const ADMIN_JS = String.raw`
             el("td", { text: a.last_status ? (STAT[a.last_status] || a.last_status) + "（" + (a.last_checked_at || "") + "）" + (a.last_note ? " " + a.last_note : "") : "尚無紀錄" })
           ]);
         });
+        if (f.key === "uptime_watch") {
+          var ups = b.uptime || [];
+          kids.push(el("p", { class: "help", text: ups.length ? "網站目前狀態：" : "還沒有巡檢紀錄（儲存設定後，下一個 5 分鐘內會開始）。" }));
+          ups.forEach(function (u) { kids.push(el("div", { class: "inline" }, [el("span", { class: u.status === "up" ? "y" : "", text: u.status === "up" ? "● 正常" : "✕ 打不開" }), el("span", { text: u.name + " ｜ 最近巡檢 " + u.last_checked_at + (u.last_note ? "（" + u.last_note + "）" : "") })])); });
+        }
         kids.push(el("table", { class: "dots" }, [el("tr", {}, [el("th", { text: "App" }), el("th", { text: "參與" }), el("th", { text: "目前生效" }), el("th", { text: "最近結果" })])].concat(rows)));
         pane.appendChild(card(f.label, kids));
       });
