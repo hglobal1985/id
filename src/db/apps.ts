@@ -1,5 +1,6 @@
 // Data access for the App registry, App status switch, sign-in nonces and App sessions (ADR 0011).
 import { hashSecret, randomToken, timingSafeEqual, uuidv7 } from "../lib/crypto";
+import { NEVER_EXPIRES_SECONDS } from "./identity";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { appDefinition, parseApp, type AppEntry, type AppStatus } from "../apps/registry";
 import { auditStatement } from "./audit";
@@ -268,7 +269,8 @@ export async function consumeNonce(db: D1Database, nonce: string, appId: string,
 
 // ---------- App sessions and refresh tokens ----------
 
-export const APP_REFRESH_TTL = 30 * 24 * 3600;
+// App 的登入永不過期（杜杜龍 2026-11-27；見 identity.ts 的 NEVER_EXPIRES_SECONDS）：登出、被停權或「登出所有裝置」才結束。
+export const APP_REFRESH_TTL = NEVER_EXPIRES_SECONDS;
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 

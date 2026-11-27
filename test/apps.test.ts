@@ -167,7 +167,7 @@ describe("handoff text", () => {
     expect(HANDOFF_VERSION).toMatch(HANDOFF_VERSION_PATTERN);
     expect(HANDOFF_VERSION > "2026-11-10.1").toBe(true);
     expect(text.startsWith(`【串接指令版本 ${HANDOFF_VERSION}｜更新時間 ${HANDOFF_UPDATED}】`)).toBe(true);
-    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-24.3", digest: "ebb9cd3e3e9618b8" });
+    expect({ version: HANDOFF_VERSION, digest: sha256Hex(text).slice(0, 16) }).toEqual({ version: "2026-11-27.1", digest: "f6348508e651b732" });
     expect(isUpToDate(HANDOFF_VERSION)).toBe(true);
     expect(isUpToDate("2026-11-10.1")).toBe(false);
     expect(isUpToDate(null)).toBe(false);
@@ -187,7 +187,7 @@ describe("handoff text", () => {
 describe("app sign-in", () => {
   it("nonce → Google ID token → tokens that work on the /v1 APIs", async () => {
     const t = await signIn();
-    expect(t).toMatchObject({ token_type: "Bearer", expires_in: 900, refresh_expires_in: 2592000, scope: APP_SCOPES.join(" "), user: { is_new: true } });
+    expect(t).toMatchObject({ token_type: "Bearer", expires_in: 900, refresh_expires_in: 100 * 365 * 24 * 3600, scope: APP_SCOPES.join(" "), user: { is_new: true } });
     const claims = await verifyJwt(t.access_token, [ourKey.publicJwk], { issuer: ISSUER, audience: ISSUER, typ: "at+jwt", now: Math.floor(now.getTime() / 1000) });
     expect(claims).toMatchObject({ sub: t.user.member_id, app_id: "learn", client_id: "learn" });
     expect((await get("/v1/me/profile", bearer(t.access_token))).status).toBe(200);
@@ -262,12 +262,14 @@ describe("app sign-in", () => {
     }
   });
 
-  it("access tokens last 15 minutes and refresh tokens 30 days", async () => {
+  it("access tokens last 15 minutes; the sign-in itself never expires (杜杜龍 2026-11-27)", async () => {
     const t = await signIn();
     later(15 * 60 + 31);
     expect((await get("/v1/me/profile", bearer(t.access_token))).status).toBe(401);
-    later(30 * 24 * 3600);
-    expect(await errorCode(await post("/v1/auth/refresh", { refresh_token: t.refresh_token }))).toBe("invalid_refresh");
+    // 兩年沒用也還能換發（登出、停權、登出所有裝置才會結束）
+    later(2 * 365 * 24 * 3600);
+    const r = await post("/v1/auth/refresh", { refresh_token: t.refresh_token });
+    expect(r.status).toBe(200);
   });
 
   it("logout ends one session; logout-all ends every session of the member", async () => {
@@ -604,12 +606,12 @@ describe("shared sign-in", () => {
     expect((await status(sso)).active).toBe(true);
     expect((await post("/v1/auth/logout-all", {}, bearer(t.access_token))).status).toBe(204);
     expect((await status(sso)).active).toBe(false);
-    // Only App sign-in tokens can start one; it expires 30 days after the last use.
+    // Only App sign-in tokens can start one; it never expires (杜杜龍 2026-11-27) — only logout ends it.
     const { token: cookie } = await createSession(db, t.user.member_id, now);
     expect((await post("/v1/auth/sso/start", {}, { cookie: `__Host-hgid_session=${cookie}`, origin: ISSUER })).status).toBe(403);
     const sso2 = await startSso(await signIn());
-    later(30 * 24 * 3600 + 1);
-    expect((await status(sso2)).active).toBe(false);
+    later(2 * 365 * 24 * 3600);
+    expect((await status(sso2)).active).toBe(true);
   });
 
   it("web versions in one browser: adopt, check, exchange, logout", async () => {
@@ -623,7 +625,7 @@ describe("shared sign-in", () => {
     expect(adopted.status).toBe(302);
     expect(fragment(adopted)).toEqual({ sso_adopted: "1", state: "" });
     const setCookie = adopted.headers.get("set-cookie") as string;
-    expect(setCookie).toMatch(/^__Host-hgid_sso=[^;]+; Max-Age=2592000; Path=\/; HttpOnly; Secure; SameSite=Lax$/);
+    expect(setCookie).toMatch(/^__Host-hgid_sso=[^;]+; Max-Age=34560000; Path=\/; HttpOnly; Secure; SameSite=Lax$/);
     const cookie = { cookie: setCookie.split(";")[0] as string };
     // The cookie is not the App's sso_token, and an adopt code works once.
     expect(setCookie).not.toContain(sso.split(".")[1]);

@@ -13,7 +13,7 @@ import { APP_ASSIGNABLE_ROLES, isAppAssignable, planAssignment } from "../admin/
 import { memberBriefs } from "../db/member-bulk";
 import { getMember } from "../db/identity";
 import { getApp } from "../db/apps";
-import { auditStatement } from "../db/audit";
+import { auditStatement, auditedRecently } from "../db/audit";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
@@ -104,7 +104,8 @@ export function registerAppStaffRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
       .filter((id) => briefs.get(id)?.member?.status === "active")
       .map((id) => ({ member_id: id, display_name: briefs.get(id)?.display_name ?? null, roles: labelled(rolesById.get(id) ?? []) }))
       .sort((a, b) => ((a.display_name ?? "") < (b.display_name ?? "") ? -1 : (a.display_name ?? "") > (b.display_name ?? "") ? 1 : a.member_id < b.member_id ? -1 : 1));
-    await auditStatement(m.db, { actorType: "member", actorId: m.auth.memberId, action: "app_staff.list", result: "success", appId: m.auth.appId, requestId: m.rid, detail: { count: members.length, mode: q ? "search" : "staff" } }, deps.now()).run();
+    if (!(await auditedRecently(m.db, m.auth.memberId, "app_staff.list", m.auth.appId ?? null, deps.now())))
+      await auditStatement(m.db, { actorType: "member", actorId: m.auth.memberId, action: "app_staff.list", result: "success", appId: m.auth.appId, requestId: m.rid, detail: { count: members.length, mode: q ? "search" : "staff" } }, deps.now()).run();
     return c.json({ assignable_roles: APP_ASSIGNABLE_ROLES.map((r) => ({ role: r, label: ROLE_LABELS[r] })), members }, 200);
   });
 

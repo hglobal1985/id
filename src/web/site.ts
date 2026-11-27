@@ -3,8 +3,8 @@ import type { Context } from "hono";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
-import { SESSION_COOKIE, readCookie } from "../auth/cookies";
-import { findActiveSessionByToken, getMember } from "../db/identity";
+import { SESSION_COOKIE, readCookie, writeCookie } from "../auth/cookies";
+import { COOKIE_KEEP_SECONDS, findActiveSessionByToken, getMember } from "../db/identity";
 import { isStaffMember } from "../db/staff";
 import { readProfile } from "../db/profile";
 import { getActiveBinding, otherSide } from "../db/spouse";
@@ -54,7 +54,11 @@ function currentSession(c: C, deps: Deps) {
   if (!t) return Promise.resolve(null);
   let p = sessionOfRequest.get(c);
   if (!p) {
-    p = findActiveSessionByToken(c.env.DB, t, deps.now());
+    p = findActiveSessionByToken(c.env.DB, t, deps.now()).then((s) => {
+      // 每次打開會員中心就把登入 Cookie 重新延長（瀏覽器最多 400 天），等於永不過期（杜杜龍 2026-11-27）。
+      if (s) writeCookie(c, SESSION_COOKIE, t, COOKIE_KEEP_SECONDS);
+      return s;
+    });
     sessionOfRequest.set(c, p);
   }
   return p;

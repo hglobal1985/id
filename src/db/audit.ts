@@ -38,3 +38,16 @@ export function auditStatement(db: D1Database, e: AuditEntry, now: Date): D1Prep
 export async function writeAudit(db: D1Database, e: AuditEntry, now: Date): Promise<void> {
   await auditStatement(db, e, now).run();
 }
+
+/**
+ * 單純「查看清單」的稽核瘦身（杜杜龍 2026-11-27）：同一人、同一款 App、同一個動作，一小時內已經記過就不再記。
+ * App 每開一次畫面就查一次清單，以前一天記上千筆，把真正重要的操作（改資料、停權）淹沒了。
+ */
+export async function auditedRecently(db: D1Database, actorId: string, action: string, appId: string | null, now: Date, seconds = 3600): Promise<boolean> {
+  const since = taipeiIso(new Date(now.getTime() - seconds * 1000));
+  const row = await db
+    .prepare("SELECT 1 AS x FROM audit_log WHERE actor_id = ? AND action = ? AND (app_id = ? OR (app_id IS NULL AND ? IS NULL)) AND occurred_at > ? LIMIT 1")
+    .bind(actorId, action, appId, appId, since)
+    .first<{ x: number }>();
+  return !!row;
+}

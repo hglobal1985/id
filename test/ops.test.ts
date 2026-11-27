@@ -58,6 +58,7 @@ describe("rate limits", () => {
 describe("daily cleanup", () => {
   const audit = (id: string, action: string, at: string) =>
     db.raw.prepare("INSERT INTO audit_log (id, occurred_at, actor_type, actor_id, action, target_type, target_id, result) VALUES (?, ?, 'member', ?, ?, 'member', ?, 'success')").run(`${action}-${at}`, at, id, action, id);
+  const taipeiIsoDaysAgo = (d: number) => new Date(now.getTime() - d * 86400_000 + 8 * 3600_000).toISOString().replace("Z", "+08:00");
   const amwayRow = (id: string) =>
     db.raw.prepare("INSERT INTO amway_field_values (member_id, field_key, value, status, updated_at) VALUES (?, 'referrer', '\"王\"', 'not_required', 'x')").run(id);
 
@@ -78,6 +79,20 @@ describe("daily cleanup", () => {
     const left = db.raw.prepare("SELECT member_id FROM amway_field_values ORDER BY member_id").all().map((x) => x.member_id);
     expect(left.sort()).toEqual([recent, back].sort());
     expect(db.raw.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'amway.retention.purge'").get()?.n).toBe(1);
+  });
+
+  it("keeps audit entries 3 months, but keeps the Amway on/off entries the privacy rule needs (杜杜龍 2026-11-27)", async () => {
+    const id = (await upsertMemberByGoogle(db, { sub: "aud", emailVerified: true }, "TW", now, "req")).member.id;
+    const old = taipeiIsoDaysAgo(100);
+    const recent = taipeiIsoDaysAgo(10);
+    audit(id, "app_reviews.list", old);
+    audit(id, "profile.field.update", recent);
+    audit(id, "amway.disable", old);
+    await runCleanup(db, now);
+    const left = db.raw.prepare("SELECT action FROM audit_log WHERE target_id = ? ORDER BY action").all(id).map((x) => x.action);
+    expect(left).toContain("amway.disable");
+    expect(left).toContain("profile.field.update");
+    expect(left).not.toContain("app_reviews.list");
   });
 
   it("removes expired sign-in flows and codes", async () => {

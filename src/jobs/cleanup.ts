@@ -4,6 +4,12 @@ import { epochSeconds, taipeiIso } from "../lib/time";
 import { auditStatement } from "../db/audit";
 
 export const RETENTION_DAYS = 365;
+/**
+ * 稽核紀錄保存 3 個月（杜杜龍 2026-11-27），到期自動刪除。
+ * 例外：Amway 區塊「關閉／開啟」的紀錄要留著——上面的隱私規則靠它判斷「關閉滿一年就刪 Amway 資料」，刪掉就無法照規定刪資料。
+ */
+export const AUDIT_RETENTION_DAYS = 90;
+export const AUDIT_KEEP_ACTIONS = ["amway.disable", "amway.enable"] as const;
 
 export async function runCleanup(db: D1Database, now: Date): Promise<{ purgedMembers: number }> {
   const day = 86400;
@@ -18,6 +24,14 @@ export async function runCleanup(db: D1Database, now: Date): Promise<{ purgedMem
     // App sessions are kept 30 days after they end (reuse detection, audit), then removed.
     db.prepare("DELETE FROM app_sessions WHERE expires_epoch < ? OR (revoked_epoch IS NOT NULL AND revoked_epoch < ?)").bind(t - 30 * day, t - 30 * day),
   ]);
+
+  // 稽核紀錄保存 3 個月（一次最多刪 5000 筆，下次排程繼續）。
+  await db
+    .prepare(
+      `DELETE FROM audit_log WHERE id IN (SELECT id FROM audit_log WHERE occurred_at < ? AND action NOT IN (${AUDIT_KEEP_ACTIONS.map(() => "?").join(",")}) LIMIT 5000)`,
+    )
+    .bind(taipeiIso(new Date(now.getTime() - AUDIT_RETENTION_DAYS * day * 1000)), ...AUDIT_KEEP_ACTIONS)
+    .run();
 
   // Members whose Amway area has been off for over a year and who still have Amway data.
   const cutoff = taipeiIso(new Date(now.getTime() - RETENTION_DAYS * day * 1000));

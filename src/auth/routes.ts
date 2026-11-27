@@ -4,6 +4,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import {
+  COOKIE_KEEP_SECONDS,
   LIFETIME,
   consumeLoginFlowByState,
   createLoginFlow,
@@ -117,7 +118,7 @@ export function registerAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
       return html(c, messagePage("無法登入", "此帳號目前無法使用，如有疑問請聯絡客服。"), 403);
     }
     const { token } = await createSession(c.env.DB, member.id, now);
-    writeCookie(c, SESSION_COOKIE, token, LIFETIME.session);
+    writeCookie(c, SESSION_COOKIE, token, COOKIE_KEEP_SECONDS);
     await writeAudit(c.env.DB, { actorType: "member", actorId: member.id, action: "member.login", result: "success", requestId: c.get("requestId"), detail: { method: "google" } }, now);
     c.header("cache-control", "no-store");
     return c.redirect(isSafeReturnPath(flow.return_to) ? flow.return_to : "/", 302);

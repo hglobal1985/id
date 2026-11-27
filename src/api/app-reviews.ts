@@ -14,7 +14,7 @@ import { REVIEWER_ADJUSTABLE, getAmwayField, validateAmwayValue } from "../amway
 import { decideReview, listOptions } from "../db/amway";
 import { normTerm } from "../vocab/terms";
 import { getApp } from "../db/apps";
-import { auditStatement } from "../db/audit";
+import { auditStatement, auditedRecently } from "../db/audit";
 
 const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
@@ -111,7 +111,8 @@ export function registerAppReviewRoutes(app: OpenAPIHono<AppBindings>, deps: Dep
         created_at: x.created_at,
       };
     });
-    await auditStatement(st.db, { actorType: "member", actorId: st.auth.memberId, action: "app_reviews.list", result: "success", appId: st.auth.appId, requestId: st.rid, detail: { count: reviews.length, scope: st.all ? "all" : "center" } }, deps.now()).run();
+    if (!(await auditedRecently(st.db, st.auth.memberId, "app_reviews.list", st.auth.appId ?? null, deps.now())))
+      await auditStatement(st.db, { actorType: "member", actorId: st.auth.memberId, action: "app_reviews.list", result: "success", appId: st.auth.appId, requestId: st.rid, detail: { count: reviews.length, scope: st.all ? "all" : "center" } }, deps.now()).run();
     return c.json({ scope: st.all ? "all" : "center", reviews }, 200);
   });
 
