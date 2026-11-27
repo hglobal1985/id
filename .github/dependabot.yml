@@ -1,0 +1,24 @@
+# 套件安全漏洞提醒（杜杜龍 2026-11-27，生態系統功能 dependency_alerts）：
+# 每週檢查一次套件與 GitHub Actions，有新版或安全修正就自動開 PR。
+# PR 一樣要通過 CI 才能合併；不要為了讓它過關而關掉檢查。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 3
