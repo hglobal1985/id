@@ -10,7 +10,7 @@ export const ErrorBodySchema = z
       code: z.string().openapi({ example: "invalid_field" }),
       message: z.string(),
       request_id: z.string(),
-      details: z.record(z.unknown()).optional(),
+      details: z.record(z.string(), z.unknown()).optional(),
     }),
   })
   .openapi("ErrorBody");

@@ -29,7 +29,7 @@ const UserInfo = z
   })
   .openapi("UserInfo");
 
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const redirect = { description: "Redirect (302)" };
 
 export function registerOidcDocs(app: OpenAPIHono<AppBindings>) {
@@ -39,14 +39,14 @@ export function registerOidcDocs(app: OpenAPIHono<AppBindings>) {
     path: "/.well-known/openid-configuration",
     tags: ["oidc"],
     summary: "OpenID Provider discovery document",
-    responses: { 200: { description: "Discovery document", content: json(z.record(z.unknown())) } },
+    responses: { 200: { description: "Discovery document", content: json(z.record(z.string(), z.unknown())) } },
   });
   r.registerPath({
     method: "get",
     path: "/oauth/jwks",
     tags: ["oidc"],
     summary: "Public signing keys (JWKS)",
-    responses: { 200: { description: "JWK Set", content: json(z.object({ keys: z.array(z.record(z.unknown())) })) } },
+    responses: { 200: { description: "JWK Set", content: json(z.object({ keys: z.array(z.record(z.string(), z.unknown())) })) } },
   });
   r.registerPath({
     method: "get",

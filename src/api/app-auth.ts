@@ -31,7 +31,7 @@ import { escapeHtml } from "../web/pages";
 import { SITE_CSP, sitePage } from "../web/layout";
 
 type C = Context<AppBindings>;
-const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
+const json = <T extends z.ZodType>(schema: T) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 export const fail = <S extends 400 | 401 | 403 | 404 | 429 | 503>(c: C, status: S, code: string, message: string) => c.json(errorBody(code, message, c.get("requestId")), status);
 
@@ -291,7 +291,7 @@ export function registerAppAuthRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     }
     await writeAudit(c.env.DB, { actorType: "member", actorId: auth.memberId, action: "app.reauth", appId: a.app_id, result: "success", requestId, detail: { purpose: REAUTH_PURPOSE } }, now);
     const reauth_token = await signReauthToken(c.env, resolveIssuer(c.env, c.req.url), { memberId: auth.memberId, appId: a.app_id, sessionId: auth.sessionId }, now);
-    return c.json({ reauth_token, expires_in: REAUTH_TTL, purpose: REAUTH_PURPOSE }, 200);
+    return c.json({ reauth_token, expires_in: REAUTH_TTL, purpose: REAUTH_PURPOSE as "delete_account" }, 200);
   });
 
   app.openapi(refreshRoute, async (c) => {
