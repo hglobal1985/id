@@ -181,10 +181,11 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 - 獎銜：只要不是「無」，不論系統與中心一律審核（`status: pending`，核准前沒有生效值、別人看不到）。中心：系統是寰宇時審核（實際中心或明確勾「無」）；系統不是寰宇時中心自動「無」、不審核。系統本身不審核。
 - 派送：寰宇＋實際中心 → 該中心審核員（沒有時給秘書與超級管理員）；其他一律只給總部秘書與超級管理員。使用審核資料的 App 不用改，一切以中央回傳為準。
 
-## 6.18 生態系統功能（2026-11-27.4，ADR 0039，所有 App 一體適用）
+## 6.18 生態系統功能（2026-11-27.5，ADR 0039，所有 App 一體適用）
 杜杜龍 2026-11-27 決定：套件漏洞提醒、網站巡檢、錯誤回報週報、資料每週備份、主要畫面截圖測試是整個生態系的**系統功能**，由中央統一設定、各 App 一體參與。
 - 設定與參與狀態存在中央（`eco_features`、`eco_feature_apps`），後台「系統功能」頁可看到每個 App 有沒有參與每一項，並調整開關、頻率、通知對象（推播／Email）；`apps.operate` 可看、`apps.manage` 可改。
 - App 讀 `GET /v1/apps/{app_id}/config` 的 `config.eco_features`：`{ dependency_alerts:{enabled}, uptime_watch:{enabled}, error_digest:{enabled}, weekly_backup:{enabled, weekday, keep}, screenshot_test:{enabled} }`。沒有欄位視為 false。通知對象、網址清單只存在中央。
 - App 要做的事見串接指令「三、18」與檢查清單第 42 項；App 不可自己另做一套通知。
+- **每週備份（2026-11-27.5）**：中央自己的永久資料已由中央備份（`backups/<台北日期>/`，R2 bucket `hglobal-id-files`，星期與保留份數在後台「系統功能」頁）。App 備份自己的資料：在 `weekly_backup.weekday` 的台北 03:00 匯出到自己的 R2 `backups/<日期>/`，格式同中央（`<表名>.<序號>.ndjson` 每檔最多 5000 列、`README.txt` 還原說明、最後寫 `manifest.json`），表與欄位明確列出，不含 Amway、Token、雜湊、暫存資料與圖檔本體，只留最近 `keep` 份。還原須先在測試環境驗證，正式資料還原須杜杜龍核准。
 - 實際執行（巡檢、週報、備份、截圖）分別在後續 PR 實作；設定頁的「最近結果」由執行端回寫。
 - **已開始執行：網站自動巡檢（uptime_watch）**：只在正式環境，中央排程每 5 分鐘醒一次，依後台設定的頻率（5～60 分鐘）對「系統功能」頁列出的網址發 GET（8 秒逾時、只算 2xx 正常）；連續失敗 2 次才算掛了，掛了與恢復各通知一次。通知＝站內通知（kind `eco.uptime`，給超級管理員）＋Email（正式 Worker 的 `send_email` 綁定，寄件人借用 `noreply@learn.hglobal1985.com`，收件人是超級管理員的聯絡信箱；信裡只有網站名稱、原因與時間）。手機推播要由 App 端轉送站內通知，尚未接上。網址只能是 hglobal1985.com 的 https。

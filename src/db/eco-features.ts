@@ -107,6 +107,12 @@ export async function claimDigestRun(db: D1Database, runDate: string, now: Date)
   return (r.meta?.changes ?? 0) > 0;
 }
 
+export async function claimBackupRun(db: D1Database, runDate: string, now: Date): Promise<boolean> {
+  const r = await db.prepare("INSERT OR IGNORE INTO eco_backup_runs (run_date, started_at) VALUES (?, ?)").bind(runDate, taipeiIso(now)).run();
+  await db.prepare("DELETE FROM eco_backup_runs WHERE run_date < ?").bind(taipeiIso(new Date(now.getTime() - 35 * 86400_000)).slice(0, 10)).run();
+  return (r.meta?.changes ?? 0) > 0;
+}
+
 export async function purgeErrorCounts(db: D1Database, now: Date): Promise<void> {
   const cutoff = taipeiIso(new Date(now.getTime() - ERROR_COUNT_RETENTION_DAYS * 86400_000)).slice(0, 10);
   await db.batch([db.prepare("DELETE FROM eco_error_counts WHERE day < ?").bind(cutoff), db.prepare("DELETE FROM eco_digest_runs WHERE run_date < ?").bind(cutoff)]);

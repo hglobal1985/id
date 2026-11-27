@@ -5,6 +5,7 @@ import { deliverDue, purgeOldEvents } from "./db/webhooks";
 import { requeueUnreviewed } from "./jobs/requeue";
 import { runUptime } from "./jobs/uptime";
 import { runErrorDigest } from "./jobs/error-digest";
+import { runWeeklyBackup } from "./jobs/backup";
 import { moveAvatarsToR2, sweepAvatars } from "./jobs/files";
 
 const app = createApp();
@@ -29,6 +30,7 @@ export default {
     const mailer = env.EMAIL && env.EMAIL_FROM ? { binding: env.EMAIL, from: env.EMAIL_FROM, name: "會員中心" } : undefined;
     if (env.ENVIRONMENT === "production") ctx.waitUntil(runUptime(env.DB, mailer, (u, i) => fetch(u, i), now).then((n) => { if (n) console.log(JSON.stringify({ job: "uptime", probed: n })); }, () => console.log(JSON.stringify({ job: "uptime", error: true }))));
     if (env.ENVIRONMENT === "production") ctx.waitUntil(runErrorDigest(env.DB, mailer, now).then((n) => { if (n) console.log(JSON.stringify({ job: "error_digest", errors: n })); }, () => console.log(JSON.stringify({ job: "error_digest", error: true }))));
+    if (env.ENVIRONMENT === "production") ctx.waitUntil(runWeeklyBackup(env.DB, env.FILES, now).then((n) => { if (n) console.log(JSON.stringify({ job: "weekly_backup", rows: n })); }, () => console.log(JSON.stringify({ job: "weekly_backup", error: true }))));
     if (now.getUTCHours() === 19 && now.getUTCMinutes() < 5) {
       ctx.waitUntil(
         Promise.all([runCleanup(env.DB, now), purgeOldEvents(env.DB, now), sweepAvatars(env.DB, env.FILES, now)]).then(([r, purged, swept]) => {
