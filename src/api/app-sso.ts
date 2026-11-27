@@ -22,7 +22,7 @@ import { adoptBrowser, createSsoCode, liveSso, liveSsoById, logoutSso, startSso,
 import { timingSafeEqual } from "../lib/crypto";
 import { resolveIssuer } from "../oidc/config";
 import { SESSION_COOKIE, clearCookie, readCookie, writeCookie } from "../auth/cookies";
-import { LIFETIME, createSession } from "../db/identity";
+import { COOKIE_KEEP_SECONDS, createSession } from "../db/identity";
 import { bearerAuth } from "./auth";
 import { APP_STATE, NONCE_HASH, SignInSchema, fail, limited, resolveApp, sha256Hex, tokenPair } from "./app-auth";
 import { escapeHtml } from "../web/pages";
@@ -33,7 +33,7 @@ const json = (schema: z.ZodTypeAny) => ({ "application/json": { schema } });
 const err = (d: string) => ({ description: d, content: json(ErrorBodySchema) });
 const SsoToken = z.object({ sso_token: z.string().max(200) });
 export const SSO_COOKIE = "hgid_sso";
-const COOKIE_MAX_AGE = 30 * 24 * 3600;
+const COOKIE_MAX_AGE = COOKIE_KEEP_SECONDS;
 /** Central pages an adopt may land on: the member center (/my/edit) and the member's own page (/my/<number>). */
 const CENTRAL_RETURN = /^\/my\/(edit|[A-Za-z0-9]{1,32})$/;
 
@@ -214,7 +214,7 @@ export function registerAppSsoRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) 
       if (!sso) return c.redirect(`/login?return_to=${encodeURIComponent(central)}`, 302);
       writeCookie(c, SSO_COOKIE, await adoptBrowser(c.env.DB, sso.id), COOKIE_MAX_AGE);
       const { token } = await createSession(c.env.DB, sso.member_id, now);
-      writeCookie(c, SESSION_COOKIE, token, LIFETIME.session);
+      writeCookie(c, SESSION_COOKIE, token, COOKIE_KEEP_SECONDS);
       return c.redirect(central, 302);
     }
     const t = await target(c);
@@ -233,8 +233,11 @@ export function registerAppSsoRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) 
     const state = c.req.query("state") ?? "";
     if (!t || !NONCE_HASH.test(nonceHash) || !APP_STATE.test(state)) return problem(c, "共用登入參數不正確。");
     const now = deps.now();
-    const sso = await liveSso(c.env.DB, readCookie(c, SSO_COOKIE), "cookie", now);
+    const ssoCookie = readCookie(c, SSO_COOKIE);
+    const sso = await liveSso(c.env.DB, ssoCookie, "cookie", now);
     if (!sso) return back(c, t.ret, { sso_none: "1", state });
+    // 每次使用就把 Cookie 的保存時間重新延長（瀏覽器最多 400 天），等於永不過期。
+    if (ssoCookie) writeCookie(c, SSO_COOKIE, ssoCookie, COOKIE_MAX_AGE);
     const code = await createSsoCode(c.env.DB, { kind: "check", ssoId: sso.id, appId: t.app.app_id, nonceHash }, now);
     return back(c, t.ret, { sso_code: code, sso_member: sso.member_id, state });
   });

@@ -19,7 +19,7 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 2. 開啟 `/auth/google/start?app_id=<app_id>&nonce=<SHA-256(nonce) 十六進位小寫>&return=<回傳網址>&state=<隨機字串>`。
    - 手機：用系統登入瀏覽器視窗（Expo：`openAuthSessionAsync`），回傳網址是登記的深層連結；結果在 query：`?id_token=…&state=…` 或 `?error=…&state=…`。
    - 網頁：整頁導向，回傳網址在登記的網頁版來源底下、不帶 `#`；結果在 fragment：`#id_token=…&state=…`。讀取後立刻 `history.replaceState` 清掉。
-3. 核對 `state`，`POST /v1/auth/google` `{"app_id","id_token","nonce":<原值>,"device_label"?}` → `access_token`（15 分鐘）、`refresh_token`（30 天）、`scope`、`user.member_id`、`user.is_new`。
+3. 核對 `state`，`POST /v1/auth/google` `{"app_id","id_token","nonce":<原值>,"device_label"?}` → `access_token`（15 分鐘）、`refresh_token`（**永不過期**，2026-11-27.1：只有登出、登出所有裝置、停權、刪除帳號才失效）、`scope`、`user.member_id`、`user.is_new`。
 
 錯誤：`app_not_found`（404）、`app_unavailable`（403，App 被暫停或停用）、`invalid_token`／`invalid_nonce`（401）、`account_disabled`（403）、`rate_limited`（429）。
 
@@ -27,7 +27,8 @@ App 不持有任何密碼或 client secret。iOS、Android、網頁版共用同�
 - 每個請求帶 `Authorization: Bearer <access_token>`。
 - 401 `unauthenticated`：`POST /v1/auth/refresh` `{"refresh_token"}`，**新的 refresh_token 立刻覆蓋舊的**。舊的再用一次會撤銷整個登入（`refresh_reused`）。同一時間只執行一個換發（加鎖）。
 - 登出：`POST /v1/auth/logout`；登出所有裝置與所有 App：`POST /v1/auth/logout-all`。
-- 儲存：手機用系統安全儲存；網頁 Access Token 只放記憶體、Refresh Token 放 `sessionStorage`。
+- 儲存：手機用系統安全儲存；網頁 Access Token 放記憶體、Refresh Token 放 `localStorage`（登入永不過期：關分頁、關瀏覽器都還是登入），多分頁換發要加鎖（例如 `navigator.locks`）。App 不可自設登入期限。
+- 稽核：中央的「查審核清單」「查職務清單」同一人同一款 App 一小時只記一次；稽核紀錄保存 3 個月（Amway 區塊開關紀錄除外，隱私規則要用）。
 - 網頁版 CORS 只對登記的網頁版來源開放，不使用 Cookie（不要設 `credentials: 'include'`）。
 
 ## 3.5 共用登入（單一登入）

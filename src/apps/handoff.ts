@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-24.3";
-export const HANDOFF_UPDATED = "2026-11-24 18:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-27.1";
+export const HANDOFF_UPDATED = "2026-11-27 21:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -76,7 +76,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `   - 網頁版：整頁導向中繼網址，回傳網址必須在登記的網頁版來源底下且不能帶 #（例如 ${web}/auth/done，路徑自訂）。登入完成後回到 <回傳網址>#id_token=…&state=…（失敗為 #error=…&state=…）；結果放在 # 之後，不會送到任何伺服器。讀取後立刻用 history.replaceState 清掉網址中的 #。`,
     "   - 沒登記過的回傳網址會被拒絕。需要增加回傳網址或網頁版來源時，回報業主到後台修改，不要自己想辦法繞過。",
     `   - 第 3 步：核對 state 與自己產生的相同，然後 POST ${origin}/v1/auth/google，body {"app_id":"${id}","id_token":"…","nonce":"<nonce 原值>","device_label":"<裝置名稱，選填>"} → {"token_type":"Bearer","access_token","expires_in","refresh_token","refresh_expires_in","scope","user":{"member_id","status","is_new"}}。交給 Google 的只有雜湊；攔截到回傳網址的人沒有 nonce 原值，無法登入。`,
-    "   - Token：Access Token 15 分鐘，Refresh Token 30 天。手機把兩個 Token 存在系統安全儲存（Expo：expo-secure-store），不要放 AsyncStorage。網頁版 Access Token 只放記憶體，Refresh Token 放 sessionStorage，不要放 localStorage。",
+    "   - Token：Access Token 15 分鐘；**登入永不過期**（2026-11-27.1，杜杜龍決定）：Refresh Token 沒有期限（refresh_expires_in 是 100 年），只有會員按登出、「登出所有裝置」、被停權或刪除帳號才會失效；共用登入（sso_token）也一樣不過期。App 不可以自己設登入期限、不可以因為很久沒用就登出。手機把兩個 Token 存在系統安全儲存（Expo：expo-secure-store），不要放 AsyncStorage。網頁版 Access Token 放記憶體，Refresh Token 放 localStorage（關掉分頁、關瀏覽器、手機主畫面 App 被系統關掉都還是登入狀態）；同一個瀏覽器的多個分頁共用同一份，換發時要跨分頁加鎖（例如 navigator.locks），並在 storage 事件時丟掉記憶體裡的舊 Access Token，避免兩個分頁拿同一張舊 Refresh Token 去換而被判定 refresh_reused。",
     `   - 換發：每個請求帶 Authorization: Bearer <access_token>。收到 401 unauthenticated 時 POST ${origin}/v1/auth/refresh，body {"refresh_token"}，新的 refresh_token 要立刻覆蓋舊的。舊的再用一次會撤銷整個登入（401 refresh_reused），此時回到登入畫面。同一時間只讓一個請求執行換發（加鎖），避免並發換發被誤判為重用。403 app_unavailable 表示這款 App 被暫停，顯示維護畫面。429 rate_limited 依 Retry-After 稍後重試。`,
     `   - 登出：POST ${origin}/v1/auth/logout（帶 Access Token）結束這次登入，然後清除本機 Token。登出所有裝置與所有 App：POST ${origin}/v1/auth/logout-all。`,
     "   - 共用登入（單一登入，必做）：所有 H-Global1985 App 的登入狀態共用——在任一款 App 登入，同一支手機上的其他 H-Global1985 App 自動登入；登出或換會員，所有 App 跟著變。登出按鈕文字請寫「登出所有 App」。",
@@ -243,7 +243,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "37. 開啟完整版會員中心不再選 Google 帳號（2026-11-24.1，三、2（4））：已有 sso_token 時，每次開啟都先 POST /v1/auth/sso/web-code 取新 code，再用系統瀏覽器／整頁導向開 /auth/sso/adopt?c=<code>&app_id=&return=<中央>/my/edit；沒有 sso_token 才直接開 /my/edit；不快取 code；不自己處理中央的 Cookie。審核通知的派送改版由中央處理，App 不用改（三、5 審核規則已補充）。",
     "38. 審核規則改版（2026-11-24.2，三、5）：獎銜只要不是「無」一律進審核（status pending、顯示「等待審核中」，未核准前別人看不到獎銜），寰宇時的中心也審核（含明確勾「無」）；不要寫死「寰宇＋中心才審核」或預期獎銜立刻生效；沒有舊值時畫面顯示空白加「等待審核中」。",
     "39. 寰宇中心名稱提醒（2026-11-24.3，三、5）：自訂系統（系統選「其他」）的文字只要包含 field-definitions 中 education_system 的 hglobal_center_words（目前：飛登、蓁分享、有賢社、聚冠），畫面在輸入框下方即時顯示紅／橘色提醒（用 hglobal_center_message，{word} 換成命中的詞；不阻擋輸入；詞清單一律讀中央，不寫死）；中央也會擋：PUT /v1/me/amway/fields/education_system 回 422、details.reason 為 use_hglobal_center，message 就是提醒文字，直接顯示。這些詞其實是寰宇旗下的中心，會員應改選系統「寰宇」再選中心。App 不自行修改既有會員資料。",
-    "40. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "40. 登入永不過期（2026-11-27.1，三、2）：Refresh Token 與共用登入都沒有期限，只有登出、登出所有裝置、停權、刪除帳號會結束。檢查：App 沒有自己的登入期限或「太久沒用就登出」；網頁版 Refresh Token 從 sessionStorage 改放 localStorage，多分頁換發要加鎖；手機仍放系統安全儲存。中央的「查審核清單」「查職務清單」不再每次都寫稽核（同一人同一款 App 一小時記一次），App 端也請把這兩份清單暫存幾分鐘，不要每開一次畫面就重問。",
+    "41. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要業主處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

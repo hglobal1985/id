@@ -4,13 +4,22 @@ import { epochSeconds, taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
 import { ensureMemberNumber } from "./member-numbers";
 
+/**
+ * 登入「永不過期」（杜杜龍 2026-11-27）：會員中心網站、所有 App 與共用登入，只要沒有按登出、沒有被停權或「登出所有裝置」，就一直保持登入。
+ * 資料庫裡用 100 年當作「不過期」；瀏覽器 Cookie 最多只保留約 400 天，所以每次使用時重新發一次（見 COOKIE_KEEP_SECONDS）。
+ * Access Token 仍然是 15 分鐘（用 Refresh Token 自動換發，會員感覺不到）。
+ */
+export const NEVER_EXPIRES_SECONDS = 100 * 365 * 24 * 3600;
+/** 瀏覽器 Cookie 的保存時間：瀏覽器上限約 400 天；每次使用都重新設定，等於不過期。 */
+export const COOKIE_KEEP_SECONDS = 400 * 24 * 3600;
+
 export const LIFETIME = {
-  session: 30 * 24 * 3600,
+  session: NEVER_EXPIRES_SECONDS,
   loginFlow: 10 * 60,
   authorizationCode: 60,
   accessToken: 15 * 60,
   idToken: 15 * 60,
-  refreshToken: 30 * 24 * 3600,
+  refreshToken: NEVER_EXPIRES_SECONDS,
 } as const;
 
 export interface MemberRow {
