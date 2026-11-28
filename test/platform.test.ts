@@ -4,7 +4,7 @@ import { createTestD1, type TestD1 } from "./helpers/d1.mjs";
 import { createSession, upsertMemberByGoogle } from "../src/db/identity";
 import { definitionFromForm, parseApp, APP_SCOPES, AppDefinitionError } from "../src/apps/registry";
 import { deliverDue, enqueueEvent, isWebhookUrl, purgeOldEvents } from "../src/db/webhooks";
-import { deriveSecret, signature, nextDelaySeconds, MAX_ATTEMPTS } from "../src/webhooks/events";
+import { deriveBridgeSecret, deriveSecret, signature, nextDelaySeconds, MAX_ATTEMPTS } from "../src/webhooks/events";
 import { deleteAccount } from "../src/db/deletion";
 import { parseStandards, reportIntegratedVersion, appStats } from "../src/db/apps";
 import type { Env } from "../src/env";
@@ -149,6 +149,24 @@ describe("webhook rules", () => {
     const b = (await (await req(sa, "POST", "/v1/admin/apps/learn/webhook/secret", { rotate: true })).json()) as { secret: string };
     expect(b.secret).toBe(await deriveSecret(KEY, "learn", 2));
     expect(JSON.stringify(db.raw.prepare("SELECT detail FROM audit_log").all())).not.toContain(b.secret);
+  });
+
+  it("the platform-wide bridge key is the same for every App, shown only to a super admin, and rotating bumps it for all", async () => {
+    const sa = await person("sa", "管理", ["super_admin"]);
+    const rv = await person("rv", "審核", ["reviewer"]);
+    expect((await req(rv, "POST", "/v1/admin/platform/bridge-secret", { rotate: false })).status).toBe(403);
+    const a = (await (await req(sa, "POST", "/v1/admin/platform/bridge-secret", { rotate: false })).json()) as { secret: string; version: number; env_name: string };
+    expect(a).toMatchObject({ version: 1, env_name: "APP_BRIDGE_SECRET" });
+    expect(a.secret).toBe(await deriveBridgeSecret(KEY, 1));
+    expect(a.secret).not.toBe(await deriveSecret(KEY, "learn", 1));
+    const again = (await (await req(sa, "POST", "/v1/admin/platform/bridge-secret", { rotate: false })).json()) as { secret: string };
+    expect(again.secret).toBe(a.secret);
+    const b = (await (await req(sa, "POST", "/v1/admin/platform/bridge-secret", { rotate: true })).json()) as { secret: string; version: number };
+    expect(b.version).toBe(2);
+    expect(b.secret).toBe(await deriveBridgeSecret(KEY, 2));
+    expect(JSON.stringify(db.raw.prepare("SELECT detail FROM audit_log").all())).not.toContain(b.secret);
+    env = { ...env, WEBHOOK_SIGNING_KEY: undefined } as Env;
+    expect((await req(sa, "POST", "/v1/admin/platform/bridge-secret", { rotate: false })).status).toBe(503);
   });
 
   it("deleting a member tells every App they used to delete its copy", async () => {
