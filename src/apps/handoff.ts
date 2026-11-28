@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-28.1";
-export const HANDOFF_UPDATED = "2026-11-28 12:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-28.2";
+export const HANDOFF_UPDATED = "2026-11-28 13:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -195,6 +195,9 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 用途：某個 App 的畫面要顯示另一個 App 的資料時（例如行動大學通知頁的「繳作業」分頁），由伺服器對伺服器即時讀取，不存副本；會員編號一律用呼叫端已驗證的登入會員。",
     "   - 金鑰：中央後台「App › 平台設定」頁每款 App 都顯示同一組「全體平台共用金鑰」（環境變數名稱 APP_BRIDGE_SECRET），按「重新產生（全體同步）」全體一起換；新接入的 App 顯示的也是同一組。杜杜龍把它貼進每款需要互通的 App 的 Worker Secret；你不要自己產生、不要放程式庫、不要貼進對話或日誌。",
     "   - 接收端：用常數時間比對 Authorization: Bearer 的密鑰，沒設或不對一律 401（fail closed）；只回該會員自己的資料，不接受前端直接呼叫。呼叫端：逾時 5 秒，失敗時畫面顯示「暫時讀不到」，不影響其他功能。",
+    "20. 高度危險動作要打字輸入 ok 才能確定（平台規範，杜杜龍 2026-11-28；對所有現在與未來的 App 一體適用，含網頁、手機 App、後台）：",
+    "   - 範圍：誤觸會造成大損失的動作——重新產生或撤銷金鑰、永久刪除資料或檔案、還原資料、整批刪除或重壓、刪除帳號、影響全體使用者的設定。一般的單筆刪除（刪一則留言、從清單移除）維持一般確認即可。",
+    "   - 做法：確認面板多一個輸入框，使用者手動輸入「ok」（不分大小寫、去前後空白）後「確定」鈕才能按，沒輸入前確定鈕是停用的；不可用瀏覽器內建對話框（confirm／alert）；面板要在手機上不被鍵盤遮住。新增高度危險功能時一定要套用。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報杜杜龍（移除機密需要杜杜龍核准，不要自己刪）。",
@@ -258,7 +261,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "44. 每週備份（2026-11-27.5，三、18 (4)）：App 在設定的星期、台北 03:00 把自己的永久資料匯出到自己的 R2 backups/<日期>/（NDJSON 分檔、README.txt 還原說明、最後寫 manifest.json），明確列出資料表與欄位，不含 Amway、Token、雜湊與暫存資料，只留最近 keep 份；config.eco_features.weekly_backup 沒有或 enabled 為 false 就不做。",
     "45. 巡檢手機推播（2026-11-27.8，三、18 (2)）：webhook 收到 eco.alert 時，替 detail 裡的網站發站內通知並推播給 member_id 這位會員（標題「網站打不開」或「網站已恢復」加網站名稱）；不認得的事件仍回 2xx。不是會收推播的 App（沒有推播功能）照舊忽略。",
     "46. App 之間的內部橋接（2026-11-28.1，三、19）：只有需要跟別的 App 互通的 App 要做；密鑰用中央「平台設定」頁顯示的全體平台共用金鑰，存成 Worker Secret APP_BRIDGE_SECRET；接收端常數時間比對 Bearer、沒設或不對 401、只回該會員自己的資料；呼叫端逾時 5 秒、失敗不影響其他功能；不存副本；金鑰不進程式庫與日誌。",
-    "47. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要杜杜龍處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "47. 高度危險動作（2026-11-28.2，三、20）：重新產生金鑰、永久刪除、還原資料、刪除帳號等高度危險動作，確認面板要有輸入框、手動輸入 ok 才能按確定；沒有用瀏覽器內建 confirm；一般單筆刪除不用。",
+    "48. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要杜杜龍處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }

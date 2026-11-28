@@ -197,3 +197,9 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 - 後台每款 App 的「平台設定」頁都有「③ 全體平台共用金鑰」區塊（綠、橘、橄欖三個區塊分別是 webhook 簽章金鑰、服務金鑰、共用金鑰），之後新接入的 App 自動顯示同一組；杜杜龍複製後貼進該 App Worker 的 Secret `APP_BRIDGE_SECRET`。
 - App 端規則見串接指令「三、19」與檢查清單第 46 項。
 - 三個金鑰區塊（webhook 簽章、服務金鑰、全體共用金鑰）都固定顯示「Cloudflare Secret 名稱」（`CENTRAL_WEBHOOK_SECRET`／`CENTRAL_SERVICE_SECRET`／`APP_BRIDGE_SECRET`，附複製名稱鈕）與 Cloudflare 的設定步驟，串接新 App 時照著做。
+
+## 6.20 高度危險動作要打字輸入 ok（2026-11-28.2，所有 App 一體適用）
+杜杜龍 2026-11-28 決定：全生態系統的網站、手機 App、後台，高度危險的動作（重新產生金鑰、永久刪除、還原資料、刪除帳號、影響全體的設定）不能只跳一般確認，必須讓使用者**手動輸入「ok」**後確定鈕才能按。
+- 中央後台與會員網頁：`HG.confirmDanger(message, onOk)`（`src/web/assets/common.ts`）；已套用到停權／刪除會員、三種金鑰的重新產生與撤銷、停用或刪除 App、收緊 App 權限、刪除帳號。
+- 行動大學與繳作業系統：共用確認面板的 `typeOk` 選項。
+- 串接指令「三、20」與檢查清單第 47 項；新 App 照做。

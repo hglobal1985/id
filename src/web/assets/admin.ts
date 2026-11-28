@@ -176,15 +176,17 @@ export const ADMIN_JS = String.raw`
       if (d.can_manage) {
         kids.push(el("div", { class: "actions" }, [
           el("button", { class: d.status === "active" ? "danger" : "primary", text: d.status === "active" ? "停權" : "解除停權", onclick: function () {
-            if (!confirm(d.status === "active" ? "確定要停權這位會員嗎？會立刻在所有裝置登出，且無法再登入。" : "確定要解除停權嗎？")) return;
+            HG.confirmDanger(d.status === "active" ? "確定要停權這位會員嗎？會立刻在所有裝置登出，且無法再登入。" : "確定要解除停權嗎？", function () {
             api("POST", "/v1/admin/members/" + id + "/status", { status: d.status === "active" ? "disabled" : "active" }).then(function (res) { if (res.status === 200) { pane.textContent = ""; detail(id); } else say(box2, false, errText(res)); });
+            });
           } }),
           el("button", { class: "danger", text: "刪除會員", onclick: function () {
-            if (!confirm("確定要刪除這位會員嗎？帳號會立即匿名化並關閉，無法復原。")) return;
+            HG.confirmDanger("確定要刪除這位會員嗎？帳號會立即匿名化並關閉，無法復原。", function () {
             api("POST", "/v1/admin/members/" + id + "/delete").then(function (res) {
               if (res.status === 200) { pane.textContent = ""; members(); return; }
               if (res.body && res.body.error && res.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return; }
               say(box2, false, errText(res));
+            });
             });
           } }), box2]));
       }
@@ -556,15 +558,15 @@ export const ADMIN_JS = String.raw`
         }
         var whPanel = keyPanel("kb-wh", "① 事件通知金鑰（webhook 簽章）", "CENTRAL_WEBHOOK_SECRET", "App 用它驗證中央送來的事件。顯示或重新產生後，複製貼進這款 App 的環境變數 CENTRAL_WEBHOOK_SECRET。", [
           el("button", { text: "顯示金鑰", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: false }).then(shown); } }),
-          el("button", { text: "重新產生金鑰", onclick: function () { if (confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: true }).then(shown); } })
+          el("button", { text: "重新產生金鑰", onclick: function () { HG.confirmDanger("重新產生後，舊的事件通知金鑰會立刻失效，這款 App 要換成新金鑰才收得到事件。", function () { api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: true }).then(shown); }); } })
         ]);
         var svPanel = keyPanel("kb-sv", "② 服務金鑰（App 查詢聯絡信箱用）", "CENTRAL_SERVICE_SECRET", p.service_credential ? "已建立。重新產生後舊金鑰立刻失效；複製貼進這款 App 的環境變數 CENTRAL_SERVICE_SECRET。" : "尚未建立。建立後複製貼進這款 App 的環境變數 CENTRAL_SERVICE_SECRET。", [
-          el("button", { text: p.service_credential ? "重新產生服務金鑰" : "建立服務金鑰", onclick: function () { if (!p.service_credential || confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/service-secret").then(shown); } }),
-          p.service_credential ? el("button", { class: "danger", text: "撤銷", onclick: function () { if (confirm("撤銷後這款 App 不能再查詢，確定嗎？")) api("DELETE", "/v1/admin/apps/" + id + "/service-secret").then(function (res) { if (res.status === 200) say(box, true, "已撤銷"); else if (!reauth(res)) say(box, false, errText(res)); }); } }) : null
+          el("button", { text: p.service_credential ? "重新產生服務金鑰" : "建立服務金鑰", onclick: function () { var go = function () { api("POST", "/v1/admin/apps/" + id + "/service-secret").then(shown); }; if (!p.service_credential) go(); else HG.confirmDanger("重新產生後，舊的服務金鑰會立刻失效，這款 App 要換成新金鑰才能查詢聯絡信箱。", go); } }),
+          p.service_credential ? el("button", { class: "danger", text: "撤銷", onclick: function () { HG.confirmDanger("撤銷後這款 App 不能再查詢聯絡信箱。", function () { api("DELETE", "/v1/admin/apps/" + id + "/service-secret").then(function (res) { if (res.status === 200) say(box, true, "已撤銷"); else if (!reauth(res)) say(box, false, errText(res)); }); }); } }) : null
         ]);
         var brPanel = keyPanel("kb-br", "③ 全體平台共用金鑰（App 之間互通用）", "APP_BRIDGE_SECRET", "所有 App 都是同一組，之後新接入的 App 這裡也會顯示同一組。用在 App 之間的內部橋接（例如行動大學通知頁讀繳作業的通知）。複製貼進每款需要互通的 App 的環境變數 APP_BRIDGE_SECRET。", [
           el("button", { text: "顯示金鑰", onclick: function () { api("POST", "/v1/admin/platform/bridge-secret", { rotate: false }).then(shown); } }),
-          el("button", { text: "重新產生（全體同步）", onclick: function () { if (confirm("所有 App 的共用金鑰都會換成新的，舊金鑰立刻失效；每款 App 都要重新貼上新金鑰才能互通。確定嗎？")) api("POST", "/v1/admin/platform/bridge-secret", { rotate: true }).then(shown); } })
+          el("button", { text: "重新產生（全體同步）", onclick: function () { HG.confirmDanger("所有 App 的共用金鑰都會換成新的，舊金鑰立刻失效；每款 App 都要重新貼上新金鑰才能互通。", function () { api("POST", "/v1/admin/platform/bridge-secret", { rotate: true }).then(shown); }); } })
         ]);
         function shown(res) { if (res.status === 200 && res.body.env_name === "APP_BRIDGE_SECRET") brPanel.show(res.body.secret); else if (res.status === 200 && res.body.secret) whPanel.show(res.body.secret); else if (res.status === 200 && res.body.client_secret) svPanel.show(res.body.client_secret); else if (!reauth(res)) say(box, false, errText(res)); }
         var chk = {};
@@ -587,9 +589,11 @@ export const ADMIN_JS = String.raw`
         function saveScopes() {
           var scopes = p.scope_options.map(function (o) { return o.key; }).filter(function (sc) { return chk[sc]; });
           var purposes = p.contact_purpose_options.map(function (o) { return o.key; }).filter(function (pp) { return chk["purpose:" + pp]; });
-          if (!p.scopes_restricted && !confirm("這會把「" + a.name + "」從「全部權限」改成只有勾選的權限，之後沒勾的功能會被拒絕。確定嗎？")) return;
+          var go = function () {
           var fieldsAllowed = p.member_data_options.map(function (o) { return o.key; }).filter(function (k) { return chk["data:" + k]; });
           api("PUT", "/v1/admin/apps/" + id, { name: a.name, scopes: scopes, contact_purposes: purposes, member_data_fields: fieldsAllowed }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存（30 秒內生效）"); } else if (!reauth(res)) say(box, false, errText(res)); });
+          };
+          if (!(!p.scopes_restricted)) go(); else HG.confirmDanger("這會把「" + a.name + "」從「全部權限」改成只有勾選的權限，之後沒勾的功能會被拒絕。確定嗎？", go);
         }
         var log = (p.webhook_log.events || []).map(function (e) { return el("div", { class: "help", text: e.created_at.slice(0, 16).replace("T", " ") + "｜" + e.type + "｜" + e.status + "（" + e.attempts + " 次" + (e.last_error ? "，" + e.last_error : "") + "）" }); });
         var rep = a.standards || [], ck = a.checks || {};
@@ -626,8 +630,10 @@ export const ADMIN_JS = String.raw`
     api("GET", "/v1/admin/apps").then(function (r) {
       var b = r.body, box = m();
       function setStatus(a, st) { return function () {
-        if (st === "killed" && !confirm("確定要停用「" + a.name + "」嗎？所有人都會無法登入這款 App。")) return;
+        var go = function () {
         api("PUT", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/status", { status: st }).then(function (res) { if (res.status === 200) reload(); else say(box, false, errText(res)); });
+        };
+        if (!(st === "killed")) go(); else HG.confirmDanger("確定要停用「" + a.name + "」嗎？所有人都會無法登入這款 App。", go);
       }; }
       var rows = b.apps.map(function (a) {
         var ver = a.integrated_version ? ("App 回報採用版本 " + a.integrated_version + (a.up_to_date ? "（已是最新）" : "（有新版 " + b.handoff_version + "，請把最新串接指令交給開發 AI）")) : "App 尚未回報採用的串接指令版本";
@@ -644,8 +650,9 @@ export const ADMIN_JS = String.raw`
             a.status !== "paused" ? el("button", { text: "一鍵暫停", onclick: setStatus(a, "paused") }) : null,
             a.status !== "killed" ? el("button", { class: "danger", text: "停用", onclick: setStatus(a, "killed") }) : null,
             b.can_manage && a.status === "killed" && !a.members ? el("button", { class: "danger", text: "刪除登記", onclick: function () {
-              if (!confirm("確定要刪除「" + a.name + "」（" + a.app_id + "）的登記嗎？刪除後無法復原。")) return;
+              HG.confirmDanger("確定要刪除「" + a.name + "」（" + a.app_id + "）的登記嗎？刪除後無法復原。", function () {
               api("DELETE", "/v1/admin/apps/" + encodeURIComponent(a.app_id)).then(function (res) { if (res.status === 200) reload(); else say(box, false, errText(res)); });
+              });
             } }) : null
           ])
         ]);
