@@ -196,3 +196,4 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 - 金鑰由中央統一產生：`POST /v1/admin/platform/bridge-secret {rotate}`（超級管理員、10 分鐘內登入過、需 `WEBHOOK_SIGNING_KEY`）。金鑰＝HMAC(WEBHOOK_SIGNING_KEY, `app-bridge:<版本>`)，**所有 App 都是同一組**；版本存在 `platform_secrets`，「重新產生（全體同步）」只是版本加一（舊金鑰立刻失效）。金鑰本身不存資料庫、不進稽核（稽核只記版本）。
 - 後台每款 App 的「平台設定」頁都有「③ 全體平台共用金鑰」區塊（綠、橘、橄欖三個區塊分別是 webhook 簽章金鑰、服務金鑰、共用金鑰），之後新接入的 App 自動顯示同一組；杜杜龍複製後貼進該 App Worker 的 Secret `APP_BRIDGE_SECRET`。
 - App 端規則見串接指令「三、19」與檢查清單第 46 項。
+- 三個金鑰區塊（webhook 簽章、服務金鑰、全體共用金鑰）都固定顯示「Cloudflare Secret 名稱」（`CENTRAL_WEBHOOK_SECRET`／`CENTRAL_SERVICE_SECRET`／`APP_BRIDGE_SECRET`，附複製名稱鈕）與 Cloudflare 的設定步驟，串接新 App 時照著做。
