@@ -34,6 +34,7 @@ hr.part{border:0;border-top:2px solid var(--line);margin:28px 0 20px}
 .launcher.on,.bell.on{background:var(--green);color:var(--on)}
 .bell .dot{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--orange);color:var(--on);font-size:11px;font-weight:700;line-height:18px;text-align:center}
 /* cards and text */
+.keybox{border:2px solid var(--line);border-left-width:8px;border-radius:12px;padding:12px;margin:0 0 14px;background:var(--card)}.keybox h4{margin:0 0 4px;font-size:1.05rem}.kb-wh{border-color:var(--green)}.kb-sv{border-color:var(--orange)}.keyval{width:100%;font:15px/1.5 ui-monospace,Menlo,Consolas,monospace;word-break:break-all;background:var(--green-soft);border:2px solid var(--green);border-radius:10px;padding:10px;margin:10px 0 6px;color:var(--fg)}.kb-sv .keyval{background:var(--orange-soft);border-color:var(--orange)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:0 0 14px;box-shadow:var(--shadow)}
 .card>h2.life-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:1.1rem}
 .card>h2.lt-0{font-size:1.1rem}.card>h2.lt-1{font-size:.95rem}.card>h2.lt-2{font-size:.82rem}.card>h2.lt-3{font-size:.7rem}.card>h2.lt-4{font-size:.6rem}
