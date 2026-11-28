@@ -55,4 +55,10 @@ export async function deriveSecret(masterKey: string, appId: string, version: nu
   return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, utf8(`webhook:${appId}:${version}`))));
 }
 
+/** 全體平台共用金鑰（App 之間的內部橋接，例如行動大學讀繳作業的通知）：HMAC(WEBHOOK_SIGNING_KEY, "app-bridge:<version>")，所有 App 相同。 */
+export async function deriveBridgeSecret(masterKey: string, version: number): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", utf8(masterKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, utf8(`app-bridge:${version}`))));
+}
+
 export const WEBHOOK_URL = /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?(\/[A-Za-z0-9._~\-/%]{0,200})?$/;

@@ -4,7 +4,7 @@ import type { Env } from "../env";
 import { uuidv7 } from "../lib/crypto";
 import { epochSeconds, taipeiIso } from "../lib/time";
 import { auditStatement } from "./audit";
-import { DELIVERY_TIMEOUT_MS, EVENT_RETENTION_SECONDS, MAX_ATTEMPTS, WEBHOOK_URL, bodyOf, deriveSecret, nextDelaySeconds, signature, type WebhookEventType } from "../webhooks/events";
+import { DELIVERY_TIMEOUT_MS, EVENT_RETENTION_SECONDS, MAX_ATTEMPTS, WEBHOOK_URL, bodyOf, deriveBridgeSecret, deriveSecret, nextDelaySeconds, signature, type WebhookEventType } from "../webhooks/events";
 
 /** https only, a real domain name (no IP address, no localhost). */
 export function isWebhookUrl(v: unknown): v is string {
@@ -237,4 +237,24 @@ export async function recentEvents(db: D1Database, appId: string, limit = 30): P
   ]);
   const n = new Map((counts.results ?? []).map((r) => [r.status, r.n]));
   return { events: rows.results ?? [], pending: n.get("pending") ?? 0, failed: n.get("failed") ?? 0 };
+}
+
+/** 全體平台共用金鑰目前的版本（沒有紀錄＝第 1 版）。 */
+export async function bridgeVersion(db: D1Database): Promise<number> {
+  const row = await db.prepare("SELECT version FROM platform_secrets WHERE name = 'app_bridge'").first<{ version: number }>();
+  return row?.version ?? 1;
+}
+
+/** 目前的共用金鑰（所有 App 相同）；rotate＝版本加一（舊金鑰立刻失效，所有 App 要一起換）。沒設 WEBHOOK_SIGNING_KEY 回 null。 */
+export async function bridgeSecret(db: D1Database, env: Env, rotate: boolean, by: string, requestId: string, now: Date): Promise<{ secret: string; version: number } | null> {
+  if (!env.WEBHOOK_SIGNING_KEY) return null;
+  let version = await bridgeVersion(db);
+  if (rotate) {
+    version += 1;
+    await db.batch([
+      db.prepare("INSERT INTO platform_secrets (name, version, updated_at, updated_by) VALUES ('app_bridge', ?, ?, ?) ON CONFLICT (name) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at, updated_by = excluded.updated_by").bind(version, taipeiIso(now), by),
+      auditStatement(db, { actorType: "staff", actorId: by, action: "platform.bridge_secret.rotate", targetType: "platform", targetId: "app_bridge", appId: null, result: "success", requestId, detail: { version } }, now),
+    ]);
+  }
+  return { secret: await deriveBridgeSecret(env.WEBHOOK_SIGNING_KEY, version), version };
 }

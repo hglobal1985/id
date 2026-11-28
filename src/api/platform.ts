@@ -13,7 +13,7 @@ import { epochSeconds } from "../lib/time";
 import { resolveIssuer } from "../oidc/config";
 import { getApp } from "../db/apps";
 import { LOOKUP_MAX, checkServiceToken, hasServiceCredential, issueServiceToken, lookupContacts, revokeServiceSecret, rotateServiceSecret } from "../db/service";
-import { currentWebhookSecret, deliverDue, getWebhook, isWebhookUrl, recentEvents, rotateWebhookSecret, setWebhook } from "../db/webhooks";
+import { bridgeSecret, currentWebhookSecret, deliverDue, getWebhook, isWebhookUrl, recentEvents, rotateWebhookSecret, setWebhook } from "../db/webhooks";
 import { uuidv7 } from "../lib/crypto";
 import { EVENT_RETENTION_SECONDS } from "../webhooks/events";
 import { taipeiIso } from "../lib/time";
@@ -105,6 +105,7 @@ const common = { 401: err("unauthenticated or reauth_required"), 403: err("forbi
 const platformRoute = createRoute({ method: "get", path: "/v1/admin/apps/{app_id}/platform", tags: ["admin"], summary: "One App's platform settings: webhook, delivery log, service credential, scopes, contact purposes, standards", security, request: { params: AppIdParam }, responses: { 200: { description: "Settings", content: json(Any) }, ...common, 404: err("app_not_found") } });
 const webhookPutRoute = createRoute({ method: "put", path: "/v1/admin/apps/{app_id}/webhook", tags: ["admin"], summary: "Set (or remove with url null) the App's webhook endpoint (https only; needs a sign-in within 10 minutes)", security, request: { params: AppIdParam, body: { required: true, content: json(z.object({ url: z.string().max(300).nullable(), enabled: z.boolean().optional() })) } }, responses: { 200: { description: "Saved", content: json(Any) }, ...common, 404: err("app_not_found"), 422: err("invalid_field") } });
 const webhookSecretRoute = createRoute({ method: "post", path: "/v1/admin/apps/{app_id}/webhook/secret", tags: ["admin"], summary: "Show the webhook signing secret once (rotate true = new secret; the old one stops working). Needs a sign-in within 10 minutes and WEBHOOK_SIGNING_KEY.", security, request: { params: AppIdParam, body: { required: true, content: json(z.object({ rotate: z.boolean() })) } }, responses: { 200: { description: "Secret", content: json(Any) }, ...common, 404: err("app_not_found"), 503: err("not_configured") } });
+const bridgeSecretRoute = createRoute({ method: "post", path: "/v1/admin/platform/bridge-secret", tags: ["admin"], summary: "Show the platform-wide shared key for App-to-App bridges (same for every App, shown once; rotate true = new key for all Apps). Needs a sign-in within 10 minutes and WEBHOOK_SIGNING_KEY.", security, request: { body: { required: true, content: json(z.object({ rotate: z.boolean() })) } }, responses: { 200: { description: "Key", content: json(Any) }, ...common, 503: err("not_configured") } });
 const webhookTestRoute = createRoute({ method: "post", path: "/v1/admin/apps/{app_id}/webhook/test", tags: ["admin"], summary: "Send a webhook.test event to the App now and report the result", security, request: { params: AppIdParam }, responses: { 200: { description: "Result", content: json(Any) }, ...common, 404: err("app_not_found"), 409: err("no_webhook"), 503: err("not_configured") } });
 const serviceSecretRoute = createRoute({ method: "post", path: "/v1/admin/apps/{app_id}/service-secret", tags: ["admin"], summary: "Create or replace the App's service secret (shown once; needs a sign-in within 10 minutes)", security, request: { params: AppIdParam }, responses: { 200: { description: "Secret", content: json(Any) }, ...common, 404: err("app_not_found") } });
 const serviceRevokeRoute = createRoute({ method: "delete", path: "/v1/admin/apps/{app_id}/service-secret", tags: ["admin"], summary: "Revoke the App's service secret", security, request: { params: AppIdParam }, responses: { 200: { description: "Revoked", content: json(Any) }, ...common, 404: err("app_not_found") } });
@@ -242,6 +243,17 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
       : await currentWebhookSecret(c.env.DB, c.env, a.app_id);
     c.header("cache-control", "no-store");
     return c.json({ secret, note: "只顯示這一次，請由杜杜龍放進這款 App 的伺服器環境變數；不要貼到對話、Issue 或 PR。" }, 200);
+  });
+
+  app.openapi(bridgeSecretRoute, async (c) => {
+    const d = deny(c, "apps.manage");
+    if (d) return d as never;
+    const r = reauth(c, deps);
+    if (r) return r as never;
+    const k = await bridgeSecret(c.env.DB, c.env, c.req.valid("json").rotate, c.get("staff").memberId, c.get("requestId"), deps.now());
+    if (!k) return c.json(errorBody("not_configured", "尚未設定 WEBHOOK_SIGNING_KEY（Workers Secret）", c.get("requestId")), 503) as never;
+    c.header("cache-control", "no-store");
+    return c.json({ secret: k.secret, version: k.version, env_name: "APP_BRIDGE_SECRET", note: "全體平台共用，所有 App 都是同一組；請由杜杜龍放進每款 App 的伺服器環境變數 APP_BRIDGE_SECRET；不要貼到對話、Issue 或 PR。" }, 200);
   });
 
   app.openapi(webhookTestRoute, async (c) => {

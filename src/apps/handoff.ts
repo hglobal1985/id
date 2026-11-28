@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-27.8";
-export const HANDOFF_UPDATED = "2026-11-28 20:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-28.1";
+export const HANDOFF_UPDATED = "2026-11-28 12:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -191,6 +191,10 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     `   - 讀設定：GET ${origin}/v1/apps/${id}/config 的 config.eco_features（啟動與回到前景時本來就會讀，不用另外呼叫）。格式：{ dependency_alerts:{enabled}, uptime_watch:{enabled}, error_digest:{enabled}, weekly_backup:{enabled, weekday, keep} }。enabled 為 false（杜杜龍整體關閉，或對這款 App 選了不參與）就不要做那一項；沒有這個欄位（中央舊版）一律視為 false。通知對象、網址清單等只存在中央，App 看不到也不需要。`,
     `   - 四項功能與 App 要做的事：(1) dependency_alerts 套件安全漏洞提醒：程式庫要有 .github/dependabot.yml（每週檢查所有套件目錄與 GitHub Actions，自動開修正 PR）；修正 PR 通過檢查才合併，不可關掉檢查。(2) uptime_watch 網站自動巡檢：網站要有公開、不含機密的健康網址，回 200 與版本資訊（例如 /version 或 /api/v2/version 回報 sha），並把網址告訴杜杜龍登記到後台；中央依設定的頻率巡檢，掛了推播與 Email 通知杜杜龍。手機推播（2026-11-27.8 起）：巡檢掛了或恢復時，中央對有設定 webhook 的 App 送事件 eco.alert（見三、11 的 webhook），每位超級管理員一則：{"type":"eco.alert","member_id":<超級管理員>,"detail":{"name":網站名稱,"alert":"down"|"recovered","note":簡短備註}}（沒有個資）。App 收到後（照 webhook 一般規則驗簽、去重）替 member_id 這位會員發一則站內通知，並推到他在這款 App 已開啟推播的裝置；標題寫「網站打不開」或「網站已恢復」加網站名稱，點開導到通知頁；不要自己轉寄、不要把事件內容寫進日誌以外的地方。不需要推播的 App 照舊回 2xx 忽略即可。(3) error_digest 錯誤回報週報（2026-11-27.4 起已啟用）：前台錯誤除了寫日誌，還要送統計到中央：POST ${origin}/v1/apps/${id}/error-reports（不用登入、不帶 Token），body {"reports":[{"kind","page","app_version","count"}]}，一次最多 20 筆、count 1～1000（可省略＝1）。kind 只能是 crash（程式當機）、render（畫面顯示錯誤）、network（網路連線錯誤）、api（伺服器回應錯誤）、auth（登入錯誤）、other；page 只送路徑（例如 /courses/123，查詢字串與像識別碼的片段中央會自動去掉）；app_version 像 1.4.0。**絕對不要送**錯誤訊息、堆疊、網址參數、Token、姓名、信箱、Amway 欄位。App 端先在本機累加（同種類＋頁面＋版本合併成一筆），啟動、回到前景或累積到一定數量時批次送，不要每次錯誤都立刻送；回 200 {accepted} 即可清掉已送的；config.eco_features.error_digest.enabled 為 false 時不必送（送了中央也不收，accepted 為 0）；回 429 依 Retry-After 稍後重送，回 422 是內容不合不要重送，404／網路失敗就丟掉這批（統計不是重要資料）。中央每週（預設星期一台北 09:00，杜杜龍可在後台改星期或關閉）彙整最近 7 天，用站內通知＋Email 通知杜杜龍；App 不需要自己做週報。(4) weekly_backup 重要資料每週備份（2026-11-27.5 起，中央自己的資料已由中央備份，App 備份自己的）：App 在 config.eco_features.weekly_backup.weekday（0＝星期日…6＝星期六，台北時間）的凌晨 3 點由排程匯出自己的永久資料，同一天只做一次；內容只限依法或業務必須永久保存的資料，明確列出資料表與欄位（新資料表預設不備份），不含 Amway 資料、Token 與密碼雜湊、登入與暫存資料、圖檔本體。存進自己的 R2（不放進公開程式庫、不貼進對話或 Issue），路徑 backups/<台北日期>/：每張表 <表名>.<序號>.ndjson（每行一列 JSON，每檔最多 5000 列）、README.txt（還原說明：先在測試環境還原驗證，正式資料的還原須杜杜龍核准）、manifest.json（列出所有檔案與列數，最後才寫入；沒有它代表不完整）。寫完只留最近 weekly_backup.keep 份（依日期），其餘刪除；失敗要寫入日誌並讓杜杜龍知道（站內通知給超級管理員），config 沒有 weekly_backup 或 enabled 為 false 就不備份。`,
     "   - 規則：每一項都是平台規範，不是某個 App 的特例；App 不可自己另做一套通知（不自己寄信、不自己推播給杜杜龍）。新增 App 時照這份做完，後台「系統功能」頁才會顯示它參與。功能的實際執行（巡檢、週報、備份、截圖）由中央與共用工具負責，App 只負責上面列的配合事項；尚未開放執行的功能，enabled 仍會回報，App 先把配合事項做好即可。",
+    "19. App 之間的內部橋接與全體平台共用金鑰（平台功能，杜杜龍 2026-11-28；對所有現在與未來的 App 一體適用）：",
+    "   - 用途：某個 App 的畫面要顯示另一個 App 的資料時（例如行動大學通知頁的「繳作業」分頁），由伺服器對伺服器即時讀取，不存副本；會員編號一律用呼叫端已驗證的登入會員。",
+    "   - 金鑰：中央後台「App › 平台設定」頁每款 App 都顯示同一組「全體平台共用金鑰」（環境變數名稱 APP_BRIDGE_SECRET），按「重新產生（全體同步）」全體一起換；新接入的 App 顯示的也是同一組。杜杜龍把它貼進每款需要互通的 App 的 Worker Secret；你不要自己產生、不要放程式庫、不要貼進對話或日誌。",
+    "   - 接收端：用常數時間比對 Authorization: Bearer 的密鑰，沒設或不對一律 401（fail closed）；只回該會員自己的資料，不接受前端直接呼叫。呼叫端：逾時 5 秒，失敗時畫面顯示「暫時讀不到」，不影響其他功能。",
     "",
     "## 四、規則",
     "- 不要自行改用原生 Google 登入或舊的 OIDC（/oauth/authorize）流程；這款 App 不需要也不應持有 client secret。如果現有程式或 Worker 設定裡還有 HGLOBAL_ID_CLIENT_SECRET 之類的機密，改用本指令的登入方式後就不再讀取它，並回報杜杜龍（移除機密需要杜杜龍核准，不要自己刪）。",
@@ -253,7 +257,8 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "43. 錯誤回報統計（2026-11-27.4，三、18 (3)）：前台錯誤在本機累加後批次 POST /v1/apps/<app_id>/error-reports（不帶 Token；kind 只用六種、page 只送路徑、app_version 像 1.4.0）；不送錯誤訊息、堆疊、網址參數與任何個資；config.eco_features.error_digest.enabled 為 false 時不送；429 稍後重送、422 不重送、失敗就丟掉；不自己另做週報。",
     "44. 每週備份（2026-11-27.5，三、18 (4)）：App 在設定的星期、台北 03:00 把自己的永久資料匯出到自己的 R2 backups/<日期>/（NDJSON 分檔、README.txt 還原說明、最後寫 manifest.json），明確列出資料表與欄位，不含 Amway、Token、雜湊與暫存資料，只留最近 keep 份；config.eco_features.weekly_backup 沒有或 enabled 為 false 就不做。",
     "45. 巡檢手機推播（2026-11-27.8，三、18 (2)）：webhook 收到 eco.alert 時，替 detail 裡的網站發站內通知並推播給 member_id 這位會員（標題「網站打不開」或「網站已恢復」加網站名稱）；不認得的事件仍回 2xx。不是會收推播的 App（沒有推播功能）照舊忽略。",
-    "46. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要杜杜龍處理的事項。更新一律只補差異，不要重做已正常的部分。",
+    "46. App 之間的內部橋接（2026-11-28.1，三、19）：只有需要跟別的 App 互通的 App 要做；密鑰用中央「平台設定」頁顯示的全體平台共用金鑰，存成 Worker Secret APP_BRIDGE_SECRET；接收端常數時間比對 Bearer、沒設或不對 401、只回該會員自己的資料；呼叫端逾時 5 秒、失敗不影響其他功能；不存副本；金鑰不進程式庫與日誌。",
+    "47. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要杜杜龍處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
 }
