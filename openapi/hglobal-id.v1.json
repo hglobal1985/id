@@ -7795,7 +7795,7 @@
                   "reauth_token": {
                     "type": "string",
                     "maxLength": 4096,
-                    "description": "Required from an App; ignored on the member site."
+                    "description": "Deprecated and ignored since 2026-11-28 (no second sign-in any more; the App asks the member to type ok instead)."
                   }
                 }
               }
@@ -7825,7 +7825,7 @@
             }
           },
           "401": {
-            "description": "unauthenticated or reauth_required (App: sign the member in again, then POST /v1/auth/reauth)",
+            "description": "unauthenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -10585,7 +10585,7 @@
         "tags": [
           "admin"
         ],
-        "summary": "Start adding a passkey (needs a Google sign-in or passkey confirmation within the last 10 minutes)",
+        "summary": "Start adding a passkey (the first one needs only a valid session; further ones need a passkey confirmation within the last 10 minutes)",
         "security": [
           {
             "session": []

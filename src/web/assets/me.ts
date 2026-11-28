@@ -918,7 +918,7 @@ export const ME_JS = String.raw`
           else HG.toast("請手動複製");
         } })])
       ]),
-      el("p", { class: "help", text: "按下後立即生效：您的資料會被移除、所有裝置登出，無法復原。為避免他人冒用，需要先重新登入確認。" }),
+      el("p", { class: "help", text: "按下後要輸入 ok 確認，確認後立即生效：您的資料會被移除、所有裝置登出，無法復原。" }),
       el("div", { class: "actions" }, [el("button", { type: "button", class: "danger", text: "刪除帳號", onclick: function () {
         HG.confirmDanger("確定要立即刪除帳號嗎？刪除後無法復原。", function () {
         api("POST", "/v1/me/delete-account").then(function (r) {
