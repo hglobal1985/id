@@ -80,6 +80,26 @@ export const COMMON_JS = String.raw`
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastBox.hidden = true; }, 1800);
   };
 
+  // 高度危險動作的確認（杜杜龍 2026-11-28，全生態系統規定）：跳出確認視窗，要手動輸入「ok」（不分大小寫）後「確定」鈕才能按。
+  HG.confirmDanger = function (message, onOk, okLabel) {
+    var back = el("div", { class: "dlg-back" }), input = el("input", { type: "text", placeholder: "ok", autocomplete: "off", autocapitalize: "none", "aria-label": "輸入 ok 確認" });
+    var ok = el("button", { type: "button", class: "danger", text: okLabel || "確定", disabled: true });
+    function close() { if (back.parentNode) back.parentNode.removeChild(back); document.removeEventListener("keydown", onKey); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    input.addEventListener("input", function () { ok.disabled = input.value.trim().toLowerCase() !== "ok"; });
+    input.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
+    ok.addEventListener("click", function () { if (input.value.trim().toLowerCase() !== "ok") return; close(); onOk(); });
+    back.addEventListener("click", function (e) { if (e.target === back) close(); });
+    document.addEventListener("keydown", onKey);
+    back.appendChild(el("div", { class: "dlg", role: "dialog", "aria-modal": "true" }, [
+      el("p", { class: "dlg-msg", text: message }),
+      el("p", { class: "help", text: "這個動作很危險，請輸入 ok 才能按「確定」。" }),
+      input,
+      el("div", { class: "inline" }, [el("button", { type: "button", text: "取消", onclick: close }), ok])
+    ]));
+    document.body.appendChild(back); input.focus();
+  };
+
   HG.initials = function (name) {
     var t = (name || "").trim(); if (!t) return "H";
     var parts = t.split(/\s+/).filter(Boolean), ch = function (x) { return Array.from(x); };
