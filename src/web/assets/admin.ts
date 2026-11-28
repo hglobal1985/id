@@ -544,8 +544,24 @@ export const ADMIN_JS = String.raw`
         if (r.status !== 200) return;
         var p = r.body, box = m(), id = encodeURIComponent(a.app_id);
         var url = el("input", { type: "text", placeholder: "https://…（只能是 https 網域）", value: p.webhook ? p.webhook.url : null });
-        var secretBox = el("div", { class: "help" });
-        function shown(res) { if (res.status === 200 && res.body.secret) { secretBox.textContent = "金鑰（只顯示這一次，由杜杜龍放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.secret; } else if (res.status === 200 && res.body.client_secret) { secretBox.textContent = "服務金鑰（只顯示這一次，由杜杜龍放進 App 的伺服器環境變數，不要貼到對話）：" + res.body.client_secret; } else if (!reauth(res)) say(box, false, errText(res)); }
+        // 兩把金鑰各有自己的區塊（顏色、標題、環境變數名稱不同），產生後在該區塊內顯示並提供複製鈕（杜杜龍 2026-11-28）。
+        function keyPanel(cls, title, env, hint, buttons) {
+          var val = el("textarea", { class: "keyval", readonly: true, rows: "3", hidden: true }), cbox2 = m(), copy = el("button", { class: "primary", text: "複製金鑰", hidden: true, onclick: function () {
+            val.select();
+            if (navigator.clipboard) navigator.clipboard.writeText(val.value).then(function () { say(cbox2, true, "已複製，請到 Cloudflare 後台貼進 " + env); }, function () { say(cbox2, false, "請手動全選複製"); });
+            else say(cbox2, false, "請手動全選複製");
+          } }), warn = el("p", { class: "help", text: "金鑰只在這裡顯示，由杜杜龍貼進 App 的 Cloudflare 環境變數 " + env + "，不要貼到對話。", hidden: true });
+          return { node: el("div", { class: "keybox " + cls }, [el("h4", { text: title }), el("p", { class: "help", text: hint }), el("div", { class: "inline" }, buttons), val, warn, el("div", { class: "inline" }, [copy, cbox2])]), show: function (v) { val.hidden = false; val.value = v; copy.hidden = false; warn.hidden = false; val.select(); } };
+        }
+        var whPanel = keyPanel("kb-wh", "① 事件通知金鑰（webhook 簽章）", "CENTRAL_WEBHOOK_SECRET", "App 用它驗證中央送來的事件。顯示或重新產生後，複製貼進這款 App 的環境變數 CENTRAL_WEBHOOK_SECRET。", [
+          el("button", { text: "顯示金鑰", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: false }).then(shown); } }),
+          el("button", { text: "重新產生金鑰", onclick: function () { if (confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: true }).then(shown); } })
+        ]);
+        var svPanel = keyPanel("kb-sv", "② 服務金鑰（App 查詢聯絡信箱用）", "CENTRAL_SERVICE_SECRET", p.service_credential ? "已建立。重新產生後舊金鑰立刻失效；複製貼進這款 App 的環境變數 CENTRAL_SERVICE_SECRET。" : "尚未建立。建立後複製貼進這款 App 的環境變數 CENTRAL_SERVICE_SECRET。", [
+          el("button", { text: p.service_credential ? "重新產生服務金鑰" : "建立服務金鑰", onclick: function () { if (!p.service_credential || confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/service-secret").then(shown); } }),
+          p.service_credential ? el("button", { class: "danger", text: "撤銷", onclick: function () { if (confirm("撤銷後這款 App 不能再查詢，確定嗎？")) api("DELETE", "/v1/admin/apps/" + id + "/service-secret").then(function (res) { if (res.status === 200) say(box, true, "已撤銷"); else if (!reauth(res)) say(box, false, errText(res)); }); } }) : null
+        ]);
+        function shown(res) { if (res.status === 200 && res.body.secret) whPanel.show(res.body.secret); else if (res.status === 200 && res.body.client_secret) svPanel.show(res.body.client_secret); else if (!reauth(res)) say(box, false, errText(res)); }
         var chk = {};
         var scopeRows = p.scope_options.map(function (o) {
           var on = p.scopes.indexOf(o.key) >= 0, c = cbox(o.label + "（" + o.key + "）", on, function (v) { chk[o.key] = v; });
@@ -586,18 +602,10 @@ export const ADMIN_JS = String.raw`
           field("網址", url, "會員資料變動或刪除時通知這個網址；空白＝移除。"),
           el("div", { class: "inline" }, [
             el("button", { class: "btn-save", text: "儲存網址", onclick: function () { api("PUT", "/v1/admin/apps/" + id + "/webhook", { url: url.value.trim() || null }).then(function (res) { if (res.status === 200) { say(box, true, "已儲存"); } else if (!reauth(res)) say(box, false, errText(res)); }); } }),
-            el("button", { text: "顯示金鑰", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: false }).then(shown); } }),
-            el("button", { text: "重新產生金鑰", onclick: function () { if (confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/webhook/secret", { rotate: true }).then(shown); } }),
             el("button", { text: "送一則測試", onclick: function () { api("POST", "/v1/admin/apps/" + id + "/webhook/test").then(function (res) { if (res.status === 200) say(box, res.body.status === "delivered", res.body.status === "delivered" ? "對方已收到（HTTP " + res.body.last_http_status + "）" : "沒有成功：" + (res.body.last_error || res.body.status)); else say(box, false, errText(res)); }); } })
           ]),
-          secretBox,
           el("p", { class: "help", text: "待送 " + p.webhook_log.pending + " 則，失敗 " + p.webhook_log.failed + " 則。最近事件：" }), el("div", {}, log.length ? log : [el("div", { class: "help", text: "（沒有）" })]),
-          el("h3", { text: "服務金鑰（App 查詢聯絡信箱用）" }),
-          el("p", { class: "help", text: p.service_credential ? "已建立。" : "尚未建立。" }),
-          el("div", { class: "inline" }, [
-            el("button", { text: p.service_credential ? "重新產生服務金鑰" : "建立服務金鑰", onclick: function () { if (!p.service_credential || confirm("舊金鑰會立刻失效，確定嗎？")) api("POST", "/v1/admin/apps/" + id + "/service-secret").then(shown); } }),
-            p.service_credential ? el("button", { class: "danger", text: "撤銷", onclick: function () { if (confirm("撤銷後這款 App 不能再查詢，確定嗎？")) api("DELETE", "/v1/admin/apps/" + id + "/service-secret").then(function (res) { if (res.status === 200) say(box, true, "已撤銷"); else if (!reauth(res)) say(box, false, errText(res)); }); } }) : null
-          ]),
+          el("h3", { text: "金鑰（兩把不同，請分開複製）" }), whPanel.node, svPanel.node,
           el("h3", { text: "權限範圍與聯絡信箱用途" }),
           el("p", { class: "help", text: p.scopes_restricted ? "這款 App 目前只有勾選的權限；沒勾的功能會被拒絕。" : "目前是舊制：這款 App 擁有全部權限（尚未收緊）。勾選後按儲存，才會改成只有勾選的權限；沒勾的功能之後會被拒絕。" }),
           el("div", {}, scopeRows),
