@@ -242,7 +242,7 @@ describe("public profile /<member number>", () => {
 });
 
 describe("account deletion (immediate)", () => {
-  it("only on the member site, after a recent sign-in; the old request mechanism and 刪除 Amway 資料 are gone", async () => {
+  it("only on the member site (no second sign-in since 2026-11-28); the old request mechanism and 刪除 Amway 資料 are gone", async () => {
     const a = await person("a", "甲");
     const t = await issueTokens(env, defaultDeps, ISSUER, { clientId: "elearning", memberId: a.id, sessionId: db.raw.prepare("SELECT id FROM login_sessions").get()?.id as string, scope: "openid profile.read", authTime: 0 });
     const viaApp = await app.request("/v1/me/delete-account", { method: "POST", headers: { authorization: `Bearer ${t.access_token}` } }, env);
@@ -251,11 +251,10 @@ describe("account deletion (immediate)", () => {
     for (const [who, method, path] of [[a, "POST", "/v1/me/deletion-requests"], [a, "GET", "/v1/me/deletion-requests"], [sec, "GET", "/v1/admin/deletion-requests"], [sec, "GET", "/v1/admin/amway/options"], [sec, "PUT", "/v1/admin/amway/options"]] as const) {
       expect((await req(who, method, path, method !== "GET" ? { scope: "amway" } : undefined)).status, path).toBe(404);
     }
+    // 2026-11-28 起沒有二次登入：就算登入已超過 10 分鐘也可以刪除（確認改在畫面上輸入 ok）
     now = new Date(now.getTime() + 11 * 60 * 1000);
     const res = await req(a, "POST", "/v1/me/delete-account");
-    expect(res.status).toBe(401);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("reauth_required");
-    expect(db.raw.prepare("SELECT status FROM members WHERE id = ?").get(a.id)?.status).toBe("active");
+    expect(res.status).toBe(200);
   });
 
   it("takes effect at once: anonymized, Amway data removed, signed out everywhere, Google account released", async () => {

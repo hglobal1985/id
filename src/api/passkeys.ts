@@ -1,5 +1,5 @@
 // 後台 Passkey（杜杜龍 2026-11-28）：管理員的危險操作（金鑰、App 登記、權限）不再要求「重新登入 Google」，
-// 改用 passkey（指紋／臉部／手機解鎖）確認，10 分鐘內有效。第一次先建立 passkey（建立時要 10 分鐘內剛登入過 Google）。
+// 改用 passkey（指紋／臉部／手機解鎖）確認，10 分鐘內有效。第一次先建立 passkey（建立時要 任何有效的登入階段就能建立第一把）。
 // 沒有 passkey 的管理員做危險操作 → 401 passkey_setup_required；有 passkey 但太久沒確認 → 401 passkey_required。
 import { createRoute, z, type OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
@@ -23,7 +23,7 @@ const common = { 401: err("unauthenticated or reauth_required"), 403: err("forbi
 const B64 = z.string().min(1).max(4096);
 
 const listRoute = createRoute({ method: "get", path: "/v1/admin/passkeys", tags: ["admin"], summary: "The signed-in staff member's passkeys, and whether a recent confirmation is still valid", security, responses: { 200: { description: "Passkeys", content: json(Any) }, ...common } });
-const regOptionsRoute = createRoute({ method: "post", path: "/v1/admin/passkeys/register/options", tags: ["admin"], summary: "Start adding a passkey (needs a Google sign-in or passkey confirmation within the last 10 minutes)", security, responses: { 200: { description: "WebAuthn creation options", content: json(Any) }, ...common } });
+const regOptionsRoute = createRoute({ method: "post", path: "/v1/admin/passkeys/register/options", tags: ["admin"], summary: "Start adding a passkey (the first one needs only a valid session; further ones need a passkey confirmation within the last 10 minutes)", security, responses: { 200: { description: "WebAuthn creation options", content: json(Any) }, ...common } });
 const regVerifyRoute = createRoute({ method: "post", path: "/v1/admin/passkeys/register/verify", tags: ["admin"], summary: "Finish adding a passkey", security, request: { body: { required: true, content: json(z.object({ credential_id: B64, client_data_json: B64, authenticator_data: B64, public_key: B64, alg: z.number().int(), name: z.string().max(40).optional() })) } }, responses: { 200: { description: "Added", content: json(Any) }, ...common, 400: err("invalid_passkey"), 409: err("passkey_exists") } });
 const authOptionsRoute = createRoute({ method: "post", path: "/v1/admin/passkeys/auth/options", tags: ["admin"], summary: "Start a passkey confirmation (for dangerous operations)", security, responses: { 200: { description: "WebAuthn request options", content: json(Any) }, ...common, 409: err("no_passkey") } });
 const authVerifyRoute = createRoute({ method: "post", path: "/v1/admin/passkeys/auth/verify", tags: ["admin"], summary: "Finish a passkey confirmation: the session counts as freshly confirmed for 10 minutes", security, request: { body: { required: true, content: json(z.object({ credential_id: B64, client_data_json: B64, authenticator_data: B64, signature: B64 })) } }, responses: { 200: { description: "Confirmed", content: json(Any) }, ...common, 400: err("invalid_passkey") } });
@@ -34,7 +34,6 @@ const fresh = (c: C, deps: Deps) => {
   const st = c.get("staff");
   return epochSeconds(deps.now()) - Math.max(st.authTime, st.stepupEpoch) <= REAUTH_MAX_AGE;
 };
-const needLogin = (c: C) => c.json(errorBody("reauth_required", "請重新登入後再建立 passkey", c.get("requestId"), { login_url: "/login?return_to=%2Fadmin" }), 401);
 
 export function registerPasskeyRoutes(app: OpenAPIHono<AppBindings>, deps: Deps) {
   const rp = (c: C) => { const origin = resolveIssuer(c.env, c.req.url); return { origin, id: new URL(origin).hostname }; };
@@ -45,10 +44,13 @@ export function registerPasskeyRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
     return c.json({ passkeys: rows.map((p) => ({ id: p.id, name: p.name, created_at: p.created_at, last_used_at: p.last_used_at })), confirmed: fresh(c, deps), max: MAX_PASSKEYS }, 200);
   });
 
+  /** 第一把 passkey 任何有效的登入階段都能建立（不再要求重新登入 Google，杜杜龍 2026-11-28）；已經有 passkey 時，再加新的要先用 passkey 確認過（10 分鐘內）。 */
+  const mayRegister = async (c: C, existingCount: number) => existingCount === 0 || fresh(c, deps);
+
   app.openapi(regOptionsRoute, async (c) => {
-    if (!fresh(c, deps)) return needLogin(c) as never;
     const st = c.get("staff");
     const existing = await listPasskeys(c.env.DB, st.memberId);
+    if (!(await mayRegister(c, existing.length))) return c.json(errorBody("passkey_required", "請先用現有的 passkey 確認，才能再加新的", c.get("requestId")), 401) as never;
     if (existing.length >= MAX_PASSKEYS) return c.json(errorBody("invalid_passkey", `最多只能建立 ${MAX_PASSKEYS} 個 passkey`, c.get("requestId")), 400) as never;
     const challenge = randomChallenge();
     await newChallenge(c.env.DB, st.memberId, "register", challenge, deps.now());
@@ -56,8 +58,8 @@ export function registerPasskeyRoutes(app: OpenAPIHono<AppBindings>, deps: Deps)
   });
 
   app.openapi(regVerifyRoute, async (c) => {
-    if (!fresh(c, deps)) return needLogin(c) as never;
     const st = c.get("staff");
+    if (!(await mayRegister(c, (await listPasskeys(c.env.DB, st.memberId)).length))) return c.json(errorBody("passkey_required", "請先用現有的 passkey 確認，才能再加新的", c.get("requestId")), 401) as never;
     const b = c.req.valid("json");
     const cdj = decode(b.client_data_json), ad = decode(b.authenticator_data), spki = decode(b.public_key), credId = decode(b.credential_id);
     if (!cdj || !ad || !spki || !credId || !(SUPPORTED_ALGS as readonly number[]).includes(b.alg)) return bad(c, "資料格式不正確") as never;

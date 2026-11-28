@@ -6,11 +6,7 @@ import type { AppBindings } from "../env";
 import type { Deps } from "../deps";
 import { ErrorBodySchema, errorBody } from "../errors";
 import { CENTRAL_CLIENT } from "./auth";
-import { checkReauthToken } from "../auth/reauth";
-import { resolveIssuer } from "../oidc/config";
 import { deleteAccount } from "../db/deletion";
-import { REAUTH_MAX_AGE } from "../admin/roles";
-import { epochSeconds } from "../lib/time";
 import { avatarKey, dropFiles } from "../lib/files";
 import { SESSION_COOKIE, clearCookie } from "../auth/cookies";
 
@@ -23,10 +19,10 @@ const deleteRoute = createRoute({
   tags: ["deletion"],
   summary: "Delete my account at once. The member site needs a sign-in within 10 minutes; an App sends the member's own access token plus `reauth_token` (from POST /v1/auth/reauth, valid 10 minutes). The account is anonymized, every device is signed out, the Google account is released, and every connected App gets member.deleted.",
   security: [{ session: [] }, { bearer: [] }],
-  request: { body: { required: false, content: json(z.object({ reauth_token: z.string().max(4096).optional().openapi({ description: "Required from an App; ignored on the member site." }) })) } },
+  request: { body: { required: false, content: json(z.object({ reauth_token: z.string().max(4096).optional().openapi({ description: "Deprecated and ignored since 2026-11-28 (no second sign-in any more; the App asks the member to type ok instead)." }) })) } },
   responses: {
     200: { description: "Deleted", content: json(z.object({ deleted: z.literal(true) })) },
-    401: err("unauthenticated or reauth_required (App: sign the member in again, then POST /v1/auth/reauth)"),
+    401: err("unauthenticated"),
     403: err("forbidden (a paused or unregistered App, or an OIDC client)"),
     409: err("last_super_admin (hand the role over first)"),
   },
@@ -37,18 +33,11 @@ export function registerDeletionRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
     const auth = c.get("auth");
     const now = deps.now();
     let appId: string | null = null;
+    // 杜杜龍 2026-11-28：全生態系統永久取消「二次登入」；確認改在畫面上手動輸入 ok。會員自己的登入（會員網站的 session 或 App 的 Access Token，
+    // 每個請求都已驗證會員與 App 是登記且啟用的）就夠了；舊版 App 還會帶的 reauth_token 不再檢查。
     if (auth.clientId === CENTRAL_CLIENT) {
-      if (epochSeconds(now) - auth.authTime > REAUTH_MAX_AGE) {
-        return c.json(errorBody("reauth_required", "為了確認是您本人，請重新登入後再刪除帳號", c.get("requestId"), { login_url: "/login?return_to=%2Fmy%2Fedit" }), 401);
-      }
+      // 會員網站自己的登入階段
     } else if (auth.appId) {
-      // From an App: the access token already proved the member and that the App is registered and active (checked on every request);
-      // the reauth token proves a Google sign-in within the last 10 minutes, for this very App session.
-      const body = (await c.req.json().catch(() => null)) as { reauth_token?: unknown } | null;
-      const token = typeof body?.reauth_token === "string" ? body.reauth_token : "";
-      if (!token || !(await checkReauthToken(c.env, resolveIssuer(c.env, c.req.url), token, { memberId: auth.memberId, appId: auth.appId, sessionId: auth.sessionId }, now))) {
-        return c.json(errorBody("reauth_required", "為了確認是您本人，請再用 Google 登入一次，確認後即可刪除帳號", c.get("requestId"), { reauth: "POST /v1/auth/reauth" }), 401);
-      }
       appId = auth.appId;
     } else {
       return c.json(errorBody("forbidden", "這個登入方式不能刪除帳號", c.get("requestId")), 403);

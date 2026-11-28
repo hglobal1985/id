@@ -81,10 +81,8 @@ describe("passkey replaces the re-sign-in for dangerous admin operations", () =>
     const r = await bridge(sa);
     expect(r.status).toBe(401);
     expect(((await r.json()) as { error: { code: string } }).error.code).toBe("passkey_setup_required");
-    // 註冊 passkey 要 10 分鐘內剛登入：太久就要求重新登入
-    expect((await req(sa, "POST", "/v1/admin/passkeys/register/options")).status).toBe(401);
-    // 重新登入（新的 session）後建立 passkey
-    const sa2 = { ...sa, cookie: (await createSession(db, sa.id, now)).token };
+    // 第一把 passkey 不必重新登入，任何有效的登入階段都能建立（杜杜龍 2026-11-28）
+    const sa2 = sa;
     const a = await authenticator();
     expect((await addPasskey(sa2, a)).status).toBe(200);
     expect(((await (await req(sa2, "GET", "/v1/admin/passkeys")).json()) as { passkeys: unknown[] }).passkeys).toHaveLength(1);
@@ -93,6 +91,14 @@ describe("passkey replaces the re-sign-in for dangerous admin operations", () =>
     expect(((await stale.json()) as { error: { code: string } }).error.code).toBe("passkey_required");
     expect((await confirmWith(sa2, a)).status).toBe(200);
     expect((await bridge(sa2)).status).toBe(200);
+    // 已經有 passkey 後，再加新的 passkey 要先用 passkey 確認過；確認過的 10 分鐘內可以加
+    const b = await authenticator();
+    now = new Date(now.getTime() + 11 * 60_000);
+    const o2 = await req(sa2, "POST", "/v1/admin/passkeys/register/options");
+    expect(o2.status).toBe(401);
+    expect(((await o2.json()) as { error: { code: string } }).error.code).toBe("passkey_required");
+    expect((await confirmWith(sa2, a)).status).toBe(200);
+    expect((await addPasskey(sa2, b)).status).toBe(200);
     expect(JSON.stringify(db.raw.prepare("SELECT action, detail FROM audit_log WHERE action LIKE 'passkey.%'").all())).toContain("passkey.confirm");
   });
 

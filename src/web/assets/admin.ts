@@ -457,7 +457,7 @@ export const ADMIN_JS = String.raw`
     var code = res && res.body && res.body.error && res.body.error.code;
     if (code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return true; }
     if (code === "passkey_required") { HG.confirmBox("這個動作需要確認是您本人：請用 passkey（指紋、臉部或手機解鎖）確認，確認後 10 分鐘內不必再確認。", "用 passkey 確認", function () { passkeyConfirm().then(function (ok) { if (ok) HG.toast("已確認，請再按一次剛才的動作"); }); }); return true; }
-    if (code === "passkey_setup_required") { HG.confirmBox("危險操作改用 passkey（指紋、臉部或手機解鎖）確認，不再重新登入 Google。請先建立一次 passkey（需要您剛登入過 Google）。", "建立 passkey", function () { passkeyAdd("").then(function (ok) { if (ok) HG.toast("passkey 已建立，請再按一次剛才的動作"); }); }); return true; }
+    if (code === "passkey_setup_required") { HG.confirmBox("危險操作改用 passkey（指紋、臉部或手機解鎖）確認，不再重新登入 Google。請先建立一次 passkey（不必重新登入）。", "建立 passkey", function () { passkeyAdd("").then(function (ok) { if (ok) HG.toast("passkey 已建立，請再按一次剛才的動作"); }); }); return true; }
     return false;
   }
 

@@ -206,3 +206,9 @@ App 自己的管理頁（只給超級管理員）呼叫 `GET /v1/apps/{app_id}/h
 
 ## 6.21 後台危險操作改用 passkey（2026-11-28，ADR 0040；只影響中央後台，App 不用改）
 - 管理員的危險操作不再要求重新登入 Google，改用 passkey 確認（10 分鐘內有效）；第一次先在後台「Passkey」分頁建立。會員自己的「刪除帳號」流程（三、9）不變。
+
+## 6.22 永久取消二次登入（2026-11-28.3，所有 App 一體適用）
+杜杜龍 2026-11-28 決定：全生態系統永久取消「為了安全再要求重新登入 Google（二次登入）」，包含會員自己刪除帳號。
+- 會員刪除帳號：App 設定頁的確認視窗要手動輸入 ok（串接指令三、20），然後 `POST /v1/me/delete-account`（Bearer Access Token，body `{}`）；不再需要 `/v1/auth/nonce`、`/auth/google/start?purpose=delete_account`、`/v1/auth/reauth`、`reauth_token`（舊版 App 帶了也會被忽略；`/v1/auth/reauth` 端點暫時保留給舊版 App，不再需要）。
+- 後台管理員的危險操作用 passkey 確認（6.21）；**第一把 passkey 任何有效的登入階段都能建立，不再要求剛登入過 Google**；已經有 passkey 後再加新的才要先用 passkey 確認。
+- 新增功能不要再加「請重新登入」的要求，一律用輸入 ok。檢查清單第 36、47 項已更新。

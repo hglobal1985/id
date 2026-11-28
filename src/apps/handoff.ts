@@ -6,8 +6,8 @@ import type { AppEntry } from "./registry";
  * so the owner can tell at a glance whether the copy an App's AI received is the latest one.
  * Format: YYYY-MM-DD.N (the earlier hand-written transitional copy for app_id learn was 2026-11-10.1).
  */
-export const HANDOFF_VERSION = "2026-11-28.2";
-export const HANDOFF_UPDATED = "2026-11-28 13:00（台灣時間）";
+export const HANDOFF_VERSION = "2026-11-28.3";
+export const HANDOFF_UPDATED = "2026-11-28 14:00（台灣時間）";
 export const HANDOFF_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,3}$/;
 
 const REPO_RAW = "https://raw.githubusercontent.com/hglobal1985/id/main";
@@ -125,7 +125,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - reason 只給 App 內部記錄用，絕對不要顯示給會員。不符合資格時只顯示一般的說明（例如「此內容需要符合資格才能觀看」）。",
     "7. Amway 資料不得被 App 保存：會員編號、獎銜、上手、資格查詢結果等 Amway 相關資料，App 與 App 後端都不可以寫入資料庫、檔案、日誌、分析工具或錯誤回報；需要時即時向中央會員查詢。日誌也不可以記錄 Token、信箱、姓名。唯一的例外（杜杜龍 2026-11-22）：三、16 獎銜與中心申請審核的「已處理紀錄」，只可保存申請當下的快照（姓名、申請欄位、原本的值、申請的值、修改後通過的值，獎銜存代碼或中文名稱皆可），僅供日後查詢，不得再用它判斷資格或權限（資格一律即時向中央查詢）；細節與限制見三、16。",
     "8. 對會員顯示的文字：品牌只用 starry.phd、Amway 這兩個寫法，不要使用它們的中文名稱；畫面上不要出現「寰宇」「H-Global1985」「hglobal」字樣（App 選單裡的選項與隱私權文件除外），網頁標題統一寫「會員中心」。不要提到其他系統的名稱，需要時一律寫「合作營運單位」。",
-    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy（完整隱私說明已合併在同一份文件，只有這一個網址）。App Store 與 Google Play 要求 App 內有刪除帳號入口。刪除帳號改為在 App 內直接完成（2026-11-23.3，全生態系統標準，不再帶會員去中央網站、不要再開啟 ${origin}/my/edit）：設定頁放「刪除帳號」按鈕 → 二次確認（寫明「會刪除你在所有寰宇 App 的帳號與資料，無法復原」）→ 重新驗證：先 POST ${origin}/v1/auth/nonce 取 nonce，用瀏覽器開 GET ${origin}/auth/google/start?app_id=<app_id>&nonce=<nonce 的 SHA-256 hex>&return=<登記的回傳網址>&state=<自訂>&purpose=delete_account，會員再按一次 Google 登入，回傳的 id_token 連同原始 nonce 送 POST ${origin}/v1/auth/reauth（帶會員自己的 Access Token，body {"id_token":…,"nonce":…}；必須是登入時的同一個 Google 帳號，否則 403），拿到 reauth_token（10 分鐘有效，只能用在這個會員、這個 App 的這次登入、只能刪帳號）→ POST ${origin}/v1/me/delete-account（Bearer Access Token，body {"reauth_token":…}，只能刪 token 本人）→ 成功回 {"deleted":true}：帳號匿名化並關閉、所有裝置與 App 登出、Google 帳號釋放、會員資料與 Amway 資料全部清除（沒有申請流程，也沒有「刪除 Amway 資料」）；App 收到成功後立刻自己清掉本機資料與 Token、回到登入畫面（不用等 webhook；其他已串接 App 會收到 member.deleted，照 delete_copy 清掉自己的副本）。錯誤：401 reauth_required（沒帶或超過 10 分鐘，請再走一次重新驗證）、403 forbidden、409 last_super_admin（最後一位超級管理員要先移交職務），message 都是白話文，直接顯示給會員。被暫停（paused／killed）的 App 不能刪。網頁版會員仍可在 ${origin}/my/edit 刪除。`,
+    `9. 隱私與刪除：設定頁放「隱私權政策」連結 ${origin}/privacy（完整隱私說明已合併在同一份文件，只有這一個網址）。App Store 與 Google Play 要求 App 內有刪除帳號入口。刪除帳號改為在 App 內直接完成（2026-11-23.3，全生態系統標準，不再帶會員去中央網站、不要再開啟 ${origin}/my/edit）：設定頁放「刪除帳號」按鈕 → 確認視窗（寫明「會刪除你在所有寰宇 App 的帳號與資料，無法復原」，並要會員手動輸入「ok」才能按確定；2026-11-28 起全生態系統永久取消「重新登入 Google」的二次驗證，不要再做 nonce、/auth/google/start?purpose=delete_account、/v1/auth/reauth，也不要再帶 reauth_token）→ POST ${origin}/v1/me/delete-account（Bearer Access Token，body {}，只能刪 token 本人）→ 成功回 {"deleted":true}：帳號匿名化並關閉、所有裝置與 App 登出、Google 帳號釋放、會員資料與 Amway 資料全部清除（沒有申請流程，也沒有「刪除 Amway 資料」）；App 收到成功後立刻自己清掉本機資料與 Token、回到登入畫面（不用等 webhook；其他已串接 App 會收到 member.deleted，照 delete_copy 清掉自己的副本）。錯誤：401 unauthenticated、403 forbidden、409 last_super_admin（最後一位超級管理員要先移交職務），message 都是白話文，直接顯示給會員。被暫停（paused／killed）的 App 不能刪。網頁版會員仍可在 ${origin}/my/edit 刪除。`,
     "10. 網頁版網址：每一頁都要有自己的網址路徑，用 History API 切換；重新整理、上一頁、分享網址都停留在同一頁。需要登入的頁面，未登入時先記下目前路徑，登入完成後導回原本那一頁（回傳網址必須在已登記的網頁版來源底下）。",
     "11. 平台資料標準（所有 App 一體適用，先從寰宇行動大學驗收）：",
     "   - 原則 1：個人資料的正本只在中央；App 只存 member_id。複製資料只限必要，並且要有同步（收事件重讀）與刪除（收刪除事件就刪）的機制。",
@@ -197,6 +197,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "   - 接收端：用常數時間比對 Authorization: Bearer 的密鑰，沒設或不對一律 401（fail closed）；只回該會員自己的資料，不接受前端直接呼叫。呼叫端：逾時 5 秒，失敗時畫面顯示「暫時讀不到」，不影響其他功能。",
     "20. 高度危險動作要打字輸入 ok 才能確定（平台規範，杜杜龍 2026-11-28；對所有現在與未來的 App 一體適用，含網頁、手機 App、後台）：",
     "   - 範圍：誤觸會造成大損失的動作——重新產生或撤銷金鑰、永久刪除資料或檔案、還原資料、整批刪除或重壓、刪除帳號、影響全體使用者的設定。一般的單筆刪除（刪一則留言、從清單移除）維持一般確認即可。",
+    "   - 永久規定（杜杜龍 2026-11-28）：全生態系統取消「為了安全再要求重新登入 Google（二次登入）」的做法，包含會員刪除帳號；新增功能不要再加這類要求，一律改用輸入 ok。",
     "   - 做法：確認面板多一個輸入框，使用者手動輸入「ok」（不分大小寫、去前後空白）後「確定」鈕才能按，沒輸入前確定鈕是停用的；不可用瀏覽器內建對話框（confirm／alert）；面板要在手機上不被鍵盤遮住。新增高度危險功能時一定要套用。",
     "",
     "## 四、規則",
@@ -250,7 +251,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "33. 規則放寬（2026-11-22.4，沒有新的程式要做）：三、16 已處理紀錄可保存姓名與申請內容快照，三、7 加註這個唯一例外；已串接且不需要這份紀錄的 App 不必改；要做的 App 照三、16 的限制（含 member.deleted 時清除快照）。",
     "34. 欄位順序與中心規則（2026-11-23.1，三、5）：資料頁欄位順序改為獎銜、系統、中心；獎銜不再等系統與中心（不再有 system_center_required）；中心只在系統是寰宇時可選，系統非寰宇時自動送 \"無\" 並停用該欄，後端對非寰宇卻送非「無」中心回 422（reason center_requires_hglobal）；名字旁方框順序不變。",
     "35. 2026-11-23.2 補充（三、5）：系統選「其他」時隱藏中心欄、改顯示「自訂系統」輸入框（文字存進 education_system，中心送 \"無\"）；勾選 Amway 會員後隱藏該勾選列（取消入口自行安排）；勾「無」時下拉欄位寬度維持不變；「必填」標籤改為動態顯示（可用 GET /v1/me/amway 的 missing）。",
-    "36. App 內直接刪除帳號（2026-11-23.3，三、9）：設定頁的「刪除帳號」＝二次確認（所有寰宇 App 的帳號與資料、無法復原）→ nonce → /auth/google/start（purpose=delete_account）→ POST /v1/auth/reauth → POST /v1/me/delete-account（帶 reauth_token）→ 成功後清本機資料與 Token、回登入畫面；不再開啟 /my/edit；401 reauth_required 就重新驗證；錯誤訊息直接顯示；做到後在標準符合度回報 in_app_delete。",
+    "36. App 內直接刪除帳號（2026-11-23.3，三、9）：設定頁的「刪除帳號」＝確認視窗（所有寰宇 App 的帳號與資料、無法復原）＋手動輸入 ok（2026-11-28.3 起不再有 Google 重新驗證）→ POST /v1/me/delete-account（body {}）→ 成功後清本機資料與 Token、回登入畫面；不再開啟 /my/edit；錯誤訊息直接顯示；做到後在標準符合度回報 in_app_delete。舊版會帶的 reauth_token 中央已不再檢查，請拿掉重新驗證的流程。",
     "37. 開啟完整版會員中心不再選 Google 帳號（2026-11-24.1，三、2（4））：已有 sso_token 時，每次開啟都先 POST /v1/auth/sso/web-code 取新 code，再用系統瀏覽器／整頁導向開 /auth/sso/adopt?c=<code>&app_id=&return=<中央>/my/edit；沒有 sso_token 才直接開 /my/edit；不快取 code；不自己處理中央的 Cookie。審核通知的派送改版由中央處理，App 不用改（三、5 審核規則已補充）。",
     "38. 審核規則改版（2026-11-24.2，三、5）：獎銜只要不是「無」一律進審核（status pending、顯示「等待審核中」，未核准前別人看不到獎銜），寰宇時的中心也審核（含明確勾「無」）；不要寫死「寰宇＋中心才審核」或預期獎銜立刻生效；沒有舊值時畫面顯示空白加「等待審核中」。",
     "39. 寰宇中心名稱提醒（2026-11-24.3，三、5）：自訂系統（系統選「其他」）的文字只要包含 field-definitions 中 education_system 的 hglobal_center_words（目前：飛登、蓁分享、有賢社、聚冠），畫面在輸入框下方即時顯示紅／橘色提醒（用 hglobal_center_message，{word} 換成命中的詞；不阻擋輸入；詞清單一律讀中央，不寫死）；中央也會擋：PUT /v1/me/amway/fields/education_system 回 422、details.reason 為 use_hglobal_center，message 就是提醒文字，直接顯示。這些詞其實是寰宇旗下的中心，會員應改選系統「寰宇」再選中心。App 不自行修改既有會員資料。",
@@ -261,7 +262,7 @@ export function buildHandoff(app: AppEntry, origin: string): string {
     "44. 每週備份（2026-11-27.5，三、18 (4)）：App 在設定的星期、台北 03:00 把自己的永久資料匯出到自己的 R2 backups/<日期>/（NDJSON 分檔、README.txt 還原說明、最後寫 manifest.json），明確列出資料表與欄位，不含 Amway、Token、雜湊與暫存資料，只留最近 keep 份；config.eco_features.weekly_backup 沒有或 enabled 為 false 就不做。",
     "45. 巡檢手機推播（2026-11-27.8，三、18 (2)）：webhook 收到 eco.alert 時，替 detail 裡的網站發站內通知並推播給 member_id 這位會員（標題「網站打不開」或「網站已恢復」加網站名稱）；不認得的事件仍回 2xx。不是會收推播的 App（沒有推播功能）照舊忽略。",
     "46. App 之間的內部橋接（2026-11-28.1，三、19）：只有需要跟別的 App 互通的 App 要做；密鑰用中央「平台設定」頁顯示的全體平台共用金鑰，存成 Worker Secret APP_BRIDGE_SECRET；接收端常數時間比對 Bearer、沒設或不對 401、只回該會員自己的資料；呼叫端逾時 5 秒、失敗不影響其他功能；不存副本；金鑰不進程式庫與日誌。",
-    "47. 高度危險動作（2026-11-28.2，三、20）：重新產生金鑰、永久刪除、還原資料、刪除帳號等高度危險動作，確認面板要有輸入框、手動輸入 ok 才能按確定；沒有用瀏覽器內建 confirm；一般單筆刪除不用。",
+    "47. 高度危險動作（2026-11-28.2，三、20）：重新產生金鑰、永久刪除、還原資料、刪除帳號等高度危險動作，確認面板要有輸入框、手動輸入 ok 才能按確定；沒有用瀏覽器內建 confirm；一般單筆刪除不用；沒有「重新登入 Google」的二次驗證（2026-11-28.3）。",
     "48. 檢查完回報：每一項是「已符合」或「已補上（PR 連結）」，以及需要杜杜龍處理的事項。更新一律只補差異，不要重做已正常的部分。",
   ];
   return lines.join("\n");
