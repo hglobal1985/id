@@ -523,23 +523,13 @@ export const ADMIN_JS = String.raw`
     function handoff(a) {
       api("GET", "/v1/admin/apps/" + encodeURIComponent(a.app_id) + "/handoff").then(function (r) {
         if (r.status !== 200) return;
-        var box = m(), t = el("textarea", { readonly: true, rows: "18" }); t.value = r.body.text;
         var box2 = m(), t2 = el("textarea", { readonly: true, rows: "4" }); t2.value = r.body.pointer_text;
         function copyOf(ta, b) { ta.select(); if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(function () { say(b, true, "已複製"); }, function () { say(b, false, "請手動全選複製"); }); else say(b, false, "請手動全選複製"); }
         pane.textContent = "";
         pane.appendChild(card("最簡單：貼這幾行給開發 AI", [
           el("p", { class: "help", text: "AI 會自己讀取最新的完整串接指令（公開網址，純文字，沒有金鑰），不必再貼長長的整份。網址：" + r.body.url }),
           t2,
-          el("div", { class: "inline" }, [el("button", { class: "primary", text: "複製這幾行", onclick: function () { copyOf(t2, box2); } }), box2])
-        ]));
-        pane.appendChild(card("給開發 AI 的串接指令：" + a.name, [
-          el("p", { class: "help", text: "版本 " + r.body.version + "｜更新時間 " + r.body.updated + "。整段貼給負責開發這款 App 的 AI；內容只有公開資料，沒有金鑰。更新時請 AI 只補差異，不要整份重做。" }),
-          t,
-          el("div", { class: "inline" }, [el("button", { class: "primary", text: "複製串接指令", onclick: function () {
-            t.select();
-            if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(function () { say(box, true, "已複製"); }, function () { say(box, false, "請手動全選複製"); });
-            else say(box, false, "請手動全選複製");
-          } }), el("button", { text: "返回", onclick: reload }), box])
+          el("div", { class: "inline" }, [el("button", { class: "primary", text: "複製這幾行", onclick: function () { copyOf(t2, box2); } }), el("button", { text: "返回", onclick: reload }), box2])
         ]));
       });
     }
