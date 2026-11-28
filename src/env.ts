@@ -43,6 +43,9 @@ export interface StaffContext {
   /** Extra permissions given to this person on top of the positions' defaults. */
   grants: Grant[];
   authTime: number;
+  /** 這個登入階段的 id，以及最後一次用 passkey 確認的時間（危險操作 10 分鐘內有效）。 */
+  sessionId: string;
+  stepupEpoch: number;
 }
 
 export type AppBindings = { Bindings: Env; Variables: { requestId: string; auth: AuthContext; staff: StaffContext } };

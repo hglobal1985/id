@@ -15,6 +15,7 @@ import { getApp } from "../db/apps";
 import { LOOKUP_MAX, checkServiceToken, hasServiceCredential, issueServiceToken, lookupContacts, revokeServiceSecret, rotateServiceSecret } from "../db/service";
 import { bridgeSecret, currentWebhookSecret, deliverDue, getWebhook, isWebhookUrl, recentEvents, rotateWebhookSecret, setWebhook } from "../db/webhooks";
 import { uuidv7 } from "../lib/crypto";
+import { passkeyCount } from "../db/passkeys";
 import { EVENT_RETENTION_SECONDS } from "../webhooks/events";
 import { taipeiIso } from "../lib/time";
 import { allowed } from "../lib/ratelimit";
@@ -115,9 +116,15 @@ function deny(c: C, p: Permission): Response | null {
   if (can(st.roles, p, st.grants)) return null;
   return c.json(errorBody("forbidden", "Not permitted for your role", c.get("requestId"), { required_permission: p }), 403);
 }
-function reauth(c: C, deps: Deps): Response | null {
-  if (epochSeconds(deps.now()) - c.get("staff").authTime <= REAUTH_MAX_AGE) return null;
-  return c.json(errorBody("reauth_required", "請重新登入後再試", c.get("requestId"), { login_url: "/login?return_to=%2Fadmin" }), 401);
+/**
+ * 危險操作的本人確認（杜杜龍 2026-11-28）：不再要求「重新登入 Google」。10 分鐘內剛登入或剛用 passkey 確認過就放行；
+ * 否則有 passkey → 401 passkey_required（畫面跳出 passkey 確認）；還沒建立 passkey → 401 passkey_setup_required（畫面引導建立）。
+ */
+async function reauth(c: C, deps: Deps): Promise<Response | null> {
+  const st = c.get("staff");
+  if (epochSeconds(deps.now()) - Math.max(st.authTime, st.stepupEpoch) <= REAUTH_MAX_AGE) return null;
+  if ((await passkeyCount(c.env.DB, st.memberId)) > 0) return c.json(errorBody("passkey_required", "請用 passkey（指紋／臉部／手機解鎖）確認是本人", c.get("requestId")), 401);
+  return c.json(errorBody("passkey_setup_required", "請先建立 passkey，之後危險操作只要指紋或臉部確認", c.get("requestId")), 401);
 }
 const notFound = (c: C) => c.json(errorBody("app_not_found", "Unknown app", c.get("requestId")), 404);
 
@@ -219,7 +226,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
   app.openapi(webhookPutRoute, async (c) => {
     const d = deny(c, "apps.manage");
     if (d) return d as never;
-    const r = reauth(c, deps);
+    const r = await reauth(c, deps);
     if (r) return r as never;
     const a = await getApp(c.env.DB, c.req.valid("param").app_id, deps.now());
     if (!a) return notFound(c);
@@ -232,7 +239,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
   app.openapi(webhookSecretRoute, async (c) => {
     const d = deny(c, "apps.manage");
     if (d) return d as never;
-    const r = reauth(c, deps);
+    const r = await reauth(c, deps);
     if (r) return r as never;
     const a = await getApp(c.env.DB, c.req.valid("param").app_id, deps.now());
     if (!a) return notFound(c);
@@ -248,7 +255,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
   app.openapi(bridgeSecretRoute, async (c) => {
     const d = deny(c, "apps.manage");
     if (d) return d as never;
-    const r = reauth(c, deps);
+    const r = await reauth(c, deps);
     if (r) return r as never;
     const k = await bridgeSecret(c.env.DB, c.env, c.req.valid("json").rotate, c.get("staff").memberId, c.get("requestId"), deps.now());
     if (!k) return c.json(errorBody("not_configured", "尚未設定 WEBHOOK_SIGNING_KEY（Workers Secret）", c.get("requestId")), 503) as never;
@@ -277,7 +284,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
   app.openapi(serviceSecretRoute, async (c) => {
     const d = deny(c, "apps.manage");
     if (d) return d as never;
-    const r = reauth(c, deps);
+    const r = await reauth(c, deps);
     if (r) return r as never;
     const a = await getApp(c.env.DB, c.req.valid("param").app_id, deps.now());
     if (!a) return notFound(c);
@@ -289,7 +296,7 @@ export function registerPlatformRoutes(app: OpenAPIHono<AppBindings>, deps: Deps
   app.openapi(serviceRevokeRoute, async (c) => {
     const d = deny(c, "apps.manage");
     if (d) return d as never;
-    const r = reauth(c, deps);
+    const r = await reauth(c, deps);
     if (r) return r as never;
     const a = await getApp(c.env.DB, c.req.valid("param").app_id, deps.now());
     if (!a) return notFound(c);

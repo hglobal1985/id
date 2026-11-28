@@ -100,6 +100,18 @@ export const COMMON_JS = String.raw`
     document.body.appendChild(back); input.focus();
   };
 
+  // 一般的單鍵確認視窗（沒有輸入框）：用在需要「使用者親手點一下」才能開始的動作（例如 passkey 需要使用者手勢）。
+  HG.confirmBox = function (message, okLabel, onOk) {
+    var back = el("div", { class: "dlg-back" });
+    function close() { if (back.parentNode) back.parentNode.removeChild(back); }
+    back.addEventListener("click", function (e) { if (e.target === back) close(); });
+    back.appendChild(el("div", { class: "dlg", role: "dialog", "aria-modal": "true" }, [
+      el("p", { class: "dlg-msg", text: message }),
+      el("div", { class: "inline" }, [el("button", { type: "button", text: "取消", onclick: close }), el("button", { type: "button", class: "primary", text: okLabel, onclick: function () { close(); onOk(); } })])
+    ]));
+    document.body.appendChild(back);
+  };
+
   HG.initials = function (name) {
     var t = (name || "").trim(); if (!t) return "H";
     var parts = t.split(/\s+/).filter(Boolean), ch = function (x) { return Array.from(x); };

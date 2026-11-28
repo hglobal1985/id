@@ -42,7 +42,7 @@ export const ADMIN_JS = String.raw`
   var me = null, pane = el("div"), menuBtns = [], visible = [];
   var TABS = [
     ["", "總覽", overview], ["members.read", "會員", members],
-    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "欄位順序", layoutTab], ["social.manage", "社群平台", socialAdmin], ["badges.manage", "獎銜徽章", function () { badgesAdmin(); }], ["apps.operate", "App", apps], ["apps.operate", "系統功能", ecoTab], ["staff.manage", "管理人員", staff], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
+    ["vocab.manage", "關聯詞", function () { vocab(); }], ["layout.manage", "欄位順序", layoutTab], ["social.manage", "社群平台", socialAdmin], ["badges.manage", "獎銜徽章", function () { badgesAdmin(); }], ["apps.operate", "App", apps], ["apps.operate", "系統功能", ecoTab], ["staff.manage", "管理人員", staff], ["", "Passkey", passkeyTab], ["", "權限", permissionsTab], ["audit.read", "稽核", audit]
   ];
   function tab(i) {
     menuBtns.forEach(function (b, j) { b.className = j === i ? "on" : ""; });
@@ -422,6 +422,45 @@ export const ADMIN_JS = String.raw`
     });
   }
 
+  // ───── Passkey（杜杜龍 2026-11-28）：危險操作不再重新登入 Google，改用指紋／臉部／手機解鎖確認 ─────
+  function b64uToBuf(t) { var s = t.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a.buffer; }
+  function bufToB64u(buf) { var a = new Uint8Array(buf), s = ""; for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+  function passkeySupported() { return !!(window.PublicKeyCredential && navigator.credentials); }
+  // 用 passkey 確認本人：成功 → 10 分鐘內的危險操作不必再確認。回傳 Promise<boolean>。
+  function passkeyConfirm() {
+    if (!passkeySupported()) { HG.toast("這個瀏覽器不支援 passkey"); return Promise.resolve(false); }
+    return api("POST", "/v1/admin/passkeys/auth/options").then(function (r) {
+      if (r.status !== 200) { HG.toast(errText(r)); return false; }
+      var o = r.body;
+      return navigator.credentials.get({ publicKey: { challenge: b64uToBuf(o.challenge), rpId: o.rpId, allowCredentials: o.allowCredentials.map(function (c) { return { type: "public-key", id: b64uToBuf(c.id) }; }), userVerification: "required", timeout: o.timeout } }).then(function (cred) {
+        var rsp = cred.response;
+        return api("POST", "/v1/admin/passkeys/auth/verify", { credential_id: bufToB64u(cred.rawId), client_data_json: bufToB64u(rsp.clientDataJSON), authenticator_data: bufToB64u(rsp.authenticatorData), signature: bufToB64u(rsp.signature) }).then(function (v) { if (v.status !== 200) { HG.toast(errText(v)); return false; } return true; });
+      });
+    }).catch(function () { HG.toast("沒有完成 passkey 確認"); return false; });
+  }
+  // 建立 passkey（要 10 分鐘內剛登入過 Google）。回傳 Promise<boolean>。
+  function passkeyAdd(name) {
+    if (!passkeySupported()) { HG.toast("這個瀏覽器不支援 passkey"); return Promise.resolve(false); }
+    return api("POST", "/v1/admin/passkeys/register/options").then(function (r) {
+      if (r.status === 401 && r.body && r.body.error && r.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return false; }
+      if (r.status !== 200) { HG.toast(errText(r)); return false; }
+      var o = r.body;
+      return navigator.credentials.create({ publicKey: { challenge: b64uToBuf(o.challenge), rp: o.rp, user: { id: b64uToBuf(o.user.id), name: o.user.name, displayName: o.user.displayName }, pubKeyCredParams: o.pubKeyCredParams, excludeCredentials: o.excludeCredentials.map(function (c) { return { type: "public-key", id: b64uToBuf(c.id) }; }), authenticatorSelection: o.authenticatorSelection, attestation: "none", timeout: o.timeout } }).then(function (cred) {
+        var rsp = cred.response;
+        if (!rsp.getPublicKey || !rsp.getAuthenticatorData) { HG.toast("這個瀏覽器太舊，請更新後再試"); return false; }
+        return api("POST", "/v1/admin/passkeys/register/verify", { credential_id: bufToB64u(cred.rawId), client_data_json: bufToB64u(rsp.clientDataJSON), authenticator_data: bufToB64u(rsp.getAuthenticatorData()), public_key: bufToB64u(rsp.getPublicKey()), alg: rsp.getPublicKeyAlgorithm(), name: name || "" }).then(function (v) { if (v.status !== 200) { HG.toast(errText(v)); return false; } return true; });
+      });
+    }).catch(function () { HG.toast("沒有完成建立 passkey"); return false; });
+  }
+  // 後端回 reauth_required／passkey_required／passkey_setup_required 時的處理；有處理回 true（呼叫端就不用顯示錯誤）。
+  function reauthHandled(res) {
+    var code = res && res.body && res.body.error && res.body.error.code;
+    if (code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return true; }
+    if (code === "passkey_required") { HG.confirmBox("這個動作需要確認是您本人：請用 passkey（指紋、臉部或手機解鎖）確認，確認後 10 分鐘內不必再確認。", "用 passkey 確認", function () { passkeyConfirm().then(function (ok) { if (ok) HG.toast("已確認，請再按一次剛才的動作"); }); }); return true; }
+    if (code === "passkey_setup_required") { HG.confirmBox("危險操作改用 passkey（指紋、臉部或手機解鎖）確認，不再重新登入 Google。請先建立一次 passkey（需要您剛登入過 Google）。", "建立 passkey", function () { passkeyAdd("").then(function (ok) { if (ok) HG.toast("passkey 已建立，請再按一次剛才的動作"); }); }); return true; }
+    return false;
+  }
+
   // 生態系統功能：每一項功能的設定，以及每個 App 有沒有參與（杜杜龍 2026-11-27）。
   function ecoTab() {
     var DAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -489,11 +528,32 @@ export const ADMIN_JS = String.raw`
     });
   }
 
+  function passkeyTab() {
+    var box = m();
+    function load() {
+      pane.textContent = "";
+      api("GET", "/v1/admin/passkeys").then(function (r) {
+        if (r.status !== 200) { pane.appendChild(card("Passkey", [el("p", { class: "msg bad", text: errText(r) })])); return; }
+        var rows = r.body.passkeys.map(function (p) {
+          return el("div", { class: "inline" }, [el("span", { text: p.name + "｜建立 " + p.created_at + (p.last_used_at ? "｜最近使用 " + p.last_used_at : "") }), el("button", { type: "button", class: "small danger", text: "移除", onclick: function () {
+            HG.confirmDanger("移除這個 passkey？之後這台裝置不能再用它確認危險操作。", function () { api("DELETE", "/v1/admin/passkeys/" + encodeURIComponent(p.id)).then(function (res) { if (res.status === 200) load(); else if (!reauthHandled(res)) say(box, false, errText(res)); }); });
+          } })]);
+        });
+        pane.appendChild(card("Passkey（指紋、臉部或手機解鎖）", [
+          el("p", { class: "help", text: "做危險操作（重新產生金鑰、App 登記、權限等）時，不再重新登入 Google，改用 passkey 確認；確認後 10 分鐘內不必再確認。第一次先在這裡建立。建議每個常用的裝置各建立一個（最多 " + r.body.max + " 個）。" }),
+          el("div", {}, rows.length ? rows : [el("p", { class: "help", text: "還沒有建立 passkey。" })]),
+          el("div", { class: "inline" }, [el("button", { type: "button", class: "primary", text: "建立 passkey", onclick: function () { passkeyAdd("").then(function (ok) { if (ok) { HG.toast("passkey 已建立"); load(); } }); } }), box])
+        ]));
+      });
+    }
+    load();
+  }
+
   function apps() {
     var STATUS = { active: "正常", paused: "暫停（維護中）", killed: "停用" };
     function lines(t) { return t.value.split(/[\s,]+/).filter(function (x) { return x; }); }
     function field(label, input, help) { return el("div", { class: "row" }, [el("label", { text: label }), input, help ? el("div", { class: "help", text: help }) : null]); }
-    function reauth(res) { if (res.body && res.body.error && res.body.error.code === "reauth_required") { location.href = "/login?return_to=%2Fadmin"; return true; } return false; }
+    function reauth(res) { return reauthHandled(res); }
     function reload() { pane.textContent = ""; apps(); }
     function form(b, a) {
       var box = m();

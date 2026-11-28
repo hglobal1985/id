@@ -46,7 +46,7 @@ function staffAuth(deps: Deps): MiddlewareHandler<AppBindings> {
     if (!found) return c.json(errorBody("unauthenticated", "Sign in required", c.get("requestId")), 401);
     const { session, roles, grants } = found;
     if (!roles.length && !grants.length) return c.json(errorBody("forbidden", "Staff only", c.get("requestId")), 403);
-    c.set("staff", { memberId: session.member_id, roles, grants, authTime: session.auth_time_epoch });
+    c.set("staff", { memberId: session.member_id, roles, grants, authTime: session.auth_time_epoch, sessionId: session.id, stepupEpoch: session.stepup_epoch ?? 0 });
     await next();
   };
 }

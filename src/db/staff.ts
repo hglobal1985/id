@@ -98,7 +98,7 @@ export async function staffContextByToken(db: D1Database, token: string, now: Da
   const [sess, roles, grants] = await db.batch([
     db
       .prepare(
-        `SELECT s.id, s.member_id, s.auth_time_epoch, s.expires_epoch, s.revoked_epoch
+        `SELECT s.id, s.member_id, s.auth_time_epoch, s.stepup_epoch, s.expires_epoch, s.revoked_epoch
          FROM login_sessions s JOIN members m ON m.id = s.member_id
          WHERE s.token_hash = ? AND s.revoked_epoch IS NULL AND s.expires_epoch > ? AND m.status = 'active'`,
       )

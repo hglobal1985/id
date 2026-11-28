@@ -120,6 +120,8 @@ export interface SessionRow {
   auth_time_epoch: number;
   expires_epoch: number;
   revoked_epoch: number | null;
+  /** 最後一次用 passkey 確認的時間（沒有就是 null／undefined）。 */
+  stepup_epoch?: number | null;
 }
 
 export async function createSession(db: D1Database, memberId: string, now: Date): Promise<{ token: string; session: SessionRow }> {
